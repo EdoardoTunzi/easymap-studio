@@ -7,6 +7,7 @@ import {
   type Transform,
 } from '../store/projectStore'
 import { useEffectsStore, DEFAULT_SIZE } from '../store/effectsStore'
+import { usePaletteStore, type RGB } from '../store/paletteStore'
 
 const AUTOSAVE_ID = '__autosave__'
 const AUTOSAVE_DEBOUNCE_MS = 600
@@ -27,6 +28,13 @@ export interface StoredProject {
   activeShaderName: string
   size: number
   params: Record<string, Record<string, number>>
+  palette?: {
+    enabled: boolean
+    colors: RGB[]
+    count: number
+    amount: number
+    activePreset: string
+  }
 }
 
 interface EasyVjDB extends DBSchema {
@@ -51,6 +59,7 @@ function getDb() {
 function snapshot(id: string, name: string): StoredProject {
   const { media, corners, transform, lumaKey } = useProjectStore.getState()
   const { activeShaderName, size, params } = useEffectsStore.getState()
+  const { enabled, colors, count, amount, activePreset } = usePaletteStore.getState()
   return {
     id,
     name,
@@ -65,6 +74,7 @@ function snapshot(id: string, name: string): StoredProject {
     activeShaderName,
     size,
     params,
+    palette: { enabled, colors, count, amount, activePreset },
   }
 }
 
@@ -91,6 +101,7 @@ function applyProject(project: StoredProject) {
     size: project.size ?? DEFAULT_SIZE,
     params: project.params,
   })
+  if (project.palette) usePaletteStore.setState(project.palette)
 }
 
 export async function saveProject(name: string): Promise<string> {
@@ -142,6 +153,7 @@ export function useAutosave() {
 
     const unsubProject = useProjectStore.subscribe(persist)
     const unsubEffects = useEffectsStore.subscribe(persist)
+    const unsubPalette = usePaletteStore.subscribe(persist)
 
     ;(async () => {
       try {
@@ -162,6 +174,7 @@ export function useAutosave() {
       if (timer) clearTimeout(timer)
       unsubProject()
       unsubEffects()
+      unsubPalette()
     }
   }, [])
 }

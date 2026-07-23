@@ -3,6 +3,7 @@ import * as THREE from 'three'
 import { useFrame } from '@react-three/fiber'
 import { useProjectStore } from '../store/projectStore'
 import { useEffectsStore } from '../store/effectsStore'
+import { usePaletteStore } from '../store/paletteStore'
 
 const FALLBACK_TEXTURE = (() => {
   const data = new Uint8Array([40, 40, 48, 255])
@@ -69,10 +70,18 @@ export function ShaderPlane() {
       uResolution: { value: new THREE.Vector2(1, 1) },
       uScale: { value: 1 },
       uLumaKey: { value: 0 },
+      uPalette: { value: Array.from({ length: 5 }, () => new THREE.Vector3(0, 0, 0)) },
+      uPaletteCount: { value: 5 },
+      uPaletteAmount: { value: 1 },
+      uPaletteOn: { value: 0 },
     }
     if (shader) {
       for (const control of shader.controls) {
         base[control.name] = { value: control.default }
+      }
+      // uniform vec3 (colori): senza valore Three.js li lascia a (0,0,0) e l'effetto si annulla
+      for (const color of shader.colorControls) {
+        base[color.name] = { value: new THREE.Vector3(...color.default) }
       }
     }
     return base
@@ -87,6 +96,17 @@ export function ShaderPlane() {
     )
     materialRef.current.uniforms.uScale.value = useEffectsStore.getState().size
     materialRef.current.uniforms.uLumaKey.value = useProjectStore.getState().lumaKey
+    // palette (gradient map globale)
+    const pal = usePaletteStore.getState()
+    const u = materialRef.current.uniforms
+    u.uPaletteOn.value = pal.enabled ? 1 : 0
+    u.uPaletteCount.value = pal.count
+    u.uPaletteAmount.value = pal.amount
+    const palArr = u.uPalette.value as THREE.Vector3[]
+    for (let i = 0; i < 5; i++) {
+      const c = pal.colors[i] ?? pal.colors[pal.colors.length - 1]
+      palArr[i].set(c[0], c[1], c[2])
+    }
     // riassegna la texture ogni frame: se il materiale è stato rimontato (cambio shader)
     // il suo uniform uTexture verrebbe altrimenti resettato al fallback → maschera persa
     materialRef.current.uniforms.uTexture.value = textureRef.current

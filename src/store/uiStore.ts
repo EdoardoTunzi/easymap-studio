@@ -1,7 +1,7 @@
 import { create } from 'zustand'
 
 /** Sezioni selezionabili dalla top toolbar; determinano il contenuto del pannello sinistro. */
-export type Panel = 'move' | 'shader' | 'assets' | 'output'
+export type Panel = 'move' | 'shader' | 'palette' | 'assets' | 'output'
 
 interface UiState {
   activePanel: Panel

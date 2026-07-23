@@ -1,6 +1,7 @@
 import { useEffect } from 'react'
 import { useProjectStore } from '../store/projectStore'
 import { useEffectsStore } from '../store/effectsStore'
+import { usePaletteStore } from '../store/paletteStore'
 
 const CHANNEL_NAME = 'easyvj-sync'
 
@@ -12,6 +13,7 @@ export function useBroadcastPublisher() {
     const publish = () => {
       const project = useProjectStore.getState()
       const effects = useEffectsStore.getState()
+      const palette = usePaletteStore.getState()
       // il blob resta locale (serve solo alla persistenza); il blob URL è valido cross-window
       const media = project.media ? { ...project.media, blob: undefined } : null
       channel.postMessage({
@@ -27,6 +29,13 @@ export function useBroadcastPublisher() {
           size: effects.size,
           params: effects.params,
         },
+        palette: {
+          enabled: palette.enabled,
+          colors: palette.colors,
+          count: palette.count,
+          amount: palette.amount,
+          activePreset: palette.activePreset,
+        },
       })
     }
 
@@ -37,11 +46,13 @@ export function useBroadcastPublisher() {
 
     const unsubProject = useProjectStore.subscribe(publish)
     const unsubEffects = useEffectsStore.subscribe(publish)
+    const unsubPalette = usePaletteStore.subscribe(publish)
     publish()
 
     return () => {
       unsubProject()
       unsubEffects()
+      unsubPalette()
       channel.close()
     }
   }, [])
@@ -53,9 +64,10 @@ export function useBroadcastSubscriber() {
     const channel = new BroadcastChannel(CHANNEL_NAME)
     channel.onmessage = (event) => {
       if (event.data?.type !== 'state') return
-      const { project, effects } = event.data
+      const { project, effects, palette } = event.data
       if (project) useProjectStore.setState(project)
       if (effects) useEffectsStore.setState(effects)
+      if (palette) usePaletteStore.setState(palette)
     }
     channel.postMessage({ type: 'hello' })
     return () => channel.close()

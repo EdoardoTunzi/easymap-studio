@@ -7,6 +7,7 @@ import { EffectsPanel } from '@/components/EffectsLibrary/EffectsPanel'
 import { PositioningPanel } from '@/components/Positioning/PositioningPanel'
 import { BackgroundKeyPanel } from '@/components/Positioning/BackgroundKeyPanel'
 import { MovePanel } from '@/components/Positioning/MovePanel'
+import { PalettePanel } from '@/components/Palette/PalettePanel'
 import { CornerPinOverlay } from '@/components/Positioning/CornerPinOverlay'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Separator } from '@/components/ui/separator'
@@ -17,6 +18,7 @@ import { useAutosave } from '@/lib/persistence'
 const PANEL_TITLE: Record<string, string> = {
   move: 'Move',
   shader: 'Sliders',
+  palette: 'Palette',
   assets: 'Assets',
   output: 'Output',
 }
@@ -29,6 +31,8 @@ function PanelContent() {
       return <MovePanel />
     case 'shader':
       return <EffectsPanel />
+    case 'palette':
+      return <PalettePanel />
     case 'assets':
       return (
         <div className="flex flex-col gap-6">

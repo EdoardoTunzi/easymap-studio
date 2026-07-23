@@ -20,11 +20,17 @@ Spuntare gli step completati; aggiungere nuovi step quando emergono. Tenere alli
 - [x] Libreria di 22 shader psichedelici (auto-load via import.meta.glob) + slider Size globale (uScale) valido per tutti gli effetti
 - [x] Garantire il ritaglio dell'effetto dentro i bordi immagine anche al cambio shader (fix texture ref in ShaderPlane)
 - [x] Luma key per asset con sfondo nero opaco: uniform uLumaKey + auto-rilevamento opacità all'upload + slider "Rimuovi sfondo scuro"
+- [x] Fix metallic3dFluid.glsl (aggiunte node_noise/node_rand mancanti dal runtime MAPSHROOM)
+- [x] 10 varianti in stile Symmetrical Halo Swirl (file halo*.glsl, source-driven + blend per luminanza)
+- [x] Supporto uniform vec3 nel parser ISF (colorControls) + fix 3D Surface Morph Spirals (spiralColor restava nero)
+- [x] Sistema palette colori (gradient map globale): 7 preset fluorescenti caldi + editor color picker + intensità, valido per ogni shader (tab Palette)
 - [ ] Definire la palette colori dell'app (rimandata: per ora tema neutro shadcn dark)
 - [ ] Drag diretto dell'immagine sul canvas in modalità MOVE (ora il pan è solo da pad direzionale / trascinamento del quad corner-pin)
 - [ ] Pannello destro (descrizione/generazione shader) e timeline in basso come nello screenshot MAPSHROOM
 - [ ] Pannello live: luminosità / colore / velocità globali (oltre ai parametri per-shader)
 - [ ] Import shader GLSL da parte dell'utente (textarea/file → parser ISF)
+- [ ] Color picker UI per gli uniform vec3 dei singoli shader (ora si usa solo il @default; vedi colorControls in isfParser). NB: diverso dalla palette globale (gradient map) già implementata
+- [ ] Palette memorizzata per-shader (ora è globale) + salvataggio di palette custom dell'utente
 - [ ] Anteprime/thumbnail degli shader nella libreria (come i preset nello screenshot MAPSHROOM)
 - [ ] Export/import progetto come file JSON (backup portabile tra macchine)
 - [ ] PWA: icone reali (pwa-192x192.png, pwa-512x512.png mancanti in public/) e test offline
