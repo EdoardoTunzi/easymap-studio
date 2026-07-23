@@ -4,6 +4,7 @@ import { MediaUploader } from '@/components/ControlPanel/MediaUploader'
 import { OutputLauncher } from '@/components/ControlPanel/OutputLauncher'
 import { ProjectsPanel } from '@/components/ControlPanel/ProjectsPanel'
 import { EffectsPanel } from '@/components/EffectsLibrary/EffectsPanel'
+import { EffectPresetsPanel } from '@/components/EffectsLibrary/EffectPresetsPanel'
 import { PositioningPanel } from '@/components/Positioning/PositioningPanel'
 import { BackgroundKeyPanel } from '@/components/Positioning/BackgroundKeyPanel'
 import { MovePanel } from '@/components/Positioning/MovePanel'
@@ -30,7 +31,13 @@ function PanelContent() {
     case 'move':
       return <MovePanel />
     case 'shader':
-      return <EffectsPanel />
+      return (
+        <div className="flex flex-col gap-6">
+          <EffectsPanel />
+          <Separator />
+          <EffectPresetsPanel />
+        </div>
+      )
     case 'palette':
       return <PalettePanel />
     case 'assets':

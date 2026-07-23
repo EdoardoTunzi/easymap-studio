@@ -37,22 +37,52 @@ export interface StoredProject {
   }
 }
 
+interface PaletteSnapshot {
+  enabled: boolean
+  colors: RGB[]
+  count: number
+  amount: number
+  activePreset: string
+}
+
+/** Preset di un effetto: cattura il "look" (shader + parametri + size + palette), riusabile su qualsiasi asset. */
+export interface EffectPreset {
+  id: string
+  name: string
+  updatedAt: number
+  shaderName: string
+  /** Parametri del solo shader del preset. */
+  params: Record<string, number>
+  size: number
+  palette: PaletteSnapshot
+}
+
 interface EasyVjDB extends DBSchema {
   projects: {
     key: string
     value: StoredProject
+  }
+  effectPresets: {
+    key: string
+    value: EffectPreset
   }
 }
 
 let dbPromise: Promise<IDBPDatabase<EasyVjDB>> | null = null
 
 function getDb() {
-  dbPromise ??= openDB<EasyVjDB>('easyvj', 1, {
-    upgrade(db) {
-      db.createObjectStore('projects', { keyPath: 'id' })
+  dbPromise ??= openDB<EasyVjDB>('easyvj', 2, {
+    upgrade(db, oldVersion) {
+      if (oldVersion < 1) db.createObjectStore('projects', { keyPath: 'id' })
+      if (oldVersion < 2) db.createObjectStore('effectPresets', { keyPath: 'id' })
     },
   })
   return dbPromise
+}
+
+function currentPaletteSnapshot(): PaletteSnapshot {
+  const { enabled, colors, count, amount, activePreset } = usePaletteStore.getState()
+  return { enabled, colors, count, amount, activePreset }
 }
 
 /** Fotografa lo stato corrente degli store in un oggetto persistibile. */
@@ -131,6 +161,59 @@ export async function listProjects(): Promise<Omit<StoredProject, 'media'>[]> {
     .filter((p) => p.id !== AUTOSAVE_ID)
     .sort((a, b) => b.updatedAt - a.updatedAt)
     .map(({ media: _media, ...rest }) => rest)
+}
+
+// ---- Preset degli effetti (shader + parametri + size + palette) ----
+
+/** Cattura il look corrente come preset di effetto. */
+function effectPresetSnapshot(id: string, name: string): EffectPreset {
+  const { activeShaderName, size, params } = useEffectsStore.getState()
+  return {
+    id,
+    name,
+    updatedAt: Date.now(),
+    shaderName: activeShaderName,
+    params: { ...(params[activeShaderName] ?? {}) },
+    size,
+    palette: currentPaletteSnapshot(),
+  }
+}
+
+/** Applica un preset di effetto agli store (senza toccare media/posizionamento). */
+function applyEffectPreset(preset: EffectPreset) {
+  const { params } = useEffectsStore.getState()
+  useEffectsStore.setState({
+    activeShaderName: preset.shaderName,
+    size: preset.size ?? DEFAULT_SIZE,
+    params: { ...params, [preset.shaderName]: preset.params },
+  })
+  if (preset.palette) usePaletteStore.setState(preset.palette)
+}
+
+export async function saveEffectPreset(name: string): Promise<string> {
+  const id = crypto.randomUUID()
+  const db = await getDb()
+  await db.put('effectPresets', effectPresetSnapshot(id, name))
+  return id
+}
+
+export async function loadEffectPreset(id: string): Promise<boolean> {
+  const db = await getDb()
+  const preset = await db.get('effectPresets', id)
+  if (!preset) return false
+  applyEffectPreset(preset)
+  return true
+}
+
+export async function deleteEffectPreset(id: string): Promise<void> {
+  const db = await getDb()
+  await db.delete('effectPresets', id)
+}
+
+export async function listEffectPresets(): Promise<EffectPreset[]> {
+  const db = await getDb()
+  const all = await db.getAll('effectPresets')
+  return all.sort((a, b) => b.updatedAt - a.updatedAt)
 }
 
 /**
