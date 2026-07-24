@@ -17,6 +17,31 @@ import {
   PALETTE_STOPS,
 } from './paletteStore'
 
+/** Forma di una maschera vettoriale. */
+export type MaskShape = 'rectangle' | 'ellipse'
+
+/**
+ * Maschera di forma per-layer, definita nello spazio dei corner (stesse unità del corner-pin):
+ * così segue il warp/transform del layer. Più maschere si sommano (unione): il layer è visibile
+ * dove è dentro almeno una forma.
+ */
+export interface Mask {
+  id: string
+  type: MaskShape
+  /** Centro (spazio corner). */
+  cx: number
+  cy: number
+  /** Semi-dimensioni (spazio corner). */
+  hx: number
+  hy: number
+  /** Rotazione in radianti. */
+  rotation: number
+  /** Sfumatura del bordo, 0..1 (frazione della semi-dimensione minore). */
+  feather: number
+  /** Se true, ritaglia FUORI dalla forma invece che dentro. */
+  invert: boolean
+}
+
 /** Modalità di fusione del layer con quelli sottostanti. */
 export type BlendMode = 'normal' | 'add' | 'screen' | 'multiply'
 
@@ -51,6 +76,10 @@ export interface Layer {
   params: Record<string, Record<string, number>>
   /** Palette (gradient map) del layer. */
   palette: Palette
+  /** Maschere di forma (unione) che limitano dove il layer è visibile. */
+  masks: Mask[]
+  /** Maschera da immagine (stencil PNG/grayscale). null = non usata. */
+  maskImage: MediaAsset | null
   /** Corner-pin in coordinate mondo (TL, TR, BL, BR). */
   corners: Corners
   /** Transform (zoom + pan) applicato sopra il corner-pin. */
@@ -82,15 +111,46 @@ export function createLayer(partial?: Partial<Layer>): Layer {
     size: DEFAULT_SIZE,
     params: {},
     palette: createDefaultPalette(),
+    masks: [],
+    maskImage: null,
     corners: cloneCorners(DEFAULT_CORNERS),
     transform: { ...DEFAULT_TRANSFORM },
     ...partial,
   }
 }
 
+/** Bounding box dei corner del layer (spazio corner). */
+function cornersBounds(corners: Corners) {
+  const xs = corners.map((c) => c.x)
+  const ys = corners.map((c) => c.y)
+  const minX = Math.min(...xs)
+  const maxX = Math.max(...xs)
+  const minY = Math.min(...ys)
+  const maxY = Math.max(...ys)
+  return { cx: (minX + maxX) / 2, cy: (minY + maxY) / 2, hw: (maxX - minX) / 2, hh: (maxY - minY) / 2 }
+}
+
+/** Maschera di default: centrata sul layer, ~metà della sua estensione. */
+function defaultMask(type: MaskShape, corners: Corners): Mask {
+  const b = cornersBounds(corners)
+  return {
+    id: crypto.randomUUID(),
+    type,
+    cx: b.cx,
+    cy: b.cy,
+    hx: Math.max(b.hw * 0.5, 0.1),
+    hy: Math.max(b.hh * 0.5, 0.1),
+    rotation: 0,
+    feather: 0.1,
+    invert: false,
+  }
+}
+
 interface LayersState {
   layers: Layer[]
   activeLayerId: string
+  /** Maschera selezionata nell'editor (per l'overlay sul canvas). null = nessuna. */
+  activeMaskId: string | null
   /** Incrementato per richiedere un ri-adattamento dei corner del layer attivo (vedi AutoFit). */
   fitRequestId: number
 
@@ -126,6 +186,16 @@ interface LayersState {
   setPaletteColor: (index: number, rgb: RGB) => void
   applyPalettePreset: (name: string) => void
 
+  // maschere del layer attivo
+  addMask: (type: MaskShape) => void
+  removeMask: (maskId: string) => void
+  updateMask: (maskId: string, patch: Partial<Mask>) => void
+  selectMask: (maskId: string | null) => void
+  setMaskImage: (media: MediaAsset | null) => void
+
+  /** Copia l'effetto del layer attivo (shader + parametri + size + palette) su TUTTI i layer. */
+  applyEffectToAll: () => void
+
   requestFit: () => void
 
   /** Sostituisce l'intera scena (usato da persistence/sync). */
@@ -150,6 +220,7 @@ export const useLayersStore = create<LayersState>((set, get) => {
   return {
     layers: [initialLayer],
     activeLayerId: initialLayer.id,
+    activeMaskId: null,
     fitRequestId: 0,
 
     getActiveLayer: () => {
@@ -195,6 +266,8 @@ export const useLayersStore = create<LayersState>((set, get) => {
           name: `${src.name} copy`,
           params: structuredClone(src.params),
           palette: clonePalette(src.palette),
+          masks: src.masks.map((m) => ({ ...m, id: crypto.randomUUID() })),
+          maskImage: src.maskImage ? { ...src.maskImage } : null,
           corners: cloneCorners(src.corners),
           transform: { ...src.transform },
         }
@@ -281,6 +354,45 @@ export const useLayersStore = create<LayersState>((set, get) => {
         activePreset: name,
         enabled: true,
       })),
+
+    addMask: (type) => {
+      const active = get().layers.find((l) => l.id === get().activeLayerId)
+      const mask = defaultMask(type, active?.corners ?? DEFAULT_CORNERS)
+      patchActive((l) => ({ masks: [...l.masks, mask] }))
+      set({ activeMaskId: mask.id })
+    },
+
+    removeMask: (maskId) => {
+      patchActive((l) => ({ masks: l.masks.filter((m) => m.id !== maskId) }))
+      set((state) => ({ activeMaskId: state.activeMaskId === maskId ? null : state.activeMaskId }))
+    },
+
+    updateMask: (maskId, patch) =>
+      patchActive((l) => ({
+        masks: l.masks.map((m) => (m.id === maskId ? { ...m, ...patch } : m)),
+      })),
+
+    selectMask: (maskId) => set({ activeMaskId: maskId }),
+
+    setMaskImage: (media) => patchActive(() => ({ maskImage: media })),
+
+    applyEffectToAll: () =>
+      set((state) => {
+        const active = state.layers.find((l) => l.id === state.activeLayerId)
+        if (!active) return state
+        return {
+          layers: state.layers.map((l) => ({
+            ...l,
+            shaderName: active.shaderName,
+            size: active.size,
+            params: {
+              ...l.params,
+              [active.shaderName]: { ...active.params[active.shaderName] },
+            },
+            palette: clonePalette(active.palette),
+          })),
+        }
+      }),
 
     requestFit: () => set((state) => ({ fitRequestId: state.fitRequestId + 1 })),
 

@@ -4,13 +4,13 @@ import { useFrame } from '@react-three/fiber'
 import { useLayersStore, type BlendMode } from '../store/layersStore'
 import { useEffectsStore } from '../store/effectsStore'
 import type { ParsedShader } from './isfParser'
+import { createMediaTexture, FALLBACK_TEXTURE, type MediaTextureController } from './mediaTexture'
 
-const FALLBACK_TEXTURE = (() => {
-  const data = new Uint8Array([40, 40, 48, 255])
-  const tex = new THREE.DataTexture(data, 1, 1, THREE.RGBAFormat)
-  tex.needsUpdate = true
-  return tex
-})()
+const NOOP_CONTROLLER: MediaTextureController = {
+  getTexture: () => FALLBACK_TEXTURE,
+  tick: () => {},
+  dispose: () => {},
+}
 
 // Fattori di CustomBlending per ogni blend mode, con output premoltiplicato dallo shader.
 // equation = Add per tutti. Vedi isfParser: gl_FragColor = vec4(rgb*a, a).
@@ -20,6 +20,8 @@ const BLEND_FACTORS: Record<BlendMode, { src: THREE.BlendingSrcFactor; dst: THRE
   screen: { src: THREE.OneFactor, dst: THREE.OneMinusSrcColorFactor },
   multiply: { src: THREE.DstColorFactor, dst: THREE.OneMinusSrcAlphaFactor },
 }
+
+const MASK_SLOTS = 8
 
 function buildUniforms(shader: ParsedShader | undefined): Record<string, { value: unknown }> {
   const base: Record<string, { value: unknown }> = {
@@ -33,6 +35,15 @@ function buildUniforms(shader: ParsedShader | undefined): Record<string, { value
     uPaletteCount: { value: 5 },
     uPaletteAmount: { value: 1 },
     uPaletteOn: { value: 0 },
+    uMaskCount: { value: 0 },
+    uMaskCenter: { value: Array.from({ length: MASK_SLOTS }, () => new THREE.Vector2()) },
+    uMaskHalf: { value: Array.from({ length: MASK_SLOTS }, () => new THREE.Vector2(1, 1)) },
+    uMaskRot: { value: new Array(MASK_SLOTS).fill(0) },
+    uMaskFeather: { value: new Array(MASK_SLOTS).fill(0) },
+    uMaskType: { value: new Array(MASK_SLOTS).fill(0) },
+    uMaskInvert: { value: new Array(MASK_SLOTS).fill(0) },
+    uMaskTex: { value: FALLBACK_TEXTURE },
+    uMaskTexOn: { value: 0 },
   }
   if (shader) {
     for (const control of shader.controls) {
@@ -45,7 +56,7 @@ function buildUniforms(shader: ParsedShader | undefined): Record<string, { value
   return base
 }
 
-/** Una singola mesh warpata dai corner-pin, con lo shader e il mixing del suo layer. */
+/** Una singola mesh warpata dai corner-pin, con lo shader, il contenuto e le maschere del suo layer. */
 function LayerMesh({ layerId, index }: { layerId: string; index: number }) {
   const materialRef = useRef<THREE.ShaderMaterial>(null)
 
@@ -75,27 +86,36 @@ function LayerMesh({ layerId, index }: { layerId: string; index: number }) {
     posAttr.needsUpdate = true
   }, [geometry, corners])
 
-  // Texture del media in un ref persistente: sopravvive al rimontaggio del materiale
-  // (che avviene al cambio shader/blend per via del key), riassegnata ogni frame in useFrame.
-  const textureRef = useRef<THREE.Texture>(FALLBACK_TEXTURE)
+  // Controller della texture del contenuto (immagine/video/gif), ricreato al cambio media.
+  const controllerRef = useRef<MediaTextureController>(NOOP_CONTROLLER)
   const mediaUrl = layer?.media?.url
-
+  const mediaType = layer?.media?.type
+  const media = layer?.media
   useEffect(() => {
-    if (!mediaUrl) {
-      textureRef.current = FALLBACK_TEXTURE
+    controllerRef.current = media ? createMediaTexture(media) : NOOP_CONTROLLER
+    return () => controllerRef.current.dispose()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mediaUrl, mediaType])
+
+  // Texture della maschera-immagine (stencil), caricata dall'url quando cambia.
+  const maskTexRef = useRef<THREE.Texture>(FALLBACK_TEXTURE)
+  const maskImageUrl = layer?.maskImage?.url
+  useEffect(() => {
+    if (!maskImageUrl) {
+      maskTexRef.current = FALLBACK_TEXTURE
       return
     }
     const loader = new THREE.TextureLoader()
     let disposed = false
-    loader.load(mediaUrl, (tex) => {
+    loader.load(maskImageUrl, (tex) => {
       if (disposed) return
       tex.colorSpace = THREE.SRGBColorSpace
-      textureRef.current = tex
+      maskTexRef.current = tex
     })
     return () => {
       disposed = true
     }
-  }, [mediaUrl])
+  }, [maskImageUrl])
 
   const uniforms = useMemo(() => buildUniforms(shader), [shader])
 
@@ -104,6 +124,7 @@ function LayerMesh({ layerId, index }: { layerId: string; index: number }) {
     if (!mat || !shader) return
     const l = useLayersStore.getState().layers.find((x) => x.id === layerId)
     if (!l) return
+    controllerRef.current.tick(state.clock.elapsedTime)
     const u = mat.uniforms
     u.uTime.value = state.clock.elapsedTime
     ;(u.uResolution.value as THREE.Vector2).set(state.size.width, state.size.height)
@@ -120,9 +141,29 @@ function LayerMesh({ layerId, index }: { layerId: string; index: number }) {
       const c = pal.colors[i] ?? pal.colors[pal.colors.length - 1]
       palArr[i].set(c[0], c[1], c[2])
     }
-    // riassegna la texture ogni frame: se il materiale è stato rimontato (cambio shader/blend)
-    // il suo uniform uTexture verrebbe altrimenti resettato al fallback → maschera persa
-    u.uTexture.value = textureRef.current
+    // maschere di forma
+    const count = Math.min(l.masks.length, MASK_SLOTS)
+    u.uMaskCount.value = count
+    const centers = u.uMaskCenter.value as THREE.Vector2[]
+    const halves = u.uMaskHalf.value as THREE.Vector2[]
+    const rot = u.uMaskRot.value as number[]
+    const feather = u.uMaskFeather.value as number[]
+    const type = u.uMaskType.value as number[]
+    const invert = u.uMaskInvert.value as number[]
+    for (let i = 0; i < count; i++) {
+      const m = l.masks[i]
+      centers[i].set(m.cx, m.cy)
+      halves[i].set(m.hx, m.hy)
+      rot[i] = m.rotation
+      feather[i] = m.feather
+      type[i] = m.type === 'ellipse' ? 1 : 0
+      invert[i] = m.invert ? 1 : 0
+    }
+    // maschera-immagine
+    u.uMaskTexOn.value = l.maskImage ? 1 : 0
+    u.uMaskTex.value = maskTexRef.current
+    // texture del contenuto (riassegnata ogni frame: sopravvive al rimontaggio del materiale)
+    u.uTexture.value = controllerRef.current.getTexture()
     const params = l.params[shader.name] ?? {}
     for (const control of shader.controls) {
       const uniform = u[control.name]

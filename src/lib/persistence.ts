@@ -3,6 +3,7 @@ import { useEffect } from 'react'
 import { useLayersStore, createLayer, type Layer } from '../store/layersStore'
 import { DEFAULT_SIZE } from '../store/effectsStore'
 import { type Palette, type RGB } from '../store/paletteStore'
+import type { MediaAsset, MediaType } from '../store/projectStore'
 
 const AUTOSAVE_ID = '__autosave__'
 const AUTOSAVE_DEBOUNCE_MS = 600
@@ -10,13 +11,17 @@ const AUTOSAVE_DEBOUNCE_MS = 600
 /** Media come salvato: il blob (persistente) al posto del blob URL (transiente). */
 interface StoredMedia {
   name: string
+  type: MediaType
   width: number
   height: number
   blob: Blob
 }
 
-/** Un layer serializzato: come Layer ma col media ridotto al solo blob. */
-type StoredLayer = Omit<Layer, 'media'> & { media: StoredMedia | null }
+/** Un layer serializzato: media e maschera-immagine ridotti al solo blob. */
+type StoredLayer = Omit<Layer, 'media' | 'maskImage'> & {
+  media: StoredMedia | null
+  maskImage: StoredMedia | null
+}
 
 export interface StoredProject {
   id: string
@@ -64,35 +69,41 @@ function getDb() {
   return dbPromise
 }
 
-/** Serializza un layer per la persistenza (media → solo blob, url rigenerato al load). */
-function serializeLayer(layer: Layer): StoredLayer {
-  const { media, ...rest } = layer
-  return {
-    ...rest,
-    media:
-      media?.blob != null
-        ? { name: media.name, width: media.width, height: media.height, blob: media.blob }
-        : null,
-  }
+function serializeMedia(media: MediaAsset | null): StoredMedia | null {
+  return media?.blob != null
+    ? { name: media.name, type: media.type, width: media.width, height: media.height, blob: media.blob }
+    : null
 }
 
-/** Ricostruisce un layer da IndexedDB, rigenerando il blob URL del media. */
+function deserializeMedia(stored: StoredMedia | null): MediaAsset | null {
+  return stored
+    ? {
+        id: crypto.randomUUID(),
+        name: stored.name,
+        type: stored.type ?? 'image',
+        url: URL.createObjectURL(stored.blob),
+        width: stored.width,
+        height: stored.height,
+        blob: stored.blob,
+      }
+    : null
+}
+
+/** Serializza un layer per la persistenza (media/maschera → solo blob, url rigenerato al load). */
+function serializeLayer(layer: Layer): StoredLayer {
+  const { media, maskImage, ...rest } = layer
+  return { ...rest, media: serializeMedia(media), maskImage: serializeMedia(maskImage) }
+}
+
+/** Ricostruisce un layer da IndexedDB, rigenerando i blob URL. */
 function deserializeLayer(stored: StoredLayer): Layer {
-  const { media, ...rest } = stored
+  const { media, maskImage, ...rest } = stored
   const base = createLayer(rest)
   return {
     ...base,
     ...rest,
-    media: media
-      ? {
-          id: crypto.randomUUID(),
-          name: media.name,
-          url: URL.createObjectURL(media.blob),
-          width: media.width,
-          height: media.height,
-          blob: media.blob,
-        }
-      : null,
+    media: deserializeMedia(media),
+    maskImage: deserializeMedia(maskImage),
   }
 }
 

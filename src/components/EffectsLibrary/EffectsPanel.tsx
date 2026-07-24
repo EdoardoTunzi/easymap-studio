@@ -1,3 +1,5 @@
+import { Copy } from 'lucide-react'
+import { Button } from '@/components/ui/button'
 import { Slider } from '@/components/ui/slider'
 import { Separator } from '@/components/ui/separator'
 import {
@@ -16,6 +18,8 @@ export function EffectsPanel() {
   const setActiveShader = useLayersStore((s) => s.setActiveShader)
   const setSize = useLayersStore((s) => s.setActiveSize)
   const setParam = useLayersStore((s) => s.setActiveParam)
+  const applyEffectToAll = useLayersStore((s) => s.applyEffectToAll)
+  const layerCount = useLayersStore((s) => s.layers.length)
 
   const activeShaderName = activeLayer?.shaderName ?? ''
   const size = activeLayer?.size ?? 1
@@ -40,6 +44,12 @@ export function EffectsPanel() {
             ))}
           </SelectContent>
         </Select>
+        {layerCount > 1 && (
+          <Button variant="outline" size="sm" onClick={applyEffectToAll} className="gap-1.5">
+            <Copy className="size-3.5" />
+            Applica a tutti i layer
+          </Button>
+        )}
       </div>
 
       {/* Size globale: vale per qualunque effetto, indipendente dagli uniform del singolo shader */}

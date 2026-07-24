@@ -49,17 +49,23 @@ Modello: scena = pila di Layer indipendenti; ogni layer ha contenuto (img/gif/vi
 - [x] Pannelli Shader/Palette/Move/Assets agiscono sul layer attivo; corner-pin e AutoFit per-layer
 - [x] Sync (BroadcastChannel) + persistence (DB v3) + effect preset aggiornati all'array di layer
 
-### Fase B — Maschere per-layer (dove il layer è visibile)
-- [ ] Forme mask (rettangolo/ellisse) mobili/ridimensionabili/ruotabili con feather, calcolate nello shader in UV; editor sul canvas
-- [ ] Maschera da immagine PNG (stencil) per finestre irregolari
-- [ ] Stack di più maschere sullo stesso layer; estensione wrapper GLSL (alpha *= source × forme × maskTex)
+### Fase B — Maschere per-layer (dove il layer è visibile) ✅
+- [x] Forme mask (rettangolo/ellisse) mobili/ridimensionabili con feather + rotazione + invert, calcolate nello shader in spazio-corner; editor sul canvas (MaskOverlay) + pannello Mask
+- [x] Maschera da immagine PNG (stencil) per finestre irregolari
+- [x] Stack di più maschere (unione) sullo stesso layer; estensione wrapper GLSL (alpha *= source × region forme × maskTex)
 
-### Fase C — Media dinamici
-- [ ] Sorgenti video (`THREE.VideoTexture`, loop/play) per-layer
-- [ ] GIF animate (lib di decoding, es. gifuct-js) per-layer
-- [ ] Persistenza dei blob video/gif (peso IndexedDB)
+### Fase C — Media dinamici ✅
+- [x] Sorgenti video (`THREE.VideoTexture`, loop/play) per-layer
+- [x] GIF animate (gifuct-js → CanvasTexture) per-layer
+- [x] Persistenza dei blob video/gif (StoredMedia con type + maskImage)
+
+### Extra (multi-layer) ✅
+- [x] "Nessun effetto" (shader passthrough) per mostrare l'asset grezzo
+- [x] "Applica effetto a tutti i layer" (sync rapido di shader+params+size+palette dal layer attivo)
 
 ### Altro editor avanzato
+- [ ] Rotazione/scala non-uniforme delle maschere via overlay (ora solo move + resize uniforme; rotazione da slider)
+- [ ] Editor maschera manuale di rifinitura (freehand/poligono) per bordi imperfetti
 - [ ] Playlist/sequenze di effetti con transizioni
 - [ ] Editor maschera manuale di rifinitura (per bordi imperfetti)
 - [ ] Opzione "tratta il nero come trasparente" (luminance key) per immagini senza canale alpha

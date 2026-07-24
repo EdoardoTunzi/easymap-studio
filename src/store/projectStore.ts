@@ -2,10 +2,14 @@
 // ecc.) vive ora dentro i singoli layer in `layersStore.ts`: qui restano solo i tipi puri e
 // le funzioni di fit, usati sia dai layer sia dai componenti di posizionamento.
 
+export type MediaType = 'image' | 'video' | 'gif'
+
 export interface MediaAsset {
   id: string
   name: string
   url: string
+  /** Tipo di sorgente: immagine statica, video (VideoTexture) o GIF animata (decodificata a frame). */
+  type: MediaType
   width: number
   height: number
   /** Blob originale, tenuto per la persistenza su IndexedDB (i blob URL non sopravvivono al refresh). */

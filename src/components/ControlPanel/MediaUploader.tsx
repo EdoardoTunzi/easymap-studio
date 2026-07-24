@@ -2,6 +2,7 @@ import { useRef } from 'react'
 import { ImageUp } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { useLayersStore } from '@/store/layersStore'
+import type { MediaType } from '@/store/projectStore'
 
 const AUTO_LUMA_KEY = 0.12
 
@@ -28,6 +29,12 @@ function isFullyOpaque(img: HTMLImageElement): boolean {
   return true
 }
 
+function detectType(file: File): MediaType {
+  if (file.type === 'image/gif') return 'gif'
+  if (file.type.startsWith('video/')) return 'video'
+  return 'image'
+}
+
 export function MediaUploader() {
   const inputRef = useRef<HTMLInputElement>(null)
   const media = useLayersStore((s) => s.layers.find((l) => l.id === s.activeLayerId)?.media ?? null)
@@ -37,18 +44,27 @@ export function MediaUploader() {
 
   const handleFile = (file: File) => {
     const url = URL.createObjectURL(file)
+    const type = detectType(file)
+    const id = crypto.randomUUID()
+
+    if (type === 'video') {
+      const video = document.createElement('video')
+      video.preload = 'metadata'
+      video.onloadedmetadata = () => {
+        setMedia({ id, name: file.name, url, type, width: video.videoWidth, height: video.videoHeight, blob: file })
+        setLumaKey(0)
+        requestFit()
+      }
+      video.src = url
+      return
+    }
+
+    // immagine o gif: uso <img> per le dimensioni (il primo frame per la gif)
     const img = new Image()
     img.onload = () => {
-      setMedia({
-        id: crypto.randomUUID(),
-        name: file.name,
-        url,
-        width: img.naturalWidth,
-        height: img.naturalHeight,
-        blob: file,
-      })
-      // sfondo opaco (nessuna trasparenza) → attiva il luma key per ritagliare le zone scure
-      setLumaKey(isFullyOpaque(img) ? AUTO_LUMA_KEY : 0)
+      setMedia({ id, name: file.name, url, type, width: img.naturalWidth, height: img.naturalHeight, blob: file })
+      // il luma key auto ha senso solo per immagini statiche con sfondo opaco
+      setLumaKey(type === 'image' && isFullyOpaque(img) ? AUTO_LUMA_KEY : 0)
       requestFit()
     }
     img.src = url
@@ -57,7 +73,7 @@ export function MediaUploader() {
   return (
     <div className="flex flex-col gap-2">
       <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-        Media (immagine dello stage/asset)
+        Media del layer (immagine, GIF o video)
       </span>
       <Button
         variant="secondary"
@@ -65,12 +81,12 @@ export function MediaUploader() {
         className="w-full justify-start gap-2"
       >
         <ImageUp className="size-4 shrink-0" />
-        <span className="truncate">{media ? media.name : 'Carica immagine…'}</span>
+        <span className="truncate">{media ? media.name : 'Carica media…'}</span>
       </Button>
       <input
         ref={inputRef}
         type="file"
-        accept="image/png,image/webp,image/jpeg"
+        accept="image/png,image/webp,image/jpeg,image/gif,video/mp4,video/webm,video/ogg"
         className="hidden"
         onChange={(e) => {
           const file = e.target.files?.[0]

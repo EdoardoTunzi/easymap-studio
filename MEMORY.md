@@ -2,6 +2,34 @@
 
 Ogni modifica al progetto va registrata qui con data, descrizione e motivazione. Le voci più recenti in alto dentro ogni giornata.
 
+## 2026-07-24 — Multi-layer (Fase B+C): maschere, media dinamici, "nessun effetto", sync effetto
+
+Completate Fase B (maschere per-layer) e Fase C (video/gif) + due extra richiesti dall'utente: opzione "Nessun effetto" e "Applica effetto a tutti i layer". Type-check pulito; verificato nel browser (porta 5188).
+
+### Maschere per-layer (Fase B)
+- **Modello**: `Layer.masks: Mask[]` (unione) + `Layer.maskImage: MediaAsset | null` (stencil). `Mask` = { type rectangle/ellipse, cx/cy, hx/hy, rotation, feather 0..1, invert }, definita nello **spazio dei corner** del layer.
+- **Scelta chiave**: maschere in spazio-corner invece che UV → il vertex shader passa `vPos = position.xy` (posizione base pre-transform) come varying; il fragment confronta lì. Così le maschere seguono warp corner-pin e zoom/pan del layer, e l'overlay riusa la stessa matematica world↔screen del corner-pin (niente inverse-bilinear).
+- **`isfParser.ts`**: uniform `uMaskCount/Center/Half/Rot/Feather/Type/Invert[8]` + `uMaskTex/uMaskTexOn`; funzione `easyvj_maskRegion()` (rettangolo con smoothstep sul bordo, ellisse per raggio normalizzato, feather = frazione della semi-dimensione minore, invert per forma, unione via max). Stencil PNG: `luminanza * alpha` sulla vUv. `outA *= easyvj_maskRegion()`.
+- **`layersStore.ts`**: `activeMaskId` + azioni addMask/removeMask/updateMask/selectMask/setMaskImage; `defaultMask` centrata sul bbox dei corner.
+- **UI**: nuovo pannello `MaskPanel` (aggiungi rett/ellisse, lista select/elimina, sfumatura + rotazione + invert, upload PNG stencil) e `MaskOverlay` (SVG sul canvas: forme trascinabili + handle di resize; scala pixel uniforme = zoom·height/2). Voce toolbar "Mask" (icona `Scissors`); l'overlay maschera sostituisce il corner-pin overlay solo quando il pannello Mask è attivo.
+
+### Media dinamici (Fase C)
+- **`MediaAsset.type: 'image' | 'video' | 'gif'`**. Nuovo `src/engine/mediaTexture.ts` con `createMediaTexture()` → controller `{ getTexture, tick(elapsed), dispose }`: immagine (TextureLoader), **video** (`THREE.VideoTexture`, loop+muted+playsInline, `needsUpdate` nel tick), **GIF** (`gifuct-js` → frame decompressi renderizzati su canvas con gestione disposalType 2 → `THREE.CanvasTexture`, avanzamento frame nel tick basato sui delay).
+- **`ShaderPlane.tsx`**: usa il controller (ricreato al cambio media), chiama `tick` ogni frame. `FALLBACK_TEXTURE` spostata in mediaTexture.
+- **`MediaUploader`**: accetta png/webp/jpeg/gif/mp4/webm/ogg; `detectType` da MIME; per video legge le dimensioni da `loadedmetadata`. Il luma-key auto resta solo per immagini statiche.
+- Dipendenza aggiunta: **`gifuct-js`** (porta i suoi tipi). NB: nuovo import → Vite re-optimization → riavviare dev server (trappola R3F nota).
+
+### Extra
+- **"Nessun effetto"**: shader passthrough sintetico (`NONE_SHADER_NAME`) in cima alla libreria in `effectsStore.ts` (emette il contenuto grezzo, alpha governato dalla maschera). `DEFAULT_SHADER_NAME` resta il primo effetto reale.
+- **"Applica a tutti i layer"**: azione `applyEffectToAll()` copia shader+params+size+palette del layer attivo su tutti; bottone in `EffectsPanel` (visibile con >1 layer).
+
+### Persistenza / sync
+- `persistence.ts`: `StoredMedia` ora ha `type`; serializza/deserializza anche `maskImage` (helper `serializeMedia/deserializeMedia`). `masks` sono dati puri già inclusi.
+- `sync.ts`: `stripBlobs` toglie i blob anche da `maskImage`.
+
+### Verifica browser
+GIF (test pattern ffmpeg) e video mp4 renderizzati e animati con "Nessun effetto"; maschera ellisse con feather ritaglia il layer (invert e resize handle ok); "Applica a tutti" e toggle visibilità ok; nessun errore console.
+
 ## 2026-07-24 — Multi-layer (Fase A): scene = pila di layer indipendenti
 
 Refactor architetturale grosso: lo stato "piatto" (un media, uno shader, una posizione, una palette) diventa una **scena = array ordinato di Layer**, ognuno unità completa e autonoma. Fedele al modello Resolume/MadMapper concordato con l'utente (vedi TODO Fase 2). Fase A = scaffold multi-layer + mixing; maschere (Fase B) e media dinamici gif/video (Fase C) restano da fare.

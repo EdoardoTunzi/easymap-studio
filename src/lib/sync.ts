@@ -5,9 +5,11 @@ const CHANNEL_NAME = 'easyvj-sync'
 
 /** Rimuove i blob (locali, servono solo alla persistenza) mantenendo i blob URL, validi cross-window. */
 function stripBlobs(layers: Layer[]): Layer[] {
-  return layers.map((l) =>
-    l.media ? { ...l, media: { ...l.media, blob: undefined } } : l,
-  )
+  return layers.map((l) => ({
+    ...l,
+    media: l.media ? { ...l.media, blob: undefined } : null,
+    maskImage: l.maskImage ? { ...l.maskImage, blob: undefined } : null,
+  }))
 }
 
 /** Da chiamare nella finestra di Controllo: pubblica ogni cambio di stato all'Output. */

@@ -12,6 +12,8 @@ import { BackgroundKeyPanel } from '@/components/Positioning/BackgroundKeyPanel'
 import { MovePanel } from '@/components/Positioning/MovePanel'
 import { PalettePanel } from '@/components/Palette/PalettePanel'
 import { LayersPanel } from '@/components/Layers/LayersPanel'
+import { MaskPanel } from '@/components/Mask/MaskPanel'
+import { MaskOverlay } from '@/components/Mask/MaskOverlay'
 import { CornerPinOverlay } from '@/components/Positioning/CornerPinOverlay'
 import {
   Sidebar,
@@ -30,6 +32,7 @@ import { useAutosave } from '@/lib/persistence'
 const PANEL_TITLE: Record<string, string> = {
   layers: 'Layers',
   move: 'Move',
+  mask: 'Mask',
   shader: 'Sliders',
   palette: 'Palette',
   assets: 'Assets',
@@ -52,6 +55,8 @@ function PanelContent() {
           <EffectPresetsPanel />
         </div>
       )
+    case 'mask':
+      return <MaskPanel />
     case 'palette':
       return <PalettePanel />
     case 'assets':
@@ -110,7 +115,7 @@ export function ControlPage() {
         <TopToolbar />
         <main className="relative min-h-0 flex-1 overflow-hidden bg-black">
           <StageCanvas autoFit />
-          <CornerPinOverlay />
+          {activePanel === 'mask' ? <MaskOverlay /> : <CornerPinOverlay />}
         </main>
       </SidebarInset>
     </SidebarProvider>
