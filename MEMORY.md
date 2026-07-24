@@ -2,6 +2,33 @@
 
 Ogni modifica al progetto va registrata qui con data, descrizione e motivazione. Le voci più recenti in alto dentro ogni giornata.
 
+## 2026-07-24 — Fix sincronizzazione effetto: guidata dalle spunte (rimosso il toggle-gate)
+
+Bug segnalato: spuntando i layer nel riquadro e cambiando effetto, l'effetto cambiava solo sul layer sorgente. Causa: la propagazione era gated dal booleano `syncEffect` (il toggle "Applica a tutti"); con il toggle spento le spunte non facevano nulla, ma il riquadro (reso sempre visibile) faceva pensare che bastasse spuntare.
+
+Redesign: **la selezione a spunta è ora l'unico controllo**. Rimosso `syncEffect` + `setSyncEffect`. `editEffect` propaga sempre l'effetto completo ai layer in `syncTargetIds` (nessun gate). `toggleSyncTarget`: spuntando un layer gli applica **subito** l'effetto del layer attivo e lo tiene sincronizzato ai successivi edit. Nuovo `setSyncAll(on)`: on = spunta tutti (e li allinea), off = azzera (layer indipendenti). Il bottone "Applica a tutti i layer" ⇄ "Rendi layer indipendenti" ora fa select-all/clear (label da `allSynced`).
+
+Default cambiato: `syncTargetIds` parte **vuoto** (layer indipendenti); nuovi layer e duplicati NON entrano più in automatico nella selezione; `setScene` (load/sync) riparte con selezione vuota. Motivo: con la propagazione sempre attiva, un default "tutti selezionati" avrebbe sovrascritto a sorpresa gli effetti degli altri layer. La selezione (`syncTargetIds`) persiste comunque al cambio effetto. Semantica direzionale: `syncTargetIds` = layer che ricevono l'effetto del layer ATTIVO (sorgente = attivo, escluso e mostrato disabilitato). Verificato nel browser: spuntato Layer 2, cambiato Layer 1 → Plasma Bloom, Layer 2 diventa Plasma Bloom.
+
+## 2026-07-24 — Link effetto persistente (con target) + modalità Live (output on-demand)
+
+Due meccanismi richiesti dall'utente. Type-check pulito; verificato nel browser con finestra Output.
+
+### Link effetto (da one-shot a interruttore persistente + selezione target)
+- **`layersStore`**: rimosso `applyEffectToAll` (one-shot). Aggiunti stato `syncEffect: boolean` + `syncTargetIds: string[]` e azioni `setSyncEffect(on)` / `toggleSyncTarget(id)`. Nuovo helper interno **`editEffect(patch)`**: applica la patch al layer attivo e, se `syncEffect`, propaga l'**effetto completo** (shader + params + size + palette, via `withEffectOf`) ai layer target. Tutti i setter di EFFETTO (setActiveShader/Size/Param + i 5 setter palette) passano ora da `editEffect`; media/lumaKey/corners/transform/maschere restano per-layer (usano ancora `patchActive`).
+- Scelte utente: propaga **solo l'effetto completo** (non maschere/posizione/contenuto/opacità/blend); **nuovi layer inclusi di default** (addLayer/duplicateLayer aggiungono l'id a `syncTargetIds`, e col link on il nuovo layer nasce già con l'effetto corrente); removeLayer/setScene mantengono `syncTargetIds` coerente. Attivando il link, i target vengono subito allineati; spuntando un target mentre è on, riceve subito l'effetto.
+- **`EffectsPanel`**: il bottone diventa toggle ("Applica a tutti i layer" ⇄ "Effetto sincronizzato"); sotto, lista checkbox dei layer (il layer attivo = "(sorgente)", disabilitato) per includere/escludere i target.
+  - *Aggiornamento*: il riquadro di selezione dei target è ora **sempre visibile** (anche a link spento — header "(link spento)", righe attenuate ma spuntabili) per pre-selezionare i layer; la selezione persiste al cambio effetto (`syncTargetIds` è stato indipendente). Prima era mostrato solo con il link attivo.
+
+### Modalità Live (output on-demand)
+- Nuovo **`src/store/outputStore.ts`**: `{ live, pushId, dirty, setLive, pushToOutput, markDirty, clearDirty }`.
+- **`sync.ts` riscritto**: il publisher tiene `lastPayload` (ultimo stato inviato). Se `live` è on, gli edit dei layer NON pubblicano (solo `markDirty`); l'Output resta congelato. `pushToOutput` (pushId++) e l'uscita da Live (`wasLive && !live`) chiamano `publishNow()`. Gli "hello" delle finestre Output appena aperte ricevono `lastPayload` (in Live = lo stato committato, non l'in-progress). Il preview dell'editor mostra sempre il live.
+- **`TopToolbar`**: cluster a destra con toggle **LIVE** (rosso quando attivo) e bottone **"Esegui in output"** (visibile solo in Live, disabilitato se non ci sono modifiche in sospeso, con pallino ambra quando `dirty`).
+- Scelta utente: uscendo da Live l'Output si **allinea subito** allo stato corrente e riprende il sync in tempo reale.
+
+### Verifica browser
+Link: attivando "Applica a tutti" con Layer 3 = Neon Rings, il Layer 1 riceve Neon Rings; toggle persiste cambiando layer attivo; lista target con sorgente disabilitata. Live: nascondendo un layer nel Control l'Output resta fermo (dirty acceso), "Esegui in output" lo aggiorna, disattivando Live si allinea subito (schermo nero = stato corrente).
+
 ## 2026-07-24 — Multi-layer (Fase B+C): maschere, media dinamici, "nessun effetto", sync effetto
 
 Completate Fase B (maschere per-layer) e Fase C (video/gif) + due extra richiesti dall'utente: opzione "Nessun effetto" e "Applica effetto a tutti i layer". Type-check pulito; verificato nel browser (porta 5188).

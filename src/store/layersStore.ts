@@ -94,6 +94,17 @@ function clonePalette(p: Palette): Palette {
   return { ...p, colors: p.colors.map((c) => [...c] as RGB) }
 }
 
+/** Copia in `target` l'effetto completo (shader + parametri + size + palette) di `source`. */
+function withEffectOf(target: Layer, source: Layer): Layer {
+  return {
+    ...target,
+    shaderName: source.shaderName,
+    size: source.size,
+    params: { ...target.params, [source.shaderName]: { ...source.params[source.shaderName] } },
+    palette: clonePalette(source.palette),
+  }
+}
+
 let layerSeq = 0
 
 /** Crea un nuovo layer con i default (contenuto vuoto, primo shader della libreria). */
@@ -151,6 +162,12 @@ interface LayersState {
   activeLayerId: string
   /** Maschera selezionata nell'editor (per l'overlay sul canvas). null = nessuna. */
   activeMaskId: string | null
+  /**
+   * Layer spuntati che ricevono l'effetto del layer attivo: ogni edit di EFFETTO (shader,
+   * parametri, size, palette) del layer attivo si propaga a questi. Vuoto = layer indipendenti.
+   * La selezione persiste (non si azzera cambiando effetto).
+   */
+  syncTargetIds: string[]
   /** Incrementato per richiedere un ri-adattamento dei corner del layer attivo (vedi AutoFit). */
   fitRequestId: number
 
@@ -193,8 +210,10 @@ interface LayersState {
   selectMask: (maskId: string | null) => void
   setMaskImage: (media: MediaAsset | null) => void
 
-  /** Copia l'effetto del layer attivo (shader + parametri + size + palette) su TUTTI i layer. */
-  applyEffectToAll: () => void
+  // sincronizzazione effetto (guidata dalle spunte)
+  toggleSyncTarget: (layerId: string) => void
+  /** Spunta tutti i layer (on) o li rende indipendenti azzerando la selezione (off). */
+  setSyncAll: (on: boolean) => void
 
   requestFit: () => void
 
@@ -213,14 +232,30 @@ export const useLayersStore = create<LayersState>((set, get) => {
       ),
     }))
 
-  /** Applica una patch alla palette del layer attivo. */
-  const patchActivePalette = (patch: (p: Palette) => Partial<Palette>) =>
-    patchActive((l) => ({ palette: { ...l.palette, ...patch(l.palette) } }))
+  /**
+   * Applica una patch di EFFETTO al layer attivo e propaga l'effetto completo (shader + params +
+   * size + palette) ai layer spuntati (syncTargetIds). Vuoto = nessuna propagazione.
+   */
+  const editEffect = (patch: (l: Layer) => Partial<Layer>) =>
+    set((state) => {
+      const active = state.layers.find((l) => l.id === state.activeLayerId)
+      if (!active) return state
+      const newActive = { ...active, ...patch(active) }
+      const targets = new Set(state.syncTargetIds)
+      return {
+        layers: state.layers.map((l) => {
+          if (l.id === state.activeLayerId) return newActive
+          if (targets.has(l.id)) return withEffectOf(l, newActive)
+          return l
+        }),
+      }
+    })
 
   return {
     layers: [initialLayer],
     activeLayerId: initialLayer.id,
     activeMaskId: null,
+    syncTargetIds: [], // di default i layer sono indipendenti
     fitRequestId: 0,
 
     getActiveLayer: () => {
@@ -235,10 +270,8 @@ export const useLayersStore = create<LayersState>((set, get) => {
         name: partial?.name ?? `Layer ${get().layers.length + 1}`,
         ...partial,
       })
-      set((state) => ({
-        layers: [...state.layers, layer],
-        activeLayerId: layer.id,
-      }))
+      // nuovo layer indipendente: non entra nella selezione di sincronizzazione
+      set((state) => ({ layers: [...state.layers, layer], activeLayerId: layer.id }))
       return layer.id
     },
 
@@ -252,7 +285,7 @@ export const useLayersStore = create<LayersState>((set, get) => {
           const next = layers[Math.min(index, layers.length - 1)]
           activeLayerId = next.id
         }
-        return { layers, activeLayerId }
+        return { layers, activeLayerId, syncTargetIds: state.syncTargetIds.filter((x) => x !== id) }
       }),
 
     duplicateLayer: (id) =>
@@ -308,11 +341,12 @@ export const useLayersStore = create<LayersState>((set, get) => {
 
     setActiveMedia: (media) => patchActive(() => ({ media })),
     setActiveLumaKey: (lumaKey) => patchActive(() => ({ lumaKey })),
-    setActiveShader: (shaderName) => patchActive(() => ({ shaderName })),
-    setActiveSize: (size) => patchActive(() => ({ size })),
+    // shader / size / param sono EFFETTO → passano da editEffect (propagazione col link)
+    setActiveShader: (shaderName) => editEffect(() => ({ shaderName })),
+    setActiveSize: (size) => editEffect(() => ({ size })),
 
     setActiveParam: (uniformName, value) =>
-      patchActive((l) => ({
+      editEffect((l) => ({
         params: {
           ...l.params,
           [l.shaderName]: { ...l.params[l.shaderName], [uniformName]: value },
@@ -338,21 +372,24 @@ export const useLayersStore = create<LayersState>((set, get) => {
 
     resetActiveTransform: () => patchActive(() => ({ transform: { ...DEFAULT_TRANSFORM } })),
 
-    setPaletteEnabled: (enabled) => patchActivePalette(() => ({ enabled })),
-    setPaletteAmount: (amount) => patchActivePalette(() => ({ amount })),
+    // la palette è EFFETTO → editEffect (propagazione col link)
+    setPaletteEnabled: (enabled) =>
+      editEffect((l) => ({ palette: { ...l.palette, enabled } })),
+    setPaletteAmount: (amount) =>
+      editEffect((l) => ({ palette: { ...l.palette, amount } })),
     setPaletteCount: (count) =>
-      patchActivePalette(() => ({ count: Math.max(2, Math.min(PALETTE_STOPS, count)) })),
+      editEffect((l) => ({
+        palette: { ...l.palette, count: Math.max(2, Math.min(PALETTE_STOPS, count)) },
+      })),
     setPaletteColor: (index, rgb) =>
-      patchActivePalette((p) => {
-        const colors = p.colors.map((c) => [...c] as RGB)
+      editEffect((l) => {
+        const colors = l.palette.colors.map((c) => [...c] as RGB)
         colors[index] = rgb
-        return { colors, activePreset: CUSTOM_PRESET }
+        return { palette: { ...l.palette, colors, activePreset: CUSTOM_PRESET } }
       }),
     applyPalettePreset: (name) =>
-      patchActivePalette(() => ({
-        colors: clonePresetColors(name),
-        activePreset: name,
-        enabled: true,
+      editEffect((l) => ({
+        palette: { ...l.palette, colors: clonePresetColors(name), activePreset: name, enabled: true },
       })),
 
     addMask: (type) => {
@@ -376,31 +413,44 @@ export const useLayersStore = create<LayersState>((set, get) => {
 
     setMaskImage: (media) => patchActive(() => ({ maskImage: media })),
 
-    applyEffectToAll: () =>
+    toggleSyncTarget: (layerId) =>
       set((state) => {
-        const active = state.layers.find((l) => l.id === state.activeLayerId)
-        if (!active) return state
-        return {
-          layers: state.layers.map((l) => ({
-            ...l,
-            shaderName: active.shaderName,
-            size: active.size,
-            params: {
-              ...l.params,
-              [active.shaderName]: { ...active.params[active.shaderName] },
-            },
-            palette: clonePalette(active.palette),
-          })),
+        const has = state.syncTargetIds.includes(layerId)
+        const syncTargetIds = has
+          ? state.syncTargetIds.filter((x) => x !== layerId)
+          : [...state.syncTargetIds, layerId]
+        // spuntando un layer, riceve subito l'effetto corrente del layer attivo
+        let layers = state.layers
+        if (!has) {
+          const active = state.layers.find((l) => l.id === state.activeLayerId)
+          if (active && layerId !== active.id) {
+            layers = state.layers.map((l) => (l.id === layerId ? withEffectOf(l, active) : l))
+          }
         }
+        return { syncTargetIds, layers }
+      }),
+
+    setSyncAll: (on) =>
+      set((state) => {
+        if (!on) return { syncTargetIds: [] }
+        const active = state.layers.find((l) => l.id === state.activeLayerId)
+        const syncTargetIds = state.layers.map((l) => l.id)
+        // allinea subito tutti gli altri layer all'effetto del layer attivo
+        const layers = active
+          ? state.layers.map((l) => (l.id !== active.id ? withEffectOf(l, active) : l))
+          : state.layers
+        return { syncTargetIds, layers }
       }),
 
     requestFit: () => set((state) => ({ fitRequestId: state.fitRequestId + 1 })),
 
-    setScene: (layers, activeLayerId) =>
+    setScene: (layers, activeLayerId) => {
+      const next = layers.length > 0 ? layers : [createLayer({ name: 'Layer 1' })]
       set({
-        layers: layers.length > 0 ? layers : [createLayer({ name: 'Layer 1' })],
-        activeLayerId:
-          layers.find((l) => l.id === activeLayerId)?.id ?? layers[0]?.id ?? '',
-      }),
+        layers: next,
+        activeLayerId: next.find((l) => l.id === activeLayerId)?.id ?? next[0]?.id ?? '',
+        syncTargetIds: [], // il caricamento riparte con layer indipendenti
+      })
+    },
   }
 })

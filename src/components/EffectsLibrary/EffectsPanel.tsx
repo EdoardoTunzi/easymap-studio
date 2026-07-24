@@ -1,4 +1,4 @@
-import { Copy } from 'lucide-react'
+import { Link2, CheckSquare, Square } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Slider } from '@/components/ui/slider'
 import { Separator } from '@/components/ui/separator'
@@ -9,17 +9,25 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
+import { cn } from '@/lib/utils'
 import { useEffectsStore } from '@/store/effectsStore'
 import { useLayersStore } from '@/store/layersStore'
 
 export function EffectsPanel() {
   const shaders = useEffectsStore((s) => s.shaders)
-  const activeLayer = useLayersStore((s) => s.layers.find((l) => l.id === s.activeLayerId))
+  const layers = useLayersStore((s) => s.layers)
+  const activeLayerId = useLayersStore((s) => s.activeLayerId)
+  const activeLayer = layers.find((l) => l.id === activeLayerId)
   const setActiveShader = useLayersStore((s) => s.setActiveShader)
   const setSize = useLayersStore((s) => s.setActiveSize)
   const setParam = useLayersStore((s) => s.setActiveParam)
-  const applyEffectToAll = useLayersStore((s) => s.applyEffectToAll)
-  const layerCount = useLayersStore((s) => s.layers.length)
+  const syncTargetIds = useLayersStore((s) => s.syncTargetIds)
+  const toggleSyncTarget = useLayersStore((s) => s.toggleSyncTarget)
+  const setSyncAll = useLayersStore((s) => s.setSyncAll)
+
+  // "tutti sincronizzati" se ogni layer diverso dall'attivo è spuntato
+  const others = layers.filter((l) => l.id !== activeLayerId)
+  const allSynced = others.length > 0 && others.every((l) => syncTargetIds.includes(l.id))
 
   const activeShaderName = activeLayer?.shaderName ?? ''
   const size = activeLayer?.size ?? 1
@@ -44,11 +52,53 @@ export function EffectsPanel() {
             ))}
           </SelectContent>
         </Select>
-        {layerCount > 1 && (
-          <Button variant="outline" size="sm" onClick={applyEffectToAll} className="gap-1.5">
-            <Copy className="size-3.5" />
-            Applica a tutti i layer
-          </Button>
+        {layers.length > 1 && (
+          <div className="flex flex-col gap-2">
+            <Button
+              variant={allSynced ? 'default' : 'outline'}
+              size="sm"
+              onClick={() => setSyncAll(!allSynced)}
+              className="gap-1.5"
+            >
+              <Link2 className="size-3.5" />
+              {allSynced ? 'Rendi layer indipendenti' : 'Applica a tutti i layer'}
+            </Button>
+            {/* Riquadro sempre visibile: spuntare un layer gli applica subito l'effetto del layer
+                attivo e lo tiene sincronizzato ai successivi edit. La selezione persiste. */}
+            <div className="flex flex-col gap-0.5 rounded-md border border-border p-2">
+              <span className="mb-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+                Applica l'effetto a
+              </span>
+              {layers.map((l) => {
+                const isSource = l.id === activeLayerId
+                const checked = syncTargetIds.includes(l.id)
+                return (
+                  <button
+                    key={l.id}
+                    type="button"
+                    disabled={isSource}
+                    onClick={() => toggleSyncTarget(l.id)}
+                    className={cn(
+                      'flex items-center gap-2 rounded px-1.5 py-1 text-left text-sm transition-colors',
+                      isSource ? 'cursor-default text-muted-foreground/70' : 'hover:bg-accent/50',
+                    )}
+                  >
+                    {isSource ? (
+                      <Square className="size-4 shrink-0 text-muted-foreground/40" />
+                    ) : checked ? (
+                      <CheckSquare className="size-4 shrink-0 text-primary" />
+                    ) : (
+                      <Square className="size-4 shrink-0 text-muted-foreground" />
+                    )}
+                    <span className="truncate">
+                      {l.name}
+                      {isSource && ' (sorgente)'}
+                    </span>
+                  </button>
+                )
+              })}
+            </div>
+          </div>
         )}
       </div>
 

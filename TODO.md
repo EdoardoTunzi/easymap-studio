@@ -61,7 +61,8 @@ Modello: scena = pila di Layer indipendenti; ogni layer ha contenuto (img/gif/vi
 
 ### Extra (multi-layer) ✅
 - [x] "Nessun effetto" (shader passthrough) per mostrare l'asset grezzo
-- [x] "Applica effetto a tutti i layer" (sync rapido di shader+params+size+palette dal layer attivo)
+- [x] Link effetto: toggle persistente "Applica a tutti i layer" (Effetto sincronizzato) con selezione dei layer target (nuovi inclusi di default); propaga shader+params+size+palette in live
+- [x] Modalità Live: l'Output non si aggiorna in automatico; pulsante "Esegui in output" invia lo stato corrente (toggle LIVE + indicatore modifiche in sospeso in toolbar). Uscendo da Live l'Output si allinea subito
 
 ### Altro editor avanzato
 - [ ] Rotazione/scala non-uniforme delle maschere via overlay (ora solo move + resize uniforme; rotazione da slider)

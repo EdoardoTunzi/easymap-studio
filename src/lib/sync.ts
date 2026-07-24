@@ -1,7 +1,14 @@
 import { useEffect } from 'react'
 import { useLayersStore, type Layer } from '../store/layersStore'
+import { useOutputStore } from '../store/outputStore'
 
 const CHANNEL_NAME = 'easyvj-sync'
+
+interface Payload {
+  type: 'state'
+  layers: Layer[]
+  activeLayerId: string
+}
 
 /** Rimuove i blob (locali, servono solo alla persistenza) mantenendo i blob URL, validi cross-window. */
 function stripBlobs(layers: Layer[]): Layer[] {
@@ -12,30 +19,61 @@ function stripBlobs(layers: Layer[]): Layer[] {
   }))
 }
 
-/** Da chiamare nella finestra di Controllo: pubblica ogni cambio di stato all'Output. */
+/**
+ * Da chiamare nella finestra di Controllo: pubblica lo stato all'Output.
+ * In modalità Live gli aggiornamenti automatici sono sospesi: l'Output resta all'ultimo stato
+ * inviato (memorizzato in lastPayload) finché non si preme "Esegui in output" o si esce da Live.
+ */
 export function useBroadcastPublisher() {
   useEffect(() => {
     const channel = new BroadcastChannel(CHANNEL_NAME)
 
-    const publish = () => {
+    const buildPayload = (): Payload => {
       const { layers, activeLayerId } = useLayersStore.getState()
-      channel.postMessage({
-        type: 'state',
-        layers: stripBlobs(layers),
-        activeLayerId,
-      })
+      return { type: 'state', layers: stripBlobs(layers), activeLayerId }
     }
 
-    // una finestra Output appena aperta chiede lo stato corrente con un "hello"
+    // ultimo stato effettivamente inviato: risponde agli "hello" delle finestre Output appena aperte
+    let lastPayload = buildPayload()
+
+    const publishNow = () => {
+      lastPayload = buildPayload()
+      channel.postMessage(lastPayload)
+      useOutputStore.getState().clearDirty()
+    }
+
+    // ad ogni modifica dei layer: se Live, marca "in sospeso"; altrimenti invia subito
+    const onLayersChange = () => {
+      if (useOutputStore.getState().live) useOutputStore.getState().markDirty()
+      else publishNow()
+    }
+    const unsubLayers = useLayersStore.subscribe(onLayersChange)
+
+    // reagisce ai comandi Live (push manuale e uscita dalla modalità Live)
+    let lastPush = useOutputStore.getState().pushId
+    let lastLive = useOutputStore.getState().live
+    const unsubOutput = useOutputStore.subscribe((s) => {
+      if (s.pushId !== lastPush) {
+        lastPush = s.pushId
+        publishNow()
+      }
+      if (s.live !== lastLive) {
+        const wasLive = lastLive
+        lastLive = s.live
+        if (wasLive && !s.live) publishNow() // uscendo da Live: allinea subito l'Output
+      }
+    })
+
+    // una finestra Output appena aperta riceve l'ultimo stato inviato (in Live, quello committato)
     channel.onmessage = (event) => {
-      if (event.data?.type === 'hello') publish()
+      if (event.data?.type === 'hello') channel.postMessage(lastPayload)
     }
 
-    const unsub = useLayersStore.subscribe(publish)
-    publish()
+    publishNow()
 
     return () => {
-      unsub()
+      unsubLayers()
+      unsubOutput()
       channel.close()
     }
   }, [])
