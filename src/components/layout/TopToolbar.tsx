@@ -1,6 +1,7 @@
 import { Move, Sparkles, Palette, Images, MonitorPlay, Settings } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Separator } from '@/components/ui/separator'
+import { SidebarTrigger } from '@/components/ui/sidebar'
 import { useUiStore, type Panel } from '@/store/uiStore'
 import { cn } from '@/lib/utils'
 
@@ -18,10 +19,9 @@ export function TopToolbar() {
 
   return (
     <header className="flex h-12 shrink-0 items-center justify-between border-b border-border bg-card px-3">
-      <div className="flex items-center gap-2">
-        <span className="text-sm font-semibold tracking-widest text-foreground">
-          EASY<span className="text-muted-foreground">VJ</span>
-        </span>
+      <div className="flex items-center gap-1">
+        <SidebarTrigger />
+        <Separator orientation="vertical" className="mx-1 h-5" />
       </div>
 
       <nav className="flex items-center gap-1">
@@ -40,11 +40,11 @@ export function TopToolbar() {
             {label}
           </Button>
         ))}
-        <Separator orientation="vertical" className="mx-1 h-5" />
-        <Button variant="ghost" size="icon" className="text-muted-foreground" aria-label="Impostazioni">
-          <Settings className="size-4" />
-        </Button>
       </nav>
+
+      <Button variant="ghost" size="icon" className="text-muted-foreground" aria-label="Impostazioni">
+        <Settings className="size-4" />
+      </Button>
     </header>
   )
 }

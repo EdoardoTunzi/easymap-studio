@@ -1,5 +1,7 @@
+import type { CSSProperties } from 'react'
 import { StageCanvas } from '@/engine/StageCanvas'
 import { TopToolbar } from '@/components/layout/TopToolbar'
+import { SidebarResizeHandle } from '@/components/layout/SidebarResizeHandle'
 import { MediaUploader } from '@/components/ControlPanel/MediaUploader'
 import { OutputLauncher } from '@/components/ControlPanel/OutputLauncher'
 import { ProjectsPanel } from '@/components/ControlPanel/ProjectsPanel'
@@ -10,8 +12,16 @@ import { BackgroundKeyPanel } from '@/components/Positioning/BackgroundKeyPanel'
 import { MovePanel } from '@/components/Positioning/MovePanel'
 import { PalettePanel } from '@/components/Palette/PalettePanel'
 import { CornerPinOverlay } from '@/components/Positioning/CornerPinOverlay'
+import {
+  Sidebar,
+  SidebarContent,
+  SidebarHeader,
+  SidebarInset,
+  SidebarProvider,
+} from '@/components/ui/sidebar'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Separator } from '@/components/ui/separator'
+import { useResizableWidth } from '@/hooks/use-resizable-width'
 import { useUiStore } from '@/store/uiStore'
 import { useBroadcastPublisher } from '@/lib/sync'
 import { useAutosave } from '@/lib/persistence'
@@ -61,28 +71,44 @@ export function ControlPage() {
   useBroadcastPublisher()
   useAutosave()
   const activePanel = useUiStore((s) => s.activePanel)
+  const { width, startResize } = useResizableWidth({
+    defaultWidth: 288,
+    min: 240,
+    max: 520,
+    storageKey: 'easyvj-sidebar-width',
+  })
 
   return (
-    <div className="flex h-full w-full flex-col bg-background">
-      <TopToolbar />
-      <div className="flex min-h-0 flex-1">
-        <aside className="flex w-72 shrink-0 flex-col border-r border-border bg-card">
-          <div className="flex h-9 shrink-0 items-center border-b border-border px-4">
-            <span className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">
-              {PANEL_TITLE[activePanel]}
+    <SidebarProvider style={{ '--sidebar-width': `${width}px` } as CSSProperties}>
+      <div className="relative flex shrink-0">
+        <Sidebar>
+          <SidebarHeader className="h-12 justify-center border-b border-sidebar-border px-4">
+            <span className="text-sm font-semibold tracking-widest text-sidebar-foreground">
+              EASY<span className="text-sidebar-foreground/60">VJ</span>
             </span>
-          </div>
-          <ScrollArea className="flex-1">
-            <div className="p-4">
-              <PanelContent />
+          </SidebarHeader>
+          <SidebarContent>
+            <div className="flex h-9 shrink-0 items-center border-b border-sidebar-border px-4">
+              <span className="text-xs font-semibold uppercase tracking-widest text-sidebar-foreground/70">
+                {PANEL_TITLE[activePanel]}
+              </span>
             </div>
-          </ScrollArea>
-        </aside>
-        <main className="relative min-w-0 flex-1 overflow-hidden bg-black">
+            <ScrollArea className="flex-1">
+              <div className="p-4">
+                <PanelContent />
+              </div>
+            </ScrollArea>
+          </SidebarContent>
+        </Sidebar>
+        <SidebarResizeHandle onPointerDown={startResize} />
+      </div>
+      <SidebarInset className="min-w-0">
+        <TopToolbar />
+        <main className="relative min-h-0 flex-1 overflow-hidden bg-black">
           <StageCanvas autoFit />
           <CornerPinOverlay />
         </main>
-      </div>
-    </div>
+      </SidebarInset>
+    </SidebarProvider>
   )
 }
