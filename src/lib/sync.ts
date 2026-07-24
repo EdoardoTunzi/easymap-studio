@@ -1,9 +1,14 @@
 import { useEffect } from 'react'
-import { useProjectStore } from '../store/projectStore'
-import { useEffectsStore } from '../store/effectsStore'
-import { usePaletteStore } from '../store/paletteStore'
+import { useLayersStore, type Layer } from '../store/layersStore'
 
 const CHANNEL_NAME = 'easyvj-sync'
+
+/** Rimuove i blob (locali, servono solo alla persistenza) mantenendo i blob URL, validi cross-window. */
+function stripBlobs(layers: Layer[]): Layer[] {
+  return layers.map((l) =>
+    l.media ? { ...l, media: { ...l.media, blob: undefined } } : l,
+  )
+}
 
 /** Da chiamare nella finestra di Controllo: pubblica ogni cambio di stato all'Output. */
 export function useBroadcastPublisher() {
@@ -11,31 +16,11 @@ export function useBroadcastPublisher() {
     const channel = new BroadcastChannel(CHANNEL_NAME)
 
     const publish = () => {
-      const project = useProjectStore.getState()
-      const effects = useEffectsStore.getState()
-      const palette = usePaletteStore.getState()
-      // il blob resta locale (serve solo alla persistenza); il blob URL è valido cross-window
-      const media = project.media ? { ...project.media, blob: undefined } : null
+      const { layers, activeLayerId } = useLayersStore.getState()
       channel.postMessage({
         type: 'state',
-        project: {
-          media,
-          corners: project.corners,
-          transform: project.transform,
-          lumaKey: project.lumaKey,
-        },
-        effects: {
-          activeShaderName: effects.activeShaderName,
-          size: effects.size,
-          params: effects.params,
-        },
-        palette: {
-          enabled: palette.enabled,
-          colors: palette.colors,
-          count: palette.count,
-          amount: palette.amount,
-          activePreset: palette.activePreset,
-        },
+        layers: stripBlobs(layers),
+        activeLayerId,
       })
     }
 
@@ -44,15 +29,11 @@ export function useBroadcastPublisher() {
       if (event.data?.type === 'hello') publish()
     }
 
-    const unsubProject = useProjectStore.subscribe(publish)
-    const unsubEffects = useEffectsStore.subscribe(publish)
-    const unsubPalette = usePaletteStore.subscribe(publish)
+    const unsub = useLayersStore.subscribe(publish)
     publish()
 
     return () => {
-      unsubProject()
-      unsubEffects()
-      unsubPalette()
+      unsub()
       channel.close()
     }
   }, [])
@@ -64,10 +45,8 @@ export function useBroadcastSubscriber() {
     const channel = new BroadcastChannel(CHANNEL_NAME)
     channel.onmessage = (event) => {
       if (event.data?.type !== 'state') return
-      const { project, effects, palette } = event.data
-      if (project) useProjectStore.setState(project)
-      if (effects) useEffectsStore.setState(effects)
-      if (palette) usePaletteStore.setState(palette)
+      const { layers, activeLayerId } = event.data
+      if (layers) useLayersStore.getState().setScene(layers, activeLayerId)
     }
     channel.postMessage({ type: 'hello' })
     return () => channel.close()

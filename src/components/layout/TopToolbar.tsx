@@ -1,4 +1,4 @@
-import { Move, Sparkles, Palette, Images, MonitorPlay, Settings } from 'lucide-react'
+import { Layers, Move, Sparkles, Palette, Images, MonitorPlay, Settings } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Separator } from '@/components/ui/separator'
 import { SidebarTrigger } from '@/components/ui/sidebar'
@@ -6,6 +6,7 @@ import { useUiStore, type Panel } from '@/store/uiStore'
 import { cn } from '@/lib/utils'
 
 const NAV: { id: Panel; label: string; icon: typeof Move }[] = [
+  { id: 'layers', label: 'Layers', icon: Layers },
   { id: 'move', label: 'Move', icon: Move },
   { id: 'shader', label: 'Shader', icon: Sparkles },
   { id: 'palette', label: 'Palette', icon: Palette },

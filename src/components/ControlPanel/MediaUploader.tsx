@@ -1,7 +1,7 @@
 import { useRef } from 'react'
 import { ImageUp } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { useProjectStore } from '@/store/projectStore'
+import { useLayersStore } from '@/store/layersStore'
 
 const AUTO_LUMA_KEY = 0.12
 
@@ -30,10 +30,10 @@ function isFullyOpaque(img: HTMLImageElement): boolean {
 
 export function MediaUploader() {
   const inputRef = useRef<HTMLInputElement>(null)
-  const media = useProjectStore((s) => s.media)
-  const setMedia = useProjectStore((s) => s.setMedia)
-  const setLumaKey = useProjectStore((s) => s.setLumaKey)
-  const requestFit = useProjectStore((s) => s.requestFit)
+  const media = useLayersStore((s) => s.layers.find((l) => l.id === s.activeLayerId)?.media ?? null)
+  const setMedia = useLayersStore((s) => s.setActiveMedia)
+  const setLumaKey = useLayersStore((s) => s.setActiveLumaKey)
+  const requestFit = useLayersStore((s) => s.requestFit)
 
   const handleFile = (file: File) => {
     const url = URL.createObjectURL(file)

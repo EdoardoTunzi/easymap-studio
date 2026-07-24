@@ -10,7 +10,7 @@ import {
   type StoredProject,
 } from '@/lib/persistence'
 
-type ProjectListItem = Omit<StoredProject, 'media'>
+type ProjectListItem = Omit<StoredProject, 'layers'>
 
 export function ProjectsPanel() {
   const [projects, setProjects] = useState<ProjectListItem[]>([])

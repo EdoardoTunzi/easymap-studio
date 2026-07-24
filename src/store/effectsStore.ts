@@ -8,48 +8,29 @@ const shaderModules = import.meta.glob('../shaders/*.glsl', {
   eager: true,
 }) as Record<string, string>
 
-const builtInShaders: ParsedShader[] = Object.entries(shaderModules)
+export const builtInShaders: ParsedShader[] = Object.entries(shaderModules)
   .sort(([a], [b]) => a.localeCompare(b))
   .map(([, src]) => parseShader(src))
 
 export const DEFAULT_SIZE = 1
 
-interface EffectsState {
-  shaders: ParsedShader[]
-  activeShaderName: string
-  /** Dimensione globale del pattern dello shader (uniform uScale), valida per tutti gli effetti. */
-  size: number
-  /** Valori correnti degli uniform live, per nome shader -> nome uniform -> valore */
-  params: Record<string, Record<string, number>>
-  setActiveShader: (name: string) => void
-  setSize: (size: number) => void
-  setParam: (shaderName: string, uniformName: string, value: number) => void
-  getActiveShader: () => ParsedShader | undefined
-}
+/** Nome dello shader di default per un nuovo layer (il primo in ordine alfabetico). */
+export const DEFAULT_SHADER_NAME = builtInShaders[0]?.name ?? ''
 
-function defaultParamsFor(shader: ParsedShader): Record<string, number> {
+/** Valori di default degli uniform di uno shader. */
+export function defaultParamsFor(shader: ParsedShader): Record<string, number> {
   return Object.fromEntries(shader.controls.map((c) => [c.name, c.default]))
 }
 
-export const useEffectsStore = create<EffectsState>((set, get) => ({
+interface EffectsState {
+  /** Libreria globale di shader disponibili (sola lettura, derivata dai file). */
+  shaders: ParsedShader[]
+}
+
+/**
+ * Store della sola libreria shader. I parametri live (shader attivo, size, params) sono
+ * ora per-layer e vivono in `layersStore.ts`.
+ */
+export const useEffectsStore = create<EffectsState>(() => ({
   shaders: builtInShaders,
-  activeShaderName: builtInShaders[0]?.name ?? '',
-  size: DEFAULT_SIZE,
-  params: Object.fromEntries(
-    builtInShaders.map((s) => [s.name, defaultParamsFor(s)]),
-  ),
-  setActiveShader: (name) => set({ activeShaderName: name }),
-  setSize: (size) => set({ size }),
-  setParam: (shaderName, uniformName, value) =>
-    set((state) => ({
-      params: {
-        ...state.params,
-        [shaderName]: {
-          ...state.params[shaderName],
-          [uniformName]: value,
-        },
-      },
-    })),
-  getActiveShader: () =>
-    get().shaders.find((s) => s.name === get().activeShaderName),
 }))

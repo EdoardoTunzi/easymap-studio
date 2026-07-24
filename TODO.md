@@ -38,10 +38,28 @@ Spuntare gli step completati; aggiungere nuovi step quando emergono. Tenere alli
 - [ ] PWA: icone reali (pwa-192x192.png, pwa-512x512.png mancanti in public/) e test offline
 - [ ] Fullscreen automatico della finestra Output (API Fullscreen su doppio click o pulsante)
 
-## Fase 2 — Editor avanzato e media
+## Fase 2 — Multi-layer (Resolume-like)
 
-- [ ] Sorgenti video e GIF (oltre alle immagini statiche)
-- [ ] Immagini multiple / multi-layer con maschere indipendenti
+Modello: scena = pila di Layer indipendenti; ogni layer ha contenuto (img/gif/video/generativo) + effetto + mapping proprio + maschere + mixing (opacità, blend).
+
+### Fase A — Scaffold multi-layer + mixing ✅
+- [x] `layersStore` (array di Layer + activeLayerId) come sorgente di verità; svuotati project/effects/palette store del loro stato per-layer
+- [x] Rendering N mesh impilate (renderOrder) con opacità e blend mode (Normal/Add/Screen/Multiply) via premultiplied alpha + CustomBlending
+- [x] `LayersPanel`: lista riordinabile (drag&drop), add/remove/duplica, occhio, rinomina, opacità, blend mode; voce toolbar "Layers"
+- [x] Pannelli Shader/Palette/Move/Assets agiscono sul layer attivo; corner-pin e AutoFit per-layer
+- [x] Sync (BroadcastChannel) + persistence (DB v3) + effect preset aggiornati all'array di layer
+
+### Fase B — Maschere per-layer (dove il layer è visibile)
+- [ ] Forme mask (rettangolo/ellisse) mobili/ridimensionabili/ruotabili con feather, calcolate nello shader in UV; editor sul canvas
+- [ ] Maschera da immagine PNG (stencil) per finestre irregolari
+- [ ] Stack di più maschere sullo stesso layer; estensione wrapper GLSL (alpha *= source × forme × maskTex)
+
+### Fase C — Media dinamici
+- [ ] Sorgenti video (`THREE.VideoTexture`, loop/play) per-layer
+- [ ] GIF animate (lib di decoding, es. gifuct-js) per-layer
+- [ ] Persistenza dei blob video/gif (peso IndexedDB)
+
+### Altro editor avanzato
 - [ ] Playlist/sequenze di effetti con transizioni
 - [ ] Editor maschera manuale di rifinitura (per bordi imperfetti)
 - [ ] Opzione "tratta il nero come trasparente" (luminance key) per immagini senza canale alpha

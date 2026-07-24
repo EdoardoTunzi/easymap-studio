@@ -4,11 +4,12 @@ import { Slider } from '@/components/ui/slider'
 import { Separator } from '@/components/ui/separator'
 import { cn } from '@/lib/utils'
 import {
-  usePaletteStore,
   PALETTE_PRESETS,
   PALETTE_STOPS,
+  createDefaultPalette,
   type RGB,
 } from '@/store/paletteStore'
+import { useLayersStore } from '@/store/layersStore'
 
 function rgbToHex([r, g, b]: RGB): string {
   const to = (v: number) => Math.round(Math.max(0, Math.min(1, v)) * 255).toString(16).padStart(2, '0')
@@ -34,16 +35,15 @@ function gradientCss(colors: RGB[], count: number): string {
 }
 
 export function PalettePanel() {
-  const enabled = usePaletteStore((s) => s.enabled)
-  const colors = usePaletteStore((s) => s.colors)
-  const count = usePaletteStore((s) => s.count)
-  const amount = usePaletteStore((s) => s.amount)
-  const activePreset = usePaletteStore((s) => s.activePreset)
-  const setEnabled = usePaletteStore((s) => s.setEnabled)
-  const setAmount = usePaletteStore((s) => s.setAmount)
-  const setCount = usePaletteStore((s) => s.setCount)
-  const setColor = usePaletteStore((s) => s.setColor)
-  const applyPreset = usePaletteStore((s) => s.applyPreset)
+  const palette =
+    useLayersStore((s) => s.layers.find((l) => l.id === s.activeLayerId)?.palette) ??
+    createDefaultPalette()
+  const { enabled, colors, count, amount, activePreset } = palette
+  const setEnabled = useLayersStore((s) => s.setPaletteEnabled)
+  const setAmount = useLayersStore((s) => s.setPaletteAmount)
+  const setCount = useLayersStore((s) => s.setPaletteCount)
+  const setColor = useLayersStore((s) => s.setPaletteColor)
+  const applyPreset = useLayersStore((s) => s.applyPalettePreset)
 
   return (
     <div className="flex flex-col gap-5">

@@ -43,6 +43,7 @@ uniform float uTime;
 uniform vec2 uResolution;
 uniform float uScale;
 uniform float uLumaKey;
+uniform float uOpacity;
 uniform vec3 uPalette[5];
 uniform float uPaletteCount;
 uniform float uPaletteAmount;
@@ -90,7 +91,12 @@ void main() {
     vec3 mapped = easyvj_gradient(t);
     color.rgb = mix(color.rgb, mapped, uPaletteAmount);
   }
-  gl_FragColor = vec4(color.rgb, color.a * mask);
+  // Output premoltiplicato: rgb già moltiplicati per l'alpha finale. Necessario perché il
+  // compositing multi-layer usa CustomBlending (One / OneMinusSrcAlpha, ecc.): così i blend
+  // mode (add/screen/multiply) e l'opacità del layer si comportano correttamente e le zone
+  // mascherate (alpha 0) non inquinano i layer sottostanti.
+  float outA = color.a * mask * uOpacity;
+  gl_FragColor = vec4(color.rgb * outA, outA);
 }
 `
 }

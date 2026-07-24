@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react'
-import { useProjectStore, type Transform } from '../../store/projectStore'
+import type { Transform } from '../../store/projectStore'
+import { useLayersStore } from '../../store/layersStore'
 
 // stesse formule usate dalla camera ortografica in StageCanvas: left/right = -aspect/aspect, top/bottom = 1/-1
 function screenToWorld(px: number, py: number, width: number, height: number) {
@@ -32,10 +33,11 @@ function invertTransform(x: number, y: number, t: Transform) {
 export function CornerPinOverlay() {
   const containerRef = useRef<HTMLDivElement>(null)
   const [size, setSize] = useState({ width: 0, height: 0 })
-  const corners = useProjectStore((s) => s.corners)
-  const transform = useProjectStore((s) => s.transform)
-  const setCorner = useProjectStore((s) => s.setCorner)
-  const moveCorners = useProjectStore((s) => s.moveCorners)
+  const activeLayer = useLayersStore((s) => s.layers.find((l) => l.id === s.activeLayerId))
+  const setCorner = useLayersStore((s) => s.setActiveCorner)
+  const moveCorners = useLayersStore((s) => s.moveActiveCorners)
+  const corners = activeLayer?.corners
+  const transform = activeLayer?.transform
 
   useEffect(() => {
     const el = containerRef.current
@@ -54,6 +56,7 @@ export function CornerPinOverlay() {
     (index: 0 | 1 | 2 | 3) => (e: ReactPointerEvent<HTMLDivElement>) => {
       e.preventDefault()
       e.stopPropagation()
+      if (!transform) return
       const rect = containerRef.current!.getBoundingClientRect()
 
       const onMove = (ev: PointerEvent) => {
@@ -73,6 +76,7 @@ export function CornerPinOverlay() {
 
   const handlePanStart = (e: ReactPointerEvent<SVGPolygonElement>) => {
     e.preventDefault()
+    if (!transform) return
     const aspect = width / height
     let lastX = e.clientX
     let lastY = e.clientY
@@ -96,7 +100,7 @@ export function CornerPinOverlay() {
     window.addEventListener('pointerup', onUp)
   }
 
-  if (!width || !height) {
+  if (!width || !height || !corners || !transform) {
     return <div ref={containerRef} className="pointer-events-none absolute inset-0" />
   }
 

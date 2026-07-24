@@ -11,6 +11,7 @@ import { PositioningPanel } from '@/components/Positioning/PositioningPanel'
 import { BackgroundKeyPanel } from '@/components/Positioning/BackgroundKeyPanel'
 import { MovePanel } from '@/components/Positioning/MovePanel'
 import { PalettePanel } from '@/components/Palette/PalettePanel'
+import { LayersPanel } from '@/components/Layers/LayersPanel'
 import { CornerPinOverlay } from '@/components/Positioning/CornerPinOverlay'
 import {
   Sidebar,
@@ -27,6 +28,7 @@ import { useBroadcastPublisher } from '@/lib/sync'
 import { useAutosave } from '@/lib/persistence'
 
 const PANEL_TITLE: Record<string, string> = {
+  layers: 'Layers',
   move: 'Move',
   shader: 'Sliders',
   palette: 'Palette',
@@ -38,6 +40,8 @@ function PanelContent() {
   const activePanel = useUiStore((s) => s.activePanel)
 
   switch (activePanel) {
+    case 'layers':
+      return <LayersPanel />
     case 'move':
       return <MovePanel />
     case 'shader':

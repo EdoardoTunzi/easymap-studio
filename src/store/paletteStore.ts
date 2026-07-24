@@ -1,5 +1,3 @@
-import { create } from 'zustand'
-
 export type RGB = [number, number, number]
 
 export interface PalettePreset {
@@ -43,12 +41,13 @@ export const PALETTE_PRESETS: PalettePreset[] = [
 export const PALETTE_STOPS = 5
 export const CUSTOM_PRESET = 'Custom'
 
-function clonePresetColors(name: string): RGB[] {
+export function clonePresetColors(name: string): RGB[] {
   const preset = PALETTE_PRESETS.find((p) => p.name === name) ?? PALETTE_PRESETS[0]
   return preset.colors.map((c) => [...c] as RGB)
 }
 
-interface PaletteState {
+/** Palette per-layer (gradient map): stato salvato dentro ogni layer. */
+export interface Palette {
   /** Se attiva, l'effetto viene ricolorato con la palette (gradient map per luminanza). */
   enabled: boolean
   /** 5 stop di colore (r,g,b in 0..1). */
@@ -59,28 +58,14 @@ interface PaletteState {
   amount: number
   /** Nome del preset attivo o "Custom" se l'utente ha modificato i colori. */
   activePreset: string
-  setEnabled: (enabled: boolean) => void
-  setAmount: (amount: number) => void
-  setCount: (count: number) => void
-  setColor: (index: number, rgb: RGB) => void
-  applyPreset: (name: string) => void
 }
 
-export const usePaletteStore = create<PaletteState>((set) => ({
-  enabled: false,
-  colors: clonePresetColors('Neon Red'),
-  count: PALETTE_STOPS,
-  amount: 1,
-  activePreset: 'Neon Red',
-  setEnabled: (enabled) => set({ enabled }),
-  setAmount: (amount) => set({ amount }),
-  setCount: (count) => set({ count: Math.max(2, Math.min(PALETTE_STOPS, count)) }),
-  setColor: (index, rgb) =>
-    set((state) => {
-      const colors = state.colors.map((c) => [...c] as RGB)
-      colors[index] = rgb
-      return { colors, activePreset: CUSTOM_PRESET }
-    }),
-  applyPreset: (name) =>
-    set({ colors: clonePresetColors(name), activePreset: name, enabled: true }),
-}))
+export function createDefaultPalette(): Palette {
+  return {
+    enabled: false,
+    colors: clonePresetColors('Neon Red'),
+    count: PALETTE_STOPS,
+    amount: 1,
+    activePreset: 'Neon Red',
+  }
+}

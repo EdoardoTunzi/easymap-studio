@@ -1,7 +1,7 @@
 import { create } from 'zustand'
 
 /** Sezioni selezionabili dalla top toolbar; determinano il contenuto del pannello sinistro. */
-export type Panel = 'move' | 'shader' | 'palette' | 'assets' | 'output'
+export type Panel = 'layers' | 'move' | 'shader' | 'palette' | 'assets' | 'output'
 
 interface UiState {
   activePanel: Panel
@@ -9,6 +9,6 @@ interface UiState {
 }
 
 export const useUiStore = create<UiState>((set) => ({
-  activePanel: 'shader',
+  activePanel: 'layers',
   setActivePanel: (activePanel) => set({ activePanel }),
 }))

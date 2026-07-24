@@ -8,16 +8,18 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { useEffectsStore } from '@/store/effectsStore'
+import { useLayersStore } from '@/store/layersStore'
 
 export function EffectsPanel() {
   const shaders = useEffectsStore((s) => s.shaders)
-  const activeShaderName = useEffectsStore((s) => s.activeShaderName)
-  const setActiveShader = useEffectsStore((s) => s.setActiveShader)
-  const size = useEffectsStore((s) => s.size)
-  const setSize = useEffectsStore((s) => s.setSize)
-  const params = useEffectsStore((s) => s.params)
-  const setParam = useEffectsStore((s) => s.setParam)
+  const activeLayer = useLayersStore((s) => s.layers.find((l) => l.id === s.activeLayerId))
+  const setActiveShader = useLayersStore((s) => s.setActiveShader)
+  const setSize = useLayersStore((s) => s.setActiveSize)
+  const setParam = useLayersStore((s) => s.setActiveParam)
 
+  const activeShaderName = activeLayer?.shaderName ?? ''
+  const size = activeLayer?.size ?? 1
+  const params = activeLayer?.params ?? {}
   const shader = shaders.find((s) => s.name === activeShaderName)
 
   return (
@@ -76,7 +78,7 @@ export function EffectsPanel() {
                   max={control.max}
                   step={(control.max - control.min) / 200 || 0.01}
                   value={[value]}
-                  onValueChange={([v]) => setParam(shader.name, control.name, v)}
+                  onValueChange={([v]) => setParam(control.name, v)}
                 />
               </div>
             )

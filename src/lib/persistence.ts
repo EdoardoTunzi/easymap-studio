@@ -1,51 +1,32 @@
 import { openDB, type DBSchema, type IDBPDatabase } from 'idb'
 import { useEffect } from 'react'
-import {
-  useProjectStore,
-  DEFAULT_TRANSFORM,
-  type Corners,
-  type Transform,
-} from '../store/projectStore'
-import { useEffectsStore, DEFAULT_SIZE } from '../store/effectsStore'
-import { usePaletteStore, type RGB } from '../store/paletteStore'
+import { useLayersStore, createLayer, type Layer } from '../store/layersStore'
+import { DEFAULT_SIZE } from '../store/effectsStore'
+import { type Palette, type RGB } from '../store/paletteStore'
 
 const AUTOSAVE_ID = '__autosave__'
 const AUTOSAVE_DEBOUNCE_MS = 600
+
+/** Media come salvato: il blob (persistente) al posto del blob URL (transiente). */
+interface StoredMedia {
+  name: string
+  width: number
+  height: number
+  blob: Blob
+}
+
+/** Un layer serializzato: come Layer ma col media ridotto al solo blob. */
+type StoredLayer = Omit<Layer, 'media'> & { media: StoredMedia | null }
 
 export interface StoredProject {
   id: string
   name: string
   updatedAt: number
-  media: {
-    name: string
-    width: number
-    height: number
-    blob: Blob
-  } | null
-  corners: Corners
-  transform: Transform
-  lumaKey: number
-  activeShaderName: string
-  size: number
-  params: Record<string, Record<string, number>>
-  palette?: {
-    enabled: boolean
-    colors: RGB[]
-    count: number
-    amount: number
-    activePreset: string
-  }
+  layers: StoredLayer[]
+  activeLayerId: string
 }
 
-interface PaletteSnapshot {
-  enabled: boolean
-  colors: RGB[]
-  count: number
-  amount: number
-  activePreset: string
-}
-
-/** Preset di un effetto: cattura il "look" (shader + parametri + size + palette), riusabile su qualsiasi asset. */
+/** Preset di un effetto: cattura il "look" (shader + parametri + size + palette), riusabile su qualsiasi layer. */
 export interface EffectPreset {
   id: string
   name: string
@@ -54,7 +35,7 @@ export interface EffectPreset {
   /** Parametri del solo shader del preset. */
   params: Record<string, number>
   size: number
-  palette: PaletteSnapshot
+  palette: Palette
 }
 
 interface EasyVjDB extends DBSchema {
@@ -71,67 +52,72 @@ interface EasyVjDB extends DBSchema {
 let dbPromise: Promise<IDBPDatabase<EasyVjDB>> | null = null
 
 function getDb() {
-  dbPromise ??= openDB<EasyVjDB>('easyvj', 2, {
+  dbPromise ??= openDB<EasyVjDB>('easyvj', 3, {
     upgrade(db, oldVersion) {
       if (oldVersion < 1) db.createObjectStore('projects', { keyPath: 'id' })
       if (oldVersion < 2) db.createObjectStore('effectPresets', { keyPath: 'id' })
+      // v3: i progetti passano da stato piatto a array di layer. Gli oggetti vecchi
+      // sono incompatibili col nuovo formato: si svuota lo store dei progetti.
+      if (oldVersion > 0 && oldVersion < 3) db.clear('projects')
     },
   })
   return dbPromise
 }
 
-function currentPaletteSnapshot(): PaletteSnapshot {
-  const { enabled, colors, count, amount, activePreset } = usePaletteStore.getState()
-  return { enabled, colors, count, amount, activePreset }
-}
-
-/** Fotografa lo stato corrente degli store in un oggetto persistibile. */
-function snapshot(id: string, name: string): StoredProject {
-  const { media, corners, transform, lumaKey } = useProjectStore.getState()
-  const { activeShaderName, size, params } = useEffectsStore.getState()
-  const { enabled, colors, count, amount, activePreset } = usePaletteStore.getState()
+/** Serializza un layer per la persistenza (media → solo blob, url rigenerato al load). */
+function serializeLayer(layer: Layer): StoredLayer {
+  const { media, ...rest } = layer
   return {
-    id,
-    name,
-    updatedAt: Date.now(),
+    ...rest,
     media:
       media?.blob != null
         ? { name: media.name, width: media.width, height: media.height, blob: media.blob }
         : null,
-    corners,
-    transform,
-    lumaKey,
-    activeShaderName,
-    size,
-    params,
-    palette: { enabled, colors, count, amount, activePreset },
   }
 }
 
-/** Applica un progetto salvato agli store (ricreando il blob URL del media). */
-function applyProject(project: StoredProject) {
-  useProjectStore.setState({
-    media: project.media
+/** Ricostruisce un layer da IndexedDB, rigenerando il blob URL del media. */
+function deserializeLayer(stored: StoredLayer): Layer {
+  const { media, ...rest } = stored
+  const base = createLayer(rest)
+  return {
+    ...base,
+    ...rest,
+    media: media
       ? {
           id: crypto.randomUUID(),
-          name: project.media.name,
-          url: URL.createObjectURL(project.media.blob),
-          width: project.media.width,
-          height: project.media.height,
-          blob: project.media.blob,
+          name: media.name,
+          url: URL.createObjectURL(media.blob),
+          width: media.width,
+          height: media.height,
+          blob: media.blob,
         }
       : null,
-    corners: project.corners,
-    // progetti salvati prima dell'introduzione del transform non hanno il campo
-    transform: project.transform ?? DEFAULT_TRANSFORM,
-    lumaKey: project.lumaKey ?? 0,
-  })
-  useEffectsStore.setState({
-    activeShaderName: project.activeShaderName,
-    size: project.size ?? DEFAULT_SIZE,
-    params: project.params,
-  })
-  if (project.palette) usePaletteStore.setState(project.palette)
+  }
+}
+
+/** Fotografa la scena corrente in un oggetto persistibile. */
+function snapshot(id: string, name: string): StoredProject {
+  const { layers, activeLayerId } = useLayersStore.getState()
+  return {
+    id,
+    name,
+    updatedAt: Date.now(),
+    layers: layers.map(serializeLayer),
+    activeLayerId,
+  }
+}
+
+/** Applica un progetto salvato allo store (ricreando i blob URL dei media). */
+function applyProject(project: StoredProject) {
+  const layers = project.layers.map(deserializeLayer)
+  useLayersStore.getState().setScene(layers, project.activeLayerId)
+}
+
+/** La scena è "vuota" se ha un solo layer senza contenuto: allora l'autosave può ripristinare. */
+function isSceneEmpty(): boolean {
+  const { layers } = useLayersStore.getState()
+  return layers.length === 1 && layers[0].media == null
 }
 
 export async function saveProject(name: string): Promise<string> {
@@ -154,40 +140,50 @@ export async function deleteProject(id: string): Promise<void> {
   await db.delete('projects', id)
 }
 
-export async function listProjects(): Promise<Omit<StoredProject, 'media'>[]> {
+export async function listProjects(): Promise<Omit<StoredProject, 'layers'>[]> {
   const db = await getDb()
   const all = await db.getAll('projects')
   return all
     .filter((p) => p.id !== AUTOSAVE_ID)
     .sort((a, b) => b.updatedAt - a.updatedAt)
-    .map(({ media: _media, ...rest }) => rest)
+    .map(({ layers: _layers, ...rest }) => rest)
 }
 
-// ---- Preset degli effetti (shader + parametri + size + palette) ----
+// ---- Preset degli effetti (shader + parametri + size + palette del layer attivo) ----
 
-/** Cattura il look corrente come preset di effetto. */
+function clonePalette(p: Palette): Palette {
+  return { ...p, colors: p.colors.map((c) => [...c] as RGB) }
+}
+
+/** Cattura il look del layer attivo come preset di effetto. */
 function effectPresetSnapshot(id: string, name: string): EffectPreset {
-  const { activeShaderName, size, params } = useEffectsStore.getState()
+  const layer = useLayersStore.getState().getActiveLayer()
   return {
     id,
     name,
     updatedAt: Date.now(),
-    shaderName: activeShaderName,
-    params: { ...(params[activeShaderName] ?? {}) },
-    size,
-    palette: currentPaletteSnapshot(),
+    shaderName: layer?.shaderName ?? '',
+    params: { ...(layer?.params[layer.shaderName] ?? {}) },
+    size: layer?.size ?? DEFAULT_SIZE,
+    palette: layer ? clonePalette(layer.palette) : ({} as Palette),
   }
 }
 
-/** Applica un preset di effetto agli store (senza toccare media/posizionamento). */
+/** Applica un preset di effetto al layer attivo (senza toccare media/posizionamento). */
 function applyEffectPreset(preset: EffectPreset) {
-  const { params } = useEffectsStore.getState()
-  useEffectsStore.setState({
-    activeShaderName: preset.shaderName,
-    size: preset.size ?? DEFAULT_SIZE,
-    params: { ...params, [preset.shaderName]: preset.params },
-  })
-  if (preset.palette) usePaletteStore.setState(preset.palette)
+  useLayersStore.setState((state) => ({
+    layers: state.layers.map((l) =>
+      l.id === state.activeLayerId
+        ? {
+            ...l,
+            shaderName: preset.shaderName,
+            size: preset.size ?? DEFAULT_SIZE,
+            params: { ...l.params, [preset.shaderName]: { ...preset.params } },
+            palette: preset.palette ? clonePalette(preset.palette) : l.palette,
+          }
+        : l,
+    ),
+  }))
 }
 
 export async function saveEffectPreset(name: string): Promise<string> {
@@ -217,8 +213,8 @@ export async function listEffectPresets(): Promise<EffectPreset[]> {
 }
 
 /**
- * Da montare nella finestra di Controllo: al mount ripristina l'autosave (se il progetto
- * è ancora vuoto), poi salva automaticamente ogni modifica con debounce.
+ * Da montare nella finestra di Controllo: al mount ripristina l'autosave (se la scena è
+ * ancora vuota), poi salva automaticamente ogni modifica con debounce.
  */
 export function useAutosave() {
   useEffect(() => {
@@ -234,18 +230,16 @@ export function useAutosave() {
       }, AUTOSAVE_DEBOUNCE_MS)
     }
 
-    const unsubProject = useProjectStore.subscribe(persist)
-    const unsubEffects = useEffectsStore.subscribe(persist)
-    const unsubPalette = usePaletteStore.subscribe(persist)
+    const unsub = useLayersStore.subscribe(persist)
 
     ;(async () => {
       try {
-        if (useProjectStore.getState().media != null) return
+        if (!isSceneEmpty()) return
         const db = await getDb()
         const autosave = await db.get('projects', AUTOSAVE_ID)
         // ricontrolla dopo l'await: se nel frattempo l'utente ha caricato
         // qualcosa, il restore non deve sovrascriverlo
-        if (autosave && useProjectStore.getState().media == null) {
+        if (autosave && isSceneEmpty()) {
           applyProject(autosave)
         }
       } finally {
@@ -255,9 +249,7 @@ export function useAutosave() {
 
     return () => {
       if (timer) clearTimeout(timer)
-      unsubProject()
-      unsubEffects()
-      unsubPalette()
+      unsub()
     }
   }, [])
 }
