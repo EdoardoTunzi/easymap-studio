@@ -2,6 +2,13 @@
 
 Ogni modifica al progetto va registrata qui con data, descrizione e motivazione. Le voci più recenti in alto dentro ogni giornata.
 
+## 2026-07-25 — Fix `npm run build`: workbox precache limit
+
+La build falliva perché `vite-plugin-pwa` (workbox) rifiuta di precachare asset sopra 2 MB di default, e `public/default-stage.png` (immagine di default al primo avvio, 3146×1312, 7.1 MB) superava il limite.
+
+- **`vite.config.ts`**: aggiunto `workbox.maximumFileSizeToCacheInBytes: 10 * 1024 * 1024` per includere l'immagine nel precache (l'app è offline-first per uso live senza rete, quindi va precachata anche lei). L'utente ha scelto questa opzione invece di comprimere l'immagine.
+- Verificato: `npm run build` completa con successo, precache 9 entries (~9996 KiB) inclusa l'immagine.
+
 ## 2026-07-25 — README: sezione "Funzionalità disponibili"
 
 Richiesta dell'utente: elenco delle feature a disposizione dell'utente (layer/mask, palette, assets, output/live, playlist, progetti/preset), distinto dalla sezione tecnica "Funzionalità principali" già esistente.

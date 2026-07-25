@@ -89,6 +89,7 @@ Modello: scena = pila di Layer indipendenti; ogni layer ha contenuto (img/gif/vi
 
 ## Manutenzione / debito tecnico
 
+- [x] Fix `npm run build`: alzato `workbox.maximumFileSizeToCacheInBytes` a 10 MB in `vite.config.ts` per precachare `default-stage.png` (7.1 MB), sopra il limite di default 2 MB di vite-plugin-pwa
 - [ ] Recuperare la versione integrale dello shader Symmetrical Halo Swirl (l'originale fornito era troncato a metà loop; completato in modo minimale)
 - [ ] Deprecation warning THREE.Clock (da @react-three/fiber, non bloccante — attendere fix upstream)
 - [ ] Valutare test automatici (vitest) per parser ISF e persistence
