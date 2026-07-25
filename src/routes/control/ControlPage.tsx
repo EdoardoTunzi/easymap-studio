@@ -1,22 +1,42 @@
+import { useRef, type CSSProperties } from 'react'
 import { StageCanvas } from '@/engine/StageCanvas'
 import { TopToolbar } from '@/components/layout/TopToolbar'
+import { SidebarResizeHandle } from '@/components/layout/SidebarResizeHandle'
 import { MediaUploader } from '@/components/ControlPanel/MediaUploader'
 import { OutputLauncher } from '@/components/ControlPanel/OutputLauncher'
 import { ProjectsPanel } from '@/components/ControlPanel/ProjectsPanel'
 import { EffectsPanel } from '@/components/EffectsLibrary/EffectsPanel'
+import { EffectPresetsPanel } from '@/components/EffectsLibrary/EffectPresetsPanel'
 import { PositioningPanel } from '@/components/Positioning/PositioningPanel'
 import { BackgroundKeyPanel } from '@/components/Positioning/BackgroundKeyPanel'
 import { MovePanel } from '@/components/Positioning/MovePanel'
+import { PalettePanel } from '@/components/Palette/PalettePanel'
+import { LayersPanel } from '@/components/Layers/LayersPanel'
+import { MaskPanel } from '@/components/Mask/MaskPanel'
+import { MaskOverlay } from '@/components/Mask/MaskOverlay'
 import { CornerPinOverlay } from '@/components/Positioning/CornerPinOverlay'
+import { ViewportZoomControls, useViewportPanZoom } from '@/components/layout/ViewportZoomControls'
+import { PlaylistBar } from '@/components/Playlist/PlaylistBar'
+import {
+  Sidebar,
+  SidebarContent,
+  SidebarHeader,
+  SidebarInset,
+  SidebarProvider,
+} from '@/components/ui/sidebar'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Separator } from '@/components/ui/separator'
+import { useResizableWidth } from '@/hooks/use-resizable-width'
 import { useUiStore } from '@/store/uiStore'
 import { useBroadcastPublisher } from '@/lib/sync'
 import { useAutosave } from '@/lib/persistence'
 
 const PANEL_TITLE: Record<string, string> = {
+  layers: 'Layers',
   move: 'Move',
+  mask: 'Mask',
   shader: 'Sliders',
+  palette: 'Palette',
   assets: 'Assets',
   output: 'Output',
 }
@@ -25,10 +45,22 @@ function PanelContent() {
   const activePanel = useUiStore((s) => s.activePanel)
 
   switch (activePanel) {
+    case 'layers':
+      return <LayersPanel />
     case 'move':
       return <MovePanel />
     case 'shader':
-      return <EffectsPanel />
+      return (
+        <div className="flex flex-col gap-6">
+          <EffectsPanel />
+          <Separator />
+          <EffectPresetsPanel />
+        </div>
+      )
+    case 'mask':
+      return <MaskPanel />
+    case 'palette':
+      return <PalettePanel />
     case 'assets':
       return (
         <div className="flex flex-col gap-6">
@@ -50,28 +82,50 @@ export function ControlPage() {
   useBroadcastPublisher()
   useAutosave()
   const activePanel = useUiStore((s) => s.activePanel)
+  const { width, startResize } = useResizableWidth({
+    defaultWidth: 288,
+    min: 240,
+    max: 520,
+    storageKey: 'easyvj-sidebar-width',
+  })
+  const stageRef = useRef<HTMLDivElement>(null)
+  useViewportPanZoom(stageRef)
 
   return (
-    <div className="flex h-full w-full flex-col bg-background">
-      <TopToolbar />
-      <div className="flex min-h-0 flex-1">
-        <aside className="flex w-72 shrink-0 flex-col border-r border-border bg-card">
-          <div className="flex h-9 shrink-0 items-center border-b border-border px-4">
-            <span className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">
-              {PANEL_TITLE[activePanel]}
+    <SidebarProvider style={{ '--sidebar-width': `${width}px` } as CSSProperties}>
+      <div className="relative flex shrink-0">
+        <Sidebar>
+          <SidebarHeader className="h-12 flex-row items-center gap-2 border-b border-sidebar-border px-4">
+            <img src="/logo.png" alt="" className="size-6 shrink-0 rounded object-cover" />
+            <span className="truncate text-sm font-semibold tracking-widest text-sidebar-foreground">
+              EASYMAP<span className="text-sidebar-foreground/60"> STUDIO</span>
             </span>
-          </div>
-          <ScrollArea className="flex-1">
-            <div className="p-4">
-              <PanelContent />
+          </SidebarHeader>
+          <SidebarContent>
+            <div className="flex h-9 shrink-0 items-center border-b border-sidebar-border px-4">
+              <span className="text-xs font-semibold uppercase tracking-widest text-sidebar-foreground/70">
+                {PANEL_TITLE[activePanel]}
+              </span>
             </div>
-          </ScrollArea>
-        </aside>
-        <main className="relative min-w-0 flex-1 overflow-hidden bg-black">
-          <StageCanvas autoFit />
-          <CornerPinOverlay />
-        </main>
+            <ScrollArea className="flex-1">
+              <div className="p-4">
+                <PanelContent />
+              </div>
+            </ScrollArea>
+          </SidebarContent>
+        </Sidebar>
+        <SidebarResizeHandle onPointerDown={startResize} />
       </div>
-    </div>
+      {/* h-svh: altezza bloccata al viewport, così alzando la barra playlist è il canvas a comprimersi */}
+      <SidebarInset className="h-svh min-w-0 overflow-hidden">
+        <TopToolbar />
+        <main ref={stageRef} className="relative min-h-0 flex-1 overflow-hidden bg-black">
+          <StageCanvas autoFit controlView />
+          {activePanel === 'mask' ? <MaskOverlay /> : <CornerPinOverlay />}
+          <ViewportZoomControls />
+        </main>
+        <PlaylistBar />
+      </SidebarInset>
+    </SidebarProvider>
   )
 }

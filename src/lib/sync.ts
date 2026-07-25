@@ -1,47 +1,79 @@
 import { useEffect } from 'react'
-import { useProjectStore } from '../store/projectStore'
-import { useEffectsStore } from '../store/effectsStore'
+import { useLayersStore, type Layer } from '../store/layersStore'
+import { useOutputStore } from '../store/outputStore'
 
 const CHANNEL_NAME = 'easyvj-sync'
 
-/** Da chiamare nella finestra di Controllo: pubblica ogni cambio di stato all'Output. */
+interface Payload {
+  type: 'state'
+  layers: Layer[]
+  activeLayerId: string
+}
+
+/** Rimuove i blob (locali, servono solo alla persistenza) mantenendo i blob URL, validi cross-window. */
+function stripBlobs(layers: Layer[]): Layer[] {
+  return layers.map((l) => ({
+    ...l,
+    media: l.media ? { ...l.media, blob: undefined } : null,
+    maskImage: l.maskImage ? { ...l.maskImage, blob: undefined } : null,
+  }))
+}
+
+/**
+ * Da chiamare nella finestra di Controllo: pubblica lo stato all'Output.
+ * In modalità Live gli aggiornamenti automatici sono sospesi: l'Output resta all'ultimo stato
+ * inviato (memorizzato in lastPayload) finché non si preme "Esegui in output" o si esce da Live.
+ */
 export function useBroadcastPublisher() {
   useEffect(() => {
     const channel = new BroadcastChannel(CHANNEL_NAME)
 
-    const publish = () => {
-      const project = useProjectStore.getState()
-      const effects = useEffectsStore.getState()
-      // il blob resta locale (serve solo alla persistenza); il blob URL è valido cross-window
-      const media = project.media ? { ...project.media, blob: undefined } : null
-      channel.postMessage({
-        type: 'state',
-        project: {
-          media,
-          corners: project.corners,
-          transform: project.transform,
-          lumaKey: project.lumaKey,
-        },
-        effects: {
-          activeShaderName: effects.activeShaderName,
-          size: effects.size,
-          params: effects.params,
-        },
-      })
+    const buildPayload = (): Payload => {
+      const { layers, activeLayerId } = useLayersStore.getState()
+      return { type: 'state', layers: stripBlobs(layers), activeLayerId }
     }
 
-    // una finestra Output appena aperta chiede lo stato corrente con un "hello"
+    // ultimo stato effettivamente inviato: risponde agli "hello" delle finestre Output appena aperte
+    let lastPayload = buildPayload()
+
+    const publishNow = () => {
+      lastPayload = buildPayload()
+      channel.postMessage(lastPayload)
+      useOutputStore.getState().clearDirty()
+    }
+
+    // ad ogni modifica dei layer: se Live, marca "in sospeso"; altrimenti invia subito
+    const onLayersChange = () => {
+      if (useOutputStore.getState().live) useOutputStore.getState().markDirty()
+      else publishNow()
+    }
+    const unsubLayers = useLayersStore.subscribe(onLayersChange)
+
+    // reagisce ai comandi Live (push manuale e uscita dalla modalità Live)
+    let lastPush = useOutputStore.getState().pushId
+    let lastLive = useOutputStore.getState().live
+    const unsubOutput = useOutputStore.subscribe((s) => {
+      if (s.pushId !== lastPush) {
+        lastPush = s.pushId
+        publishNow()
+      }
+      if (s.live !== lastLive) {
+        const wasLive = lastLive
+        lastLive = s.live
+        if (wasLive && !s.live) publishNow() // uscendo da Live: allinea subito l'Output
+      }
+    })
+
+    // una finestra Output appena aperta riceve l'ultimo stato inviato (in Live, quello committato)
     channel.onmessage = (event) => {
-      if (event.data?.type === 'hello') publish()
+      if (event.data?.type === 'hello') channel.postMessage(lastPayload)
     }
 
-    const unsubProject = useProjectStore.subscribe(publish)
-    const unsubEffects = useEffectsStore.subscribe(publish)
-    publish()
+    publishNow()
 
     return () => {
-      unsubProject()
-      unsubEffects()
+      unsubLayers()
+      unsubOutput()
       channel.close()
     }
   }, [])
@@ -53,9 +85,8 @@ export function useBroadcastSubscriber() {
     const channel = new BroadcastChannel(CHANNEL_NAME)
     channel.onmessage = (event) => {
       if (event.data?.type !== 'state') return
-      const { project, effects } = event.data
-      if (project) useProjectStore.setState(project)
-      if (effects) useEffectsStore.setState(effects)
+      const { layers, activeLayerId } = event.data
+      if (layers) useLayersStore.getState().setScene(layers, activeLayerId)
     }
     channel.postMessage({ type: 'hello' })
     return () => channel.close()

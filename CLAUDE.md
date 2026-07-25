@@ -1,4 +1,4 @@
-# EasyVJ
+# EasyMap Studio
 
 Webapp frontend per projection mapping e VJ live: l'utente carica una foto (PNG con sfondo rimosso) di una statua/palco/superficie, allinea la proiezione col corner-pin, applica shader GLSL ritagliati automaticamente dentro i bordi dell'immagine, e proietta da una finestra Output dedicata.
 
