@@ -1,9 +1,9 @@
 import { Slider } from '@/components/ui/slider'
-import { useProjectStore } from '@/store/projectStore'
+import { useLayersStore } from '@/store/layersStore'
 
 export function BackgroundKeyPanel() {
-  const lumaKey = useProjectStore((s) => s.lumaKey)
-  const setLumaKey = useProjectStore((s) => s.setLumaKey)
+  const lumaKey = useLayersStore((s) => s.layers.find((l) => l.id === s.activeLayerId)?.lumaKey ?? 0)
+  const setLumaKey = useLayersStore((s) => s.setActiveLumaKey)
 
   return (
     <div className="flex flex-col gap-1.5">

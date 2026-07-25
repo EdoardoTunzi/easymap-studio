@@ -20,10 +20,10 @@ export default defineConfig({
     tailwindcss(),
     VitePWA({
       registerType: 'autoUpdate',
-      includeAssets: ['favicon.svg'],
+      includeAssets: ['favicon.png'],
       manifest: {
-        name: 'EasyVJ',
-        short_name: 'EasyVJ',
+        name: 'EasyMap Studio',
+        short_name: 'EasyMap',
         description: 'Projection mapping e VJ tool per proiezioni live su statue, palchi e superfici',
         theme_color: '#0a0a0a',
         background_color: '#0a0a0a',

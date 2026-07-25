@@ -1,9 +1,9 @@
 import { Maximize } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { useProjectStore } from '@/store/projectStore'
+import { useLayersStore } from '@/store/layersStore'
 
 export function PositioningPanel() {
-  const requestFit = useProjectStore((s) => s.requestFit)
+  const requestFit = useLayersStore((s) => s.requestFit)
 
   return (
     <div className="flex flex-col gap-2">

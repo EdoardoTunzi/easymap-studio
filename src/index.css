@@ -137,3 +137,18 @@ body,
     @apply font-sans;
   }
 }
+/* Scrollbar sottile e sempre visibile per la timeline della playlist */
+.timeline-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in oklch, var(--foreground) 30%, transparent) transparent;
+}
+.timeline-scroll::-webkit-scrollbar {
+  height: 6px;
+}
+.timeline-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+.timeline-scroll::-webkit-scrollbar-thumb {
+  background: color-mix(in oklch, var(--foreground) 30%, transparent);
+  border-radius: 3px;
+}

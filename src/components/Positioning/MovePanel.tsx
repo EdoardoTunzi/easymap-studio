@@ -10,7 +10,8 @@ import {
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Slider } from '@/components/ui/slider'
-import { useProjectStore } from '@/store/projectStore'
+import { DEFAULT_TRANSFORM } from '@/store/projectStore'
+import { useLayersStore } from '@/store/layersStore'
 
 const PAN_STEP = 0.05
 const ZOOM_MIN = 0.1
@@ -18,9 +19,10 @@ const ZOOM_MAX = 4
 const ZOOM_STEP = 0.05
 
 export function MovePanel() {
-  const transform = useProjectStore((s) => s.transform)
-  const setTransform = useProjectStore((s) => s.setTransform)
-  const resetTransform = useProjectStore((s) => s.resetTransform)
+  const activeLayer = useLayersStore((s) => s.layers.find((l) => l.id === s.activeLayerId))
+  const setTransform = useLayersStore((s) => s.setActiveTransform)
+  const resetTransform = useLayersStore((s) => s.resetActiveTransform)
+  const transform = activeLayer?.transform ?? DEFAULT_TRANSFORM
 
   const pan = (dx: number, dy: number) =>
     setTransform({ offsetX: transform.offsetX + dx, offsetY: transform.offsetY + dy })
