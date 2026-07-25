@@ -1,4 +1,4 @@
-# TODO — Roadmap EasyVJ
+# TODO — Roadmap EasyMap Studio
 
 Spuntare gli step completati; aggiungere nuovi step quando emergono. Tenere allineato con MEMORY.md.
 
@@ -40,6 +40,7 @@ Spuntare gli step completati; aggiungere nuovi step quando emergono. Tenere alli
 - [ ] Export/import progetto come file JSON (backup portabile tra macchine)
 - [ ] PWA: icone reali (pwa-192x192.png, pwa-512x512.png mancanti in public/) e test offline
 - [ ] Fullscreen automatico della finestra Output (API Fullscreen su doppio click o pulsante)
+- [x] Asset dimostrativo di default (`public/default-stage.png`) caricato in automatico sul layer attivo alla primissima apertura dell'app (mai autosave né flag visto prima), con fit e luma key come un upload normale
 
 ## Fase 2 — Multi-layer (Resolume-like)
 

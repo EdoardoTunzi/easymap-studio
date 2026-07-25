@@ -95,9 +95,10 @@ export function ControlPage() {
     <SidebarProvider style={{ '--sidebar-width': `${width}px` } as CSSProperties}>
       <div className="relative flex shrink-0">
         <Sidebar>
-          <SidebarHeader className="h-12 justify-center border-b border-sidebar-border px-4">
-            <span className="text-sm font-semibold tracking-widest text-sidebar-foreground">
-              EASY<span className="text-sidebar-foreground/60">VJ</span>
+          <SidebarHeader className="h-12 flex-row items-center gap-2 border-b border-sidebar-border px-4">
+            <img src="/logo.png" alt="" className="size-6 shrink-0 rounded object-cover" />
+            <span className="truncate text-sm font-semibold tracking-widest text-sidebar-foreground">
+              EASYMAP<span className="text-sidebar-foreground/60"> STUDIO</span>
             </span>
           </SidebarHeader>
           <SidebarContent>

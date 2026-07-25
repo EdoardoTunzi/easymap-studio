@@ -2,6 +2,7 @@ import { openDB, type DBSchema, type IDBPDatabase } from 'idb'
 import { useEffect } from 'react'
 import { useLayersStore, createLayer, type Layer } from '../store/layersStore'
 import { usePlaylistStore, playlistSnapshot, type PlaylistData } from '../store/playlistStore'
+import { loadDefaultStageIfFirstVisit } from './defaultAsset'
 import { DEFAULT_SIZE } from '../store/effectsStore'
 import { type Palette, type RGB } from '../store/paletteStore'
 import type { MediaAsset, MediaType } from '../store/projectStore'
@@ -272,6 +273,10 @@ export function useAutosave() {
         // qualcosa, il restore non deve sovrascriverlo
         if (autosave && isSceneEmpty()) {
           applyProject(autosave)
+        } else if (isSceneEmpty()) {
+          // nessun autosave: se è la primissima apertura (mai vista prima in questo
+          // browser), carica l'asset dimostrativo così c'è subito qualcosa da testare
+          await loadDefaultStageIfFirstVisit()
         }
       } finally {
         restoring = false

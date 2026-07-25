@@ -1,6 +1,49 @@
-# MEMORY — Registro modifiche EasyVJ
+# MEMORY — Registro modifiche EasyMap Studio
 
 Ogni modifica al progetto va registrata qui con data, descrizione e motivazione. Le voci più recenti in alto dentro ogni giornata.
+
+## 2026-07-25 — README: sezione "Funzionalità disponibili"
+
+Richiesta dell'utente: elenco delle feature a disposizione dell'utente (layer/mask, palette, assets, output/live, playlist, progetti/preset), distinto dalla sezione tecnica "Funzionalità principali" già esistente.
+
+- Nuova sezione in `README.md`, inserita tra "Cosa fa, in pratica" e "Funzionalità principali": 6 sottosezioni (Layer e maschere, Effetti e palette colori, Assets, Output e modalità Live, Playlist, Progetti/template/preset), scritte dal punto di vista di cosa può fare l'utente nell'UI pannello per pannello, non come changelog tecnico.
+- Contenuto verificato contro il codice reale dei pannelli (LayersPanel, MovePanel, MaskPanel, EffectsPanel, PalettePanel, MediaUploader/BackgroundKeyPanel, OutputLauncher, PlaylistBar, ProjectsPanel/EffectPresetsPanel) per non descrivere funzioni inesistenti: **non esistono "template" pre-costruiti** oltre l'asset demo e i preset effetto, quindi la sezione parla di "preset" (look salvabili/riapplicabili), non di template.
+
+## 2026-07-25 — Favicon dal logo
+
+Richiesta dell'utente: usare `logo.png` (1024×1024, quadrato) come favicon invece del file `favicon.png` precedente. Rigenerato `public/favicon.png` ridimensionando il logo a 192×192 via `sips` (stesso path già referenziato in `index.html`/`vite.config.ts`, nessuna modifica di codice necessaria) — evita di servire il file originale da 1.2MB a ogni caricamento pagina solo per l'iconcina della tab. Verificato nel browser: `/favicon.png` risponde 200, 52KB, `image/png`.
+
+## 2026-07-25 — Logo accanto al nome nella sidebar
+
+`ControlPage.tsx`, `SidebarHeader`: aggiunta `<img src="/logo.png">` (24px, arrotondata) prima del testo "EASYMAP STUDIO". Cambiato il layout dell'header da `flex-col justify-center` a `flex-row items-center gap-2` per affiancare logo e testo sulla stessa riga entro l'altezza fissa `h-12`; aggiunto `truncate` al testo per sicurezza su sidebar molto stretta (min 240px). Verificato nel browser: logo e marchio allineati correttamente nell'header.
+
+## 2026-07-25 — Favicon PNG + logo nel README
+
+Richiesta dell'utente, che ha aggiunto `public/favicon.png` e `public/logo.png`.
+
+- **`index.html`**: `<link rel="icon">` da `favicon.svg` a `favicon.png` (type `image/png`). `favicon.svg` lasciato sul disco (non richiesta la rimozione), ma non più referenziato.
+- **`vite.config.ts`**: `includeAssets` della PWA aggiornato da `['favicon.svg']` a `['favicon.png']`, coerente col nuovo file effettivamente servito.
+- **`README.md`**: aggiunta `![Logo EasyMap Studio](public/logo.png)` subito sotto il titolo, sopra la descrizione.
+- Verificato nel browser: `<link rel="icon">` risolve a `/favicon.png`, fetch 200 con `content-type: image/png`. Type-check pulito.
+
+## 2026-07-25 — Rinominato il progetto in "EasyMap Studio"
+
+Richiesta esplicita dell'utente. Rinominati solo i punti di **branding user-facing**: `<title>` in `index.html`, manifest PWA (`name`/`short_name`, quest'ultimo accorciato a "EasyMap" per il limite pratico ~12 caratteri delle icone home screen), `name` in `package.json` (→ `easymap-studio`, slug npm-safe), il marchio nella sidebar di `ControlPage.tsx` ("EASYMAP" + "STUDIO" attenuato, stesso pattern grafico di prima), i titoli di README.md/CLAUDE.md/TODO.md/MEMORY.md (solo l'intestazione, non le voci storiche del changelog — restano fedeli a cosa era vero in quel momento), e i due commenti/log cosmetici in `defaultAsset.ts`.
+
+**Deliberatamente NON rinominati** gli identificatori tecnici interni (nessun beneficio visibile, rischio di rompere dati esistenti): nome del database IndexedDB (`'easyvj'` in `persistence.ts` — rinominarlo avrebbe reso irraggiungibili gli autosave/progetti già salvati dall'app, comportamento distruttivo non richiesto), nome del canale `BroadcastChannel` (`'easyvj-sync'`), le chiavi `localStorage` (`easyvj-sidebar-width`, `easyvj-playlist-height`, `easyvj-default-stage-seen`), il nome della finestra in `window.open` (`'easyvj-output'`), il global di debug `window.__easyvj`, i prefissi delle funzioni GLSL nel wrapper (`easyvj_gradient`, `easyvj_maskRegion`), il tipo TS `EasyVjDB`, e il nome della cartella del progetto sul disco / config `.claude/launch.json` (`easyvj-dev`).
+
+Verificato nel browser: titolo tab e marchio sidebar aggiornati a "EasyMap Studio" / "EASYMAP STUDIO"; type-check pulito.
+
+## 2026-07-25 — Asset dimostrativo caricato di default al primo avvio
+
+Richiesta: l'utente ha aggiunto `public/Default Stage.png` (7.4MB) e vuole che chi apre l'app per la prima volta lo trovi già caricato, per poter testare subito senza dover cercare un'immagine propria.
+
+- **Rinominato** `public/Default Stage.png` → `public/default-stage.png` (niente spazi/maiuscole in un path servito da URL, evita rogne di encoding).
+- **Nuovo `src/lib/mediaDetect.ts`**: estratta `isFullyOpaque()` da `MediaUploader.tsx` (era locale al componente) per riusarla anche nel loader del default.
+- **Nuovo `src/lib/defaultAsset.ts`**: `loadDefaultStageIfFirstVisit()` — gate su `localStorage['easyvj-default-stage-seen']` (settato **subito**, prima del fetch, per non ritentare a ogni reload se il file fallisce o l'utente naviga via) così scatta una volta sola per browser, indipendentemente da quante volte la scena torna vuota in futuro (es. l'utente cancella il media caricato: il default non ricompare, non è quello il comportamento "prima apertura"). Fetch del PNG → blob → `Image` per le dimensioni, poi `setActiveMedia` + `setActiveLumaKey` (con lo stesso `isFullyOpaque` dell'upload manuale) + `requestFit()` sul layer attivo — stessa pipeline di un upload utente, incluso il blob per la persistenza. Ricontrolla `getActiveLayer()?.media` dopo gli await (stesso pattern di guardia race già usato nel restore autosave): se l'utente ha caricato qualcosa nel frattempo, non sovrascrive.
+- **`persistence.ts` → `useAutosave`**: nel ramo "scena vuota, nessun autosave" (prima non faceva nulla) ora chiama `loadDefaultStageIfFirstVisit()`. Il ramo "autosave esiste" resta invariato (restore normale, ha priorità).
+- **`MediaUploader.tsx`** aggiornato per importare `isFullyOpaque` da `mediaDetect.ts` invece di definirla localmente (nessuna duplicazione).
+- **Verificato nel browser**: azzerati `localStorage` + IndexedDB `easyvj` (simulando un browser mai usato) → reload su `/control` → il Default Stage compare subito, fittato nel corner-pin, con lo shader di default sopra. Reload successivo (ora l'autosave esiste) → ripristina lo stesso layer dall'autosave, nessuna ricarica/duplicazione. Console pulita (solo il warning noto THREE.Clock), type-check pulito.
 
 ## 2026-07-25 — 10 shader "Liquid", colori per-effetto (uniform vec3), palette casuale
 
