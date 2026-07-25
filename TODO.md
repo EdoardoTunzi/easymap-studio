@@ -32,9 +32,11 @@ Spuntare gli step completati; aggiungere nuovi step quando emergono. Tenere alli
 - [ ] Pannello destro (descrizione/generazione shader) e timeline in basso come nello screenshot MAPSHROOM
 - [ ] Pannello live: luminosità / colore / velocità globali (oltre ai parametri per-shader)
 - [ ] Import shader GLSL da parte dell'utente (textarea/file → parser ISF)
-- [ ] Color picker UI per gli uniform vec3 dei singoli shader (ora si usa solo il @default; vedi colorControls in isfParser). NB: diverso dalla palette globale (gradient map) già implementata
+- [x] Color picker UI per gli uniform vec3 dei singoli shader (sezione "Colori effetto" nel pannello Shader e nell'editor clip; per-layer in colorParams, incluso in preset/playlist/crossfade/thumbnail)
+- [x] 10 shader "Liquid" sulla scia di 3D Surface Morph Spirals (file liquid*.glsl, source-driven con morph da luminanza e uniform colore)
+- [x] Generatore casuale di palette (bottone "Palette casuale" nel pannello Palette: 5 colori HSL armonici scuro→acceso, attiva la palette)
 - [ ] Palette memorizzata per-shader (ora è globale) + salvataggio di palette custom dell'utente
-- [ ] Anteprime/thumbnail degli shader nella libreria (come i preset nello screenshot MAPSHROOM)
+- [ ] Anteprime/thumbnail degli shader nella libreria (come i preset nello screenshot MAPSHROOM) — il motore esiste già: `src/engine/effectThumbnail.ts` (usato dalle card della playlist)
 - [ ] Export/import progetto come file JSON (backup portabile tra macchine)
 - [ ] PWA: icone reali (pwa-192x192.png, pwa-512x512.png mancanti in public/) e test offline
 - [ ] Fullscreen automatico della finestra Output (API Fullscreen su doppio click o pulsante)
@@ -68,7 +70,9 @@ Modello: scena = pila di Layer indipendenti; ogni layer ha contenuto (img/gif/vi
 ### Altro editor avanzato
 - [ ] Rotazione/scala non-uniforme delle maschere via overlay (ora solo move + resize uniforme; rotazione da slider)
 - [ ] Editor maschera manuale di rifinitura (freehand/poligono) per bordi imperfetti
-- [ ] Playlist/sequenze di effetti con transizioni
+- [x] Playlist/sequenze di effetti con transizioni: barra timeline in basso (clip da libreria/preset, editor al click con anteprima, durata trascinabile, play/pause, loop, transizione smooth con crossfade a durata regolabile o secca; agisce su layer attivo + spunte sync; persistita nel progetto)
+- [x] Barra playlist: scroll orizzontale (rotellina + scrollbar visibile + auto-scroll all'aggiunta), thumbnail statica dell'effetto in ogni card (renderer offscreen con cache), altezza ridimensionabile dal bordo superiore (96–192px, persistita)
+- [ ] Libreria di playlist salvabili con nome, riusabili tra progetti (per ora la playlist vive solo dentro il progetto)
 - [ ] Editor maschera manuale di rifinitura (per bordi imperfetti)
 - [ ] Opzione "tratta il nero come trasparente" (luminance key) per immagini senza canale alpha
 - [ ] Warp proiettivo vero (omografia nello shader o mesh suddivisa) — il warp attuale a 2 triangoli può creare una piega diagonale con deformazioni estreme

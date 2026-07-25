@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import { parseShader, type ParsedShader } from '../engine/isfParser'
+import type { RGB } from './paletteStore'
 
 // Carica automaticamente tutti gli shader .glsl della cartella: basta aggiungere un file.
 const shaderModules = import.meta.glob('../shaders/*.glsl', {
@@ -46,3 +47,8 @@ interface EffectsState {
 export const useEffectsStore = create<EffectsState>(() => ({
   shaders: builtInShaders,
 }))
+
+/** Valori di default degli uniform colore (vec3) di uno shader. */
+export function defaultColorsFor(shader: ParsedShader): Record<string, RGB> {
+  return Object.fromEntries(shader.colorControls.map((c) => [c.name, [...c.default] as RGB]))
+}

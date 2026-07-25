@@ -1,6 +1,7 @@
 import { openDB, type DBSchema, type IDBPDatabase } from 'idb'
 import { useEffect } from 'react'
 import { useLayersStore, createLayer, type Layer } from '../store/layersStore'
+import { usePlaylistStore, playlistSnapshot, type PlaylistData } from '../store/playlistStore'
 import { DEFAULT_SIZE } from '../store/effectsStore'
 import { type Palette, type RGB } from '../store/paletteStore'
 import type { MediaAsset, MediaType } from '../store/projectStore'
@@ -17,8 +18,8 @@ interface StoredMedia {
   blob: Blob
 }
 
-/** Un layer serializzato: media e maschera-immagine ridotti al solo blob. */
-type StoredLayer = Omit<Layer, 'media' | 'maskImage'> & {
+/** Un layer serializzato: media e maschera-immagine ridotti al solo blob; niente stato transiente. */
+type StoredLayer = Omit<Layer, 'media' | 'maskImage' | 'transition'> & {
   media: StoredMedia | null
   maskImage: StoredMedia | null
 }
@@ -29,6 +30,8 @@ export interface StoredProject {
   updatedAt: number
   layers: StoredLayer[]
   activeLayerId: string
+  /** Playlist di effetti del progetto (assente nei progetti salvati prima della feature). */
+  playlist?: PlaylistData
 }
 
 /** Preset di un effetto: cattura il "look" (shader + parametri + size + palette), riusabile su qualsiasi layer. */
@@ -39,6 +42,8 @@ export interface EffectPreset {
   shaderName: string
   /** Parametri del solo shader del preset. */
   params: Record<string, number>
+  /** Colori (uniform vec3) dello shader; assente nei preset salvati prima della feature. */
+  colors?: Record<string, RGB>
   size: number
   palette: Palette
 }
@@ -91,7 +96,7 @@ function deserializeMedia(stored: StoredMedia | null): MediaAsset | null {
 
 /** Serializza un layer per la persistenza (media/maschera → solo blob, url rigenerato al load). */
 function serializeLayer(layer: Layer): StoredLayer {
-  const { media, maskImage, ...rest } = layer
+  const { media, maskImage, transition: _transition, ...rest } = layer
   return { ...rest, media: serializeMedia(media), maskImage: serializeMedia(maskImage) }
 }
 
@@ -116,6 +121,7 @@ function snapshot(id: string, name: string): StoredProject {
     updatedAt: Date.now(),
     layers: layers.map(serializeLayer),
     activeLayerId,
+    playlist: playlistSnapshot(),
   }
 }
 
@@ -123,6 +129,8 @@ function snapshot(id: string, name: string): StoredProject {
 function applyProject(project: StoredProject) {
   const layers = project.layers.map(deserializeLayer)
   useLayersStore.getState().setScene(layers, project.activeLayerId)
+  // progetti pre-playlist: undefined → playlist vuota coi default
+  usePlaylistStore.getState().setPlaylistData(project.playlist)
 }
 
 /** La scena è "vuota" se ha un solo layer senza contenuto: allora l'autosave può ripristinare. */
@@ -175,6 +183,7 @@ function effectPresetSnapshot(id: string, name: string): EffectPreset {
     updatedAt: Date.now(),
     shaderName: layer?.shaderName ?? '',
     params: { ...(layer?.params[layer.shaderName] ?? {}) },
+    colors: { ...(layer?.colorParams[layer.shaderName] ?? {}) },
     size: layer?.size ?? DEFAULT_SIZE,
     palette: layer ? clonePalette(layer.palette) : ({} as Palette),
   }
@@ -190,6 +199,7 @@ function applyEffectPreset(preset: EffectPreset) {
             shaderName: preset.shaderName,
             size: preset.size ?? DEFAULT_SIZE,
             params: { ...l.params, [preset.shaderName]: { ...preset.params } },
+            colorParams: { ...l.colorParams, [preset.shaderName]: { ...(preset.colors ?? {}) } },
             palette: preset.palette ? clonePalette(preset.palette) : l.palette,
           }
         : l,
@@ -243,6 +253,16 @@ export function useAutosave() {
 
     const unsub = useLayersStore.subscribe(persist)
 
+    // la playlist cambia anche a ogni frame di riproduzione (playing/progress): salva solo
+    // quando cambia il sottoinsieme persistibile (clip, transizione, loop)
+    let lastPlaylistJson = JSON.stringify(playlistSnapshot())
+    const unsubPlaylist = usePlaylistStore.subscribe(() => {
+      const json = JSON.stringify(playlistSnapshot())
+      if (json === lastPlaylistJson) return
+      lastPlaylistJson = json
+      persist()
+    })
+
     ;(async () => {
       try {
         if (!isSceneEmpty()) return
@@ -261,6 +281,7 @@ export function useAutosave() {
     return () => {
       if (timer) clearTimeout(timer)
       unsub()
+      unsubPlaylist()
     }
   }, [])
 }

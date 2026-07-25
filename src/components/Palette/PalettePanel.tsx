@@ -1,4 +1,4 @@
-import { Power } from 'lucide-react'
+import { Dices, Power } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Slider } from '@/components/ui/slider'
 import { Separator } from '@/components/ui/separator'
@@ -7,23 +7,12 @@ import {
   PALETTE_PRESETS,
   PALETTE_STOPS,
   createDefaultPalette,
+  randomPaletteColors,
+  rgbToHex,
+  hexToRgb,
   type RGB,
 } from '@/store/paletteStore'
 import { useLayersStore } from '@/store/layersStore'
-
-function rgbToHex([r, g, b]: RGB): string {
-  const to = (v: number) => Math.round(Math.max(0, Math.min(1, v)) * 255).toString(16).padStart(2, '0')
-  return `#${to(r)}${to(g)}${to(b)}`
-}
-
-function hexToRgb(hex: string): RGB {
-  const n = hex.replace('#', '')
-  return [
-    parseInt(n.slice(0, 2), 16) / 255,
-    parseInt(n.slice(2, 4), 16) / 255,
-    parseInt(n.slice(4, 6), 16) / 255,
-  ]
-}
 
 /** CSS linear-gradient dalle prime `count` fermate. */
 function gradientCss(colors: RGB[], count: number): string {
@@ -43,6 +32,7 @@ export function PalettePanel() {
   const setAmount = useLayersStore((s) => s.setPaletteAmount)
   const setCount = useLayersStore((s) => s.setPaletteCount)
   const setColor = useLayersStore((s) => s.setPaletteColor)
+  const setColors = useLayersStore((s) => s.setPaletteColors)
   const applyPreset = useLayersStore((s) => s.applyPalettePreset)
 
   return (
@@ -87,6 +77,16 @@ export function PalettePanel() {
             </button>
           ))}
         </div>
+        {/* generatore casuale: 5 colori armonici da scuro ad acceso, attiva la palette */}
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => setColors(randomPaletteColors())}
+          className="gap-1.5"
+        >
+          <Dices className="size-3.5" />
+          Palette casuale
+        </Button>
       </div>
 
       <Separator />

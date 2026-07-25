@@ -16,6 +16,7 @@ import { MaskPanel } from '@/components/Mask/MaskPanel'
 import { MaskOverlay } from '@/components/Mask/MaskOverlay'
 import { CornerPinOverlay } from '@/components/Positioning/CornerPinOverlay'
 import { ViewportZoomControls, useViewportPanZoom } from '@/components/layout/ViewportZoomControls'
+import { PlaylistBar } from '@/components/Playlist/PlaylistBar'
 import {
   Sidebar,
   SidebarContent,
@@ -114,13 +115,15 @@ export function ControlPage() {
         </Sidebar>
         <SidebarResizeHandle onPointerDown={startResize} />
       </div>
-      <SidebarInset className="min-w-0">
+      {/* h-svh: altezza bloccata al viewport, così alzando la barra playlist è il canvas a comprimersi */}
+      <SidebarInset className="h-svh min-w-0 overflow-hidden">
         <TopToolbar />
         <main ref={stageRef} className="relative min-h-0 flex-1 overflow-hidden bg-black">
           <StageCanvas autoFit controlView />
           {activePanel === 'mask' ? <MaskOverlay /> : <CornerPinOverlay />}
           <ViewportZoomControls />
         </main>
+        <PlaylistBar />
       </SidebarInset>
     </SidebarProvider>
   )

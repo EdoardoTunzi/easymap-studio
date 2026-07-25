@@ -69,3 +69,44 @@ export function createDefaultPalette(): Palette {
     activePreset: 'Neon Red',
   }
 }
+
+// ---- Helper colore condivisi (usati da PalettePanel, EffectsPanel, PlaylistBar) ----
+
+export function rgbToHex([r, g, b]: RGB): string {
+  const to = (v: number) =>
+    Math.round(Math.max(0, Math.min(1, v)) * 255).toString(16).padStart(2, '0')
+  return `#${to(r)}${to(g)}${to(b)}`
+}
+
+export function hexToRgb(hex: string): RGB {
+  const n = hex.replace('#', '')
+  return [
+    parseInt(n.slice(0, 2), 16) / 255,
+    parseInt(n.slice(2, 4), 16) / 255,
+    parseInt(n.slice(4, 6), 16) / 255,
+  ]
+}
+
+function hslToRgb(h: number, s: number, l: number): RGB {
+  const k = (n: number) => (n + h / 30) % 12
+  const a = s * Math.min(l, 1 - l)
+  const f = (n: number) => l - a * Math.max(-1, Math.min(k(n) - 3, Math.min(9 - k(n), 1)))
+  return [f(0), f(8), f(4)]
+}
+
+/**
+ * Genera 5 colori casuali armonici, dal più scuro al più acceso (stessa struttura dei preset:
+ * la palette è mappata per luminanza, lo stop 0 è l'ombra e l'ultimo la luce).
+ */
+export function randomPaletteColors(): RGB[] {
+  const baseHue = Math.random() * 360
+  // deriva di tinta lungo la rampa: palette "viva" ma coerente
+  const hueDrift = (Math.random() * 2 - 1) * 100
+  const sat = 0.75 + Math.random() * 0.25
+  return Array.from({ length: PALETTE_STOPS }, (_, i) => {
+    const t = i / (PALETTE_STOPS - 1)
+    const h = ((baseHue + hueDrift * t) % 360 + 360) % 360
+    const light = 0.07 + t * 0.6
+    return hslToRgb(h, sat, light)
+  })
+}

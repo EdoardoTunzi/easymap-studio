@@ -12,6 +12,7 @@ import {
 import { cn } from '@/lib/utils'
 import { useEffectsStore } from '@/store/effectsStore'
 import { useLayersStore } from '@/store/layersStore'
+import { rgbToHex, hexToRgb } from '@/store/paletteStore'
 
 export function EffectsPanel() {
   const shaders = useEffectsStore((s) => s.shaders)
@@ -21,6 +22,7 @@ export function EffectsPanel() {
   const setActiveShader = useLayersStore((s) => s.setActiveShader)
   const setSize = useLayersStore((s) => s.setActiveSize)
   const setParam = useLayersStore((s) => s.setActiveParam)
+  const setColorParam = useLayersStore((s) => s.setActiveColorParam)
   const syncTargetIds = useLayersStore((s) => s.syncTargetIds)
   const toggleSyncTarget = useLayersStore((s) => s.toggleSyncTarget)
   const setSyncAll = useLayersStore((s) => s.setSyncAll)
@@ -120,6 +122,35 @@ export function EffectsPanel() {
       </div>
 
       {shader && shader.controls.length > 0 && <Separator />}
+
+      {/* Colori dell'effetto: uniform vec3 dello shader, modificabili col picker */}
+      {shader && shader.colorControls.length > 0 && (
+        <div className="flex flex-col gap-2">
+          <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+            Colori effetto
+          </span>
+          {shader.colorControls.map((cc) => {
+            const value =
+              activeLayer?.colorParams[shader.name]?.[cc.name] ?? cc.default
+            return (
+              <div key={cc.name} className="flex items-center justify-between gap-2">
+                <span className="text-xs text-foreground">{cc.name}</span>
+                <label
+                  className="relative h-7 w-16 shrink-0 cursor-pointer overflow-hidden rounded-md border border-border"
+                  style={{ background: rgbToHex(value) }}
+                >
+                  <input
+                    type="color"
+                    value={rgbToHex(value)}
+                    onChange={(e) => setColorParam(cc.name, hexToRgb(e.target.value))}
+                    className="absolute inset-0 cursor-pointer opacity-0"
+                  />
+                </label>
+              </div>
+            )
+          })}
+        </div>
+      )}
 
       {shader && (
         <div className="flex flex-col gap-4">

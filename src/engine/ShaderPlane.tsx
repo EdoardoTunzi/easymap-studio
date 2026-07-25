@@ -1,7 +1,7 @@
-import { useEffect, useMemo, useRef } from 'react'
+import { useEffect, useMemo, useRef, type RefObject } from 'react'
 import * as THREE from 'three'
 import { useFrame } from '@react-three/fiber'
-import { useLayersStore, type BlendMode } from '../store/layersStore'
+import { useLayersStore, type BlendMode, type Layer } from '../store/layersStore'
 import { useEffectsStore } from '../store/effectsStore'
 import type { ParsedShader } from './isfParser'
 import { createMediaTexture, FALLBACK_TEXTURE, type MediaTextureController } from './mediaTexture'
@@ -23,7 +23,7 @@ const BLEND_FACTORS: Record<BlendMode, { src: THREE.BlendingSrcFactor; dst: THRE
 
 const MASK_SLOTS = 8
 
-function buildUniforms(shader: ParsedShader | undefined): Record<string, { value: unknown }> {
+export function buildUniforms(shader: ParsedShader | undefined): Record<string, { value: unknown }> {
   const base: Record<string, { value: unknown }> = {
     uTexture: { value: FALLBACK_TEXTURE },
     uTime: { value: 0 },
@@ -56,15 +56,147 @@ function buildUniforms(shader: ParsedShader | undefined): Record<string, { value
   return base
 }
 
-/** Una singola mesh warpata dai corner-pin, con lo shader, il contenuto e le maschere del suo layer. */
-function LayerMesh({ layerId, index }: { layerId: string; index: number }) {
+/** Effetto + opacità effettiva da renderizzare in un passaggio (main = nuovo, ghost = uscente). */
+type PassVariant = 'main' | 'ghost'
+
+function passEffect(l: Layer, variant: PassVariant) {
+  if (variant === 'main') {
+    return {
+      shaderName: l.shaderName,
+      params: l.params[l.shaderName] ?? {},
+      colors: l.colorParams[l.shaderName] ?? {},
+      size: l.size,
+      palette: l.palette,
+      // durante il crossfade il nuovo effetto entra in dissolvenza
+      opacity: l.opacity * (l.transition ? l.transition.progress : 1),
+    }
+  }
+  if (!l.transition) return null
+  return {
+    shaderName: l.transition.shaderName,
+    params: l.transition.params,
+    colors: l.transition.colors,
+    size: l.transition.size,
+    palette: l.transition.palette,
+    opacity: l.opacity * (1 - l.transition.progress),
+  }
+}
+
+interface EffectPassProps {
+  layerId: string
+  variant: PassVariant
+  renderOrder: number
+  geometry: THREE.PlaneGeometry
+  controllerRef: RefObject<MediaTextureController>
+  maskTexRef: RefObject<THREE.Texture>
+}
+
+/**
+ * Un passaggio di rendering del layer: la mesh warpata con UN effetto (shader + uniforms).
+ * Il layer ne ha uno ('main'); durante un crossfade se ne aggiunge un secondo ('ghost')
+ * con l'effetto uscente, in dissolvenza sotto quello nuovo.
+ */
+function EffectPass({ layerId, variant, renderOrder, geometry, controllerRef, maskTexRef }: EffectPassProps) {
   const materialRef = useRef<THREE.ShaderMaterial>(null)
 
   const layer = useLayersStore((s) => s.layers.find((l) => l.id === layerId))
   const shaders = useEffectsStore((s) => s.shaders)
-  const shader = layer ? shaders.find((s) => s.name === layer.shaderName) : undefined
+  const shaderName = variant === 'main' ? layer?.shaderName : layer?.transition?.shaderName
+  const shader = shaderName ? shaders.find((s) => s.name === shaderName) : undefined
 
-  // geometria a 4 vertici, warpata in base ai corner-pin
+  const uniforms = useMemo(() => buildUniforms(shader), [shader])
+
+  useFrame((state) => {
+    const mat = materialRef.current
+    if (!mat || !shader) return
+    const l = useLayersStore.getState().layers.find((x) => x.id === layerId)
+    if (!l) return
+    const fx = passEffect(l, variant)
+    if (!fx || fx.shaderName !== shader.name) return
+    // il tick del media (video/gif) avviene una sola volta per frame, dal passaggio main
+    if (variant === 'main') controllerRef.current.tick(state.clock.elapsedTime)
+    const u = mat.uniforms
+    u.uTime.value = state.clock.elapsedTime
+    ;(u.uResolution.value as THREE.Vector2).set(state.size.width, state.size.height)
+    u.uScale.value = fx.size
+    u.uLumaKey.value = l.lumaKey
+    u.uOpacity.value = fx.opacity
+    // palette del passaggio (gradient map)
+    const pal = fx.palette
+    u.uPaletteOn.value = pal.enabled ? 1 : 0
+    u.uPaletteCount.value = pal.count
+    u.uPaletteAmount.value = pal.amount
+    const palArr = u.uPalette.value as THREE.Vector3[]
+    for (let i = 0; i < 5; i++) {
+      const c = pal.colors[i] ?? pal.colors[pal.colors.length - 1]
+      palArr[i].set(c[0], c[1], c[2])
+    }
+    // maschere di forma (condivise dal layer)
+    const count = Math.min(l.masks.length, MASK_SLOTS)
+    u.uMaskCount.value = count
+    const centers = u.uMaskCenter.value as THREE.Vector2[]
+    const halves = u.uMaskHalf.value as THREE.Vector2[]
+    const rot = u.uMaskRot.value as number[]
+    const feather = u.uMaskFeather.value as number[]
+    const type = u.uMaskType.value as number[]
+    const invert = u.uMaskInvert.value as number[]
+    for (let i = 0; i < count; i++) {
+      const m = l.masks[i]
+      centers[i].set(m.cx, m.cy)
+      halves[i].set(m.hx, m.hy)
+      rot[i] = m.rotation
+      feather[i] = m.feather
+      type[i] = m.type === 'ellipse' ? 1 : 0
+      invert[i] = m.invert ? 1 : 0
+    }
+    // maschera-immagine
+    u.uMaskTexOn.value = l.maskImage ? 1 : 0
+    u.uMaskTex.value = maskTexRef.current
+    // texture del contenuto (riassegnata ogni frame: sopravvive al rimontaggio del materiale)
+    u.uTexture.value = controllerRef.current.getTexture()
+    for (const control of shader.controls) {
+      const uniform = u[control.name]
+      if (uniform) uniform.value = fx.params[control.name] ?? control.default
+    }
+    for (const color of shader.colorControls) {
+      const uniform = u[color.name]
+      if (uniform) {
+        const c = fx.colors[color.name] ?? color.default
+        ;(uniform.value as THREE.Vector3).set(c[0], c[1], c[2])
+      }
+    }
+  })
+
+  if (!layer || !shader || !layer.visible) return null
+
+  const blend = BLEND_FACTORS[layer.blendMode]
+
+  return (
+    <mesh geometry={geometry} renderOrder={renderOrder}>
+      <shaderMaterial
+        key={`${shader.name}|${layer.blendMode}`}
+        ref={materialRef}
+        vertexShader={shader.vertexShader}
+        fragmentShader={shader.fragmentShader}
+        uniforms={uniforms}
+        transparent
+        side={THREE.DoubleSide}
+        depthTest={false}
+        depthWrite={false}
+        blending={THREE.CustomBlending}
+        blendEquation={THREE.AddEquation}
+        blendSrc={blend.src}
+        blendDst={blend.dst}
+      />
+    </mesh>
+  )
+}
+
+/** Una singola mesh warpata dai corner-pin, con lo shader, il contenuto e le maschere del suo layer. */
+function LayerMesh({ layerId, index }: { layerId: string; index: number }) {
+  const layer = useLayersStore((s) => s.layers.find((l) => l.id === layerId))
+
+  // geometria a 4 vertici, warpata in base ai corner-pin (condivisa dai passaggi main/ghost)
   const geometry = useMemo(() => {
     const geo = new THREE.PlaneGeometry(1, 1, 1, 1)
     geo.setAttribute(
@@ -117,86 +249,18 @@ function LayerMesh({ layerId, index }: { layerId: string; index: number }) {
     }
   }, [maskImageUrl])
 
-  const uniforms = useMemo(() => buildUniforms(shader), [shader])
+  if (!layer) return null
 
-  useFrame((state) => {
-    const mat = materialRef.current
-    if (!mat || !shader) return
-    const l = useLayersStore.getState().layers.find((x) => x.id === layerId)
-    if (!l) return
-    controllerRef.current.tick(state.clock.elapsedTime)
-    const u = mat.uniforms
-    u.uTime.value = state.clock.elapsedTime
-    ;(u.uResolution.value as THREE.Vector2).set(state.size.width, state.size.height)
-    u.uScale.value = l.size
-    u.uLumaKey.value = l.lumaKey
-    u.uOpacity.value = l.opacity
-    // palette per-layer (gradient map)
-    const pal = l.palette
-    u.uPaletteOn.value = pal.enabled ? 1 : 0
-    u.uPaletteCount.value = pal.count
-    u.uPaletteAmount.value = pal.amount
-    const palArr = u.uPalette.value as THREE.Vector3[]
-    for (let i = 0; i < 5; i++) {
-      const c = pal.colors[i] ?? pal.colors[pal.colors.length - 1]
-      palArr[i].set(c[0], c[1], c[2])
-    }
-    // maschere di forma
-    const count = Math.min(l.masks.length, MASK_SLOTS)
-    u.uMaskCount.value = count
-    const centers = u.uMaskCenter.value as THREE.Vector2[]
-    const halves = u.uMaskHalf.value as THREE.Vector2[]
-    const rot = u.uMaskRot.value as number[]
-    const feather = u.uMaskFeather.value as number[]
-    const type = u.uMaskType.value as number[]
-    const invert = u.uMaskInvert.value as number[]
-    for (let i = 0; i < count; i++) {
-      const m = l.masks[i]
-      centers[i].set(m.cx, m.cy)
-      halves[i].set(m.hx, m.hy)
-      rot[i] = m.rotation
-      feather[i] = m.feather
-      type[i] = m.type === 'ellipse' ? 1 : 0
-      invert[i] = m.invert ? 1 : 0
-    }
-    // maschera-immagine
-    u.uMaskTexOn.value = l.maskImage ? 1 : 0
-    u.uMaskTex.value = maskTexRef.current
-    // texture del contenuto (riassegnata ogni frame: sopravvive al rimontaggio del materiale)
-    u.uTexture.value = controllerRef.current.getTexture()
-    const params = l.params[shader.name] ?? {}
-    for (const control of shader.controls) {
-      const uniform = u[control.name]
-      if (uniform) uniform.value = params[control.name] ?? control.default
-    }
-  })
-
-  if (!layer || !shader || !layer.visible) return null
-
-  const blend = BLEND_FACTORS[layer.blendMode]
+  const passProps = { layerId, geometry, controllerRef, maskTexRef }
 
   return (
     <group
       position={[layer.transform.offsetX, layer.transform.offsetY, 0]}
       scale={layer.transform.zoom}
     >
-      <mesh geometry={geometry} renderOrder={index}>
-        <shaderMaterial
-          key={`${shader.name}|${layer.blendMode}`}
-          ref={materialRef}
-          vertexShader={shader.vertexShader}
-          fragmentShader={shader.fragmentShader}
-          uniforms={uniforms}
-          transparent
-          side={THREE.DoubleSide}
-          depthTest={false}
-          depthWrite={false}
-          blending={THREE.CustomBlending}
-          blendEquation={THREE.AddEquation}
-          blendSrc={blend.src}
-          blendDst={blend.dst}
-        />
-      </mesh>
+      {/* effetto uscente sotto (renderOrder minore), nuovo effetto sopra: crossfade */}
+      {layer.transition && <EffectPass {...passProps} variant="ghost" renderOrder={index * 2} />}
+      <EffectPass {...passProps} variant="main" renderOrder={index * 2 + 1} />
     </group>
   )
 }

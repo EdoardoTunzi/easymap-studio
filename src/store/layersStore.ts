@@ -42,6 +42,25 @@ export interface Mask {
   invert: boolean
 }
 
+/** Il "look" completo applicabile a un layer (usato da playlist, preset e transizioni). */
+export interface EffectSnapshot {
+  shaderName: string
+  params: Record<string, number>
+  /** Valori degli uniform colore (vec3) dello shader. */
+  colors: Record<string, RGB>
+  size: number
+  palette: Palette
+}
+
+/**
+ * Effetto uscente durante un crossfade: ShaderPlane lo renderizza in dissolvenza sotto quello
+ * nuovo. Transiente: viaggia nel sync verso l'Output ma NON viene persistito.
+ */
+export interface LayerTransition extends EffectSnapshot {
+  /** Avanzamento della dissolvenza 0..1 (0 = solo vecchio effetto, 1 = solo nuovo). */
+  progress: number
+}
+
 /** Modalità di fusione del layer con quelli sottostanti. */
 export type BlendMode = 'normal' | 'add' | 'screen' | 'multiply'
 
@@ -74,6 +93,8 @@ export interface Layer {
   size: number
   /** Parametri live per shader: nome shader -> nome uniform -> valore. */
   params: Record<string, Record<string, number>>
+  /** Colori (uniform vec3) per shader: nome shader -> nome uniform -> RGB 0..1. */
+  colorParams: Record<string, Record<string, RGB>>
   /** Palette (gradient map) del layer. */
   palette: Palette
   /** Maschere di forma (unione) che limitano dove il layer è visibile. */
@@ -84,6 +105,8 @@ export interface Layer {
   corners: Corners
   /** Transform (zoom + pan) applicato sopra il corner-pin. */
   transform: Transform
+  /** Crossfade in corso (effetto uscente): transiente, non persistito. */
+  transition: LayerTransition | null
 }
 
 function cloneCorners(corners: Corners): Corners {
@@ -94,13 +117,17 @@ function clonePalette(p: Palette): Palette {
   return { ...p, colors: p.colors.map((c) => [...c] as RGB) }
 }
 
-/** Copia in `target` l'effetto completo (shader + parametri + size + palette) di `source`. */
+/** Copia in `target` l'effetto completo (shader + parametri + colori + size + palette) di `source`. */
 function withEffectOf(target: Layer, source: Layer): Layer {
   return {
     ...target,
     shaderName: source.shaderName,
     size: source.size,
     params: { ...target.params, [source.shaderName]: { ...source.params[source.shaderName] } },
+    colorParams: {
+      ...target.colorParams,
+      [source.shaderName]: { ...(source.colorParams[source.shaderName] ?? {}) },
+    },
     palette: clonePalette(source.palette),
   }
 }
@@ -121,11 +148,13 @@ export function createLayer(partial?: Partial<Layer>): Layer {
     shaderName: DEFAULT_SHADER_NAME,
     size: DEFAULT_SIZE,
     params: {},
+    colorParams: {},
     palette: createDefaultPalette(),
     masks: [],
     maskImage: null,
     corners: cloneCorners(DEFAULT_CORNERS),
     transform: { ...DEFAULT_TRANSFORM },
+    transition: null,
     ...partial,
   }
 }
@@ -190,6 +219,8 @@ interface LayersState {
   setActiveShader: (shaderName: string) => void
   setActiveSize: (size: number) => void
   setActiveParam: (uniformName: string, value: number) => void
+  /** Imposta un uniform colore (vec3) dello shader attivo. */
+  setActiveColorParam: (uniformName: string, rgb: RGB) => void
   setActiveCorner: (index: 0 | 1 | 2 | 3, corner: Corner) => void
   setActiveCorners: (corners: Corners) => void
   moveActiveCorners: (dx: number, dy: number) => void
@@ -201,6 +232,8 @@ interface LayersState {
   setPaletteAmount: (amount: number) => void
   setPaletteCount: (count: number) => void
   setPaletteColor: (index: number, rgb: RGB) => void
+  /** Sostituisce tutti i colori della palette (es. generatore casuale) e la attiva. */
+  setPaletteColors: (colors: RGB[]) => void
   applyPalettePreset: (name: string) => void
 
   // maschere del layer attivo
@@ -209,6 +242,16 @@ interface LayersState {
   updateMask: (maskId: string, patch: Partial<Mask>) => void
   selectMask: (maskId: string | null) => void
   setMaskImage: (media: MediaAsset | null) => void
+
+  // playlist / transizioni
+  /**
+   * Applica un effetto completo al layer attivo (+ layer spuntati in syncTargetIds).
+   * Con smooth=true avvia un crossfade: l'effetto precedente resta in `transition` e va
+   * animato con setTransitionProgress fino a 1.
+   */
+  applyEffectSnapshot: (effect: EffectSnapshot, smooth: boolean) => void
+  /** Aggiorna l'avanzamento di tutti i crossfade in corso; a >=1 li chiude. */
+  setTransitionProgress: (progress: number) => void
 
   // sincronizzazione effetto (guidata dalle spunte)
   toggleSyncTarget: (layerId: string) => void
@@ -298,11 +341,13 @@ export const useLayersStore = create<LayersState>((set, get) => {
           id: crypto.randomUUID(),
           name: `${src.name} copy`,
           params: structuredClone(src.params),
+          colorParams: structuredClone(src.colorParams),
           palette: clonePalette(src.palette),
           masks: src.masks.map((m) => ({ ...m, id: crypto.randomUUID() })),
           maskImage: src.maskImage ? { ...src.maskImage } : null,
           corners: cloneCorners(src.corners),
           transform: { ...src.transform },
+          transition: null,
         }
         const layers = [...state.layers]
         layers.splice(index + 1, 0, copy)
@@ -353,6 +398,14 @@ export const useLayersStore = create<LayersState>((set, get) => {
         },
       })),
 
+    setActiveColorParam: (uniformName, rgb) =>
+      editEffect((l) => ({
+        colorParams: {
+          ...l.colorParams,
+          [l.shaderName]: { ...l.colorParams[l.shaderName], [uniformName]: rgb },
+        },
+      })),
+
     setActiveCorner: (index, corner) =>
       patchActive((l) => {
         const corners = cloneCorners(l.corners)
@@ -387,6 +440,15 @@ export const useLayersStore = create<LayersState>((set, get) => {
         colors[index] = rgb
         return { palette: { ...l.palette, colors, activePreset: CUSTOM_PRESET } }
       }),
+    setPaletteColors: (colors) =>
+      editEffect((l) => ({
+        palette: {
+          ...l.palette,
+          colors: colors.map((c) => [...c] as RGB),
+          activePreset: CUSTOM_PRESET,
+          enabled: true,
+        },
+      })),
     applyPalettePreset: (name) =>
       editEffect((l) => ({
         palette: { ...l.palette, colors: clonePresetColors(name), activePreset: name, enabled: true },
@@ -412,6 +474,49 @@ export const useLayersStore = create<LayersState>((set, get) => {
     selectMask: (maskId) => set({ activeMaskId: maskId }),
 
     setMaskImage: (media) => patchActive(() => ({ maskImage: media })),
+
+    applyEffectSnapshot: (effect, smooth) =>
+      set((state) => {
+        const targets = new Set([state.activeLayerId, ...state.syncTargetIds])
+        return {
+          layers: state.layers.map((l) => {
+            if (!targets.has(l.id)) return l
+            const transition: LayerTransition | null = smooth
+              ? {
+                  shaderName: l.shaderName,
+                  params: { ...(l.params[l.shaderName] ?? {}) },
+                  colors: { ...(l.colorParams[l.shaderName] ?? {}) },
+                  size: l.size,
+                  palette: clonePalette(l.palette),
+                  progress: 0,
+                }
+              : null
+            return {
+              ...l,
+              shaderName: effect.shaderName,
+              size: effect.size,
+              params: { ...l.params, [effect.shaderName]: { ...effect.params } },
+              colorParams: { ...l.colorParams, [effect.shaderName]: { ...effect.colors } },
+              palette: clonePalette(effect.palette),
+              transition,
+            }
+          }),
+        }
+      }),
+
+    setTransitionProgress: (progress) =>
+      set((state) => {
+        if (!state.layers.some((l) => l.transition)) return state
+        return {
+          layers: state.layers.map((l) =>
+            l.transition
+              ? progress >= 1
+                ? { ...l, transition: null }
+                : { ...l, transition: { ...l.transition, progress } }
+              : l,
+          ),
+        }
+      }),
 
     toggleSyncTarget: (layerId) =>
       set((state) => {
