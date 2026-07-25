@@ -2,6 +2,10 @@
 
 Ogni modifica al progetto va registrata qui con data, descrizione e motivazione. Le voci più recenti in alto dentro ogni giornata.
 
+## 2026-07-25 — Link live preview nel README
+
+Richiesta dell'utente: aggiungere il link alla live preview su Vercel (https://easymap-studio-nine.vercel.app/control) nel `README.md`, subito sotto titolo e logo.
+
 ## 2026-07-25 — Fix `npm run build`: workbox precache limit
 
 La build falliva perché `vite-plugin-pwa` (workbox) rifiuta di precachare asset sopra 2 MB di default, e `public/default-stage.png` (immagine di default al primo avvio, 3146×1312, 7.1 MB) superava il limite.

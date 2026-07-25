@@ -2,6 +2,8 @@
 
 ![Logo EasyMap Studio](public/logo.png)
 
+**Live preview**: https://easymap-studio-nine.vercel.app/control
+
 **Webapp frontend per projection mapping e performance VJ live**, pensata per essere usata sul palco: si carica l'immagine di una statua, un palco o una superficie qualsiasi, si allinea la proiezione con un corner-pin, si applicano shader GLSL generativi ritagliati automaticamente dentro i bordi del soggetto, e si proietta da una finestra dedicata sincronizzata in tempo reale con l'editor di controllo.
 
 EasyMap Studio è nato come **esperimento estivo di collaborazione con Claude Code**, con l'obiettivo di verificare fino a che punto fosse possibile progettare e sviluppare un'applicazione completa sfruttando un workflow di sviluppo assistito dall'intelligenza artificiale, mantenendo però il pieno controllo sulle decisioni architetturali, sulla progettazione della UX e sull'implementazione tecnica.
