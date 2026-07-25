@@ -1,15 +1,27 @@
 import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react'
 import { useLayersStore, type Mask } from '../../store/layersStore'
 import type { Transform } from '../../store/projectStore'
+import { useUiStore, type ViewTransform } from '../../store/uiStore'
 
-// stesse formule della camera ortografica / CornerPinOverlay
-function worldToScreen(x: number, y: number, width: number, height: number) {
+// stesse formule della camera ortografica / CornerPinOverlay, incluso lo zoom/pan di anteprima (view)
+function frustum(width: number, height: number, view: ViewTransform) {
   const aspect = width / height
-  return { x: ((x / aspect + 1) / 2) * width, y: ((1 - y) / 2) * height }
+  const halfWidth = aspect / view.zoom
+  const halfHeight = 1 / view.zoom
+  return {
+    left: -halfWidth + view.panX,
+    right: halfWidth + view.panX,
+    top: halfHeight + view.panY,
+    bottom: -halfHeight + view.panY,
+  }
 }
-function screenToWorld(px: number, py: number, width: number, height: number) {
-  const aspect = width / height
-  return { x: ((px / width) * 2 - 1) * aspect, y: 1 - (py / height) * 2 }
+function worldToScreen(x: number, y: number, width: number, height: number, view: ViewTransform) {
+  const { left, right, top, bottom } = frustum(width, height, view)
+  return { x: ((x - left) / (right - left)) * width, y: ((top - y) / (top - bottom)) * height }
+}
+function screenToWorld(px: number, py: number, width: number, height: number, view: ViewTransform) {
+  const { left, right, top, bottom } = frustum(width, height, view)
+  return { x: left + (px / width) * (right - left), y: top - (py / height) * (top - bottom) }
 }
 function applyTransform(x: number, y: number, t: Transform) {
   return { x: x * t.zoom + t.offsetX, y: y * t.zoom + t.offsetY }
@@ -48,17 +60,19 @@ export function MaskOverlay() {
   const { width, height } = size
   const transform = activeLayer?.transform
   const masks = activeLayer?.masks ?? []
+  const view = useUiStore((s) => s.view)
 
   if (!width || !height || !transform) {
     return <div ref={containerRef} className="absolute inset-0" />
   }
 
-  const scale = (transform.zoom * height) / 2 // pixel per unità (corner-space), uniforme x/y
+  const { top, bottom } = frustum(width, height, view)
+  const scale = (transform.zoom * height) / (top - bottom) // pixel per unità (corner-space), uniforme x/y
 
   // centro schermo di una maschera
   const centerScreen = (m: Mask) => {
     const r = applyTransform(m.cx, m.cy, transform)
-    return worldToScreen(r.x, r.y, width, height)
+    return worldToScreen(r.x, r.y, width, height, view)
   }
   // punto locale (spazio maschera) → schermo
   const localToScreen = (m: Mask, lx: number, ly: number) => {
@@ -68,7 +82,7 @@ export function MaskOverlay() {
   }
   // punto schermo → locale (spazio maschera, non ruotato)
   const screenToLocal = (m: Mask, px: number, py: number) => {
-    const rw = screenToWorld(px, py, width, height)
+    const rw = screenToWorld(px, py, width, height, view)
     const corner = invertTransform(rw.x, rw.y, transform)
     const d = rotateCCW(corner.x - m.cx, corner.y - m.cy, -m.rotation)
     return d

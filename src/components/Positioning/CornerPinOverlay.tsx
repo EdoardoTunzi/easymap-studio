@@ -1,21 +1,35 @@
 import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react'
 import type { Transform } from '../../store/projectStore'
 import { useLayersStore } from '../../store/layersStore'
+import { useUiStore, type ViewTransform } from '../../store/uiStore'
 
-// stesse formule usate dalla camera ortografica in StageCanvas: left/right = -aspect/aspect, top/bottom = 1/-1
-function screenToWorld(px: number, py: number, width: number, height: number) {
+// stesse formule usate dalla camera ortografica in StageCanvas, includendo lo zoom/pan di anteprima
+// (view): frustum = -aspect/zoom+panX .. aspect/zoom+panX, -1/zoom+panY .. 1/zoom+panY
+function frustum(width: number, height: number, view: ViewTransform) {
   const aspect = width / height
+  const halfWidth = aspect / view.zoom
+  const halfHeight = 1 / view.zoom
   return {
-    x: ((px / width) * 2 - 1) * aspect,
-    y: 1 - (py / height) * 2,
+    left: -halfWidth + view.panX,
+    right: halfWidth + view.panX,
+    top: halfHeight + view.panY,
+    bottom: -halfHeight + view.panY,
   }
 }
 
-function worldToScreen(x: number, y: number, width: number, height: number) {
-  const aspect = width / height
+function screenToWorld(px: number, py: number, width: number, height: number, view: ViewTransform) {
+  const { left, right, top, bottom } = frustum(width, height, view)
   return {
-    x: ((x / aspect + 1) / 2) * width,
-    y: ((1 - y) / 2) * height,
+    x: left + (px / width) * (right - left),
+    y: top - (py / height) * (top - bottom),
+  }
+}
+
+function worldToScreen(x: number, y: number, width: number, height: number, view: ViewTransform) {
+  const { left, right, top, bottom } = frustum(width, height, view)
+  return {
+    x: ((x - left) / (right - left)) * width,
+    y: ((top - y) / (top - bottom)) * height,
   }
 }
 
@@ -38,6 +52,7 @@ export function CornerPinOverlay() {
   const moveCorners = useLayersStore((s) => s.moveActiveCorners)
   const corners = activeLayer?.corners
   const transform = activeLayer?.transform
+  const view = useUiStore((s) => s.view)
 
   useEffect(() => {
     const el = containerRef.current
@@ -62,7 +77,7 @@ export function CornerPinOverlay() {
       const onMove = (ev: PointerEvent) => {
         const px = ev.clientX - rect.left
         const py = ev.clientY - rect.top
-        const world = screenToWorld(px, py, width, height)
+        const world = screenToWorld(px, py, width, height, view)
         // la maniglia vive nello spazio renderizzato: riportala nello spazio base del corner
         setCorner(index, invertTransform(world.x, world.y, transform))
       }
@@ -77,7 +92,7 @@ export function CornerPinOverlay() {
   const handlePanStart = (e: ReactPointerEvent<SVGPolygonElement>) => {
     e.preventDefault()
     if (!transform) return
-    const aspect = width / height
+    const { left, right, top, bottom } = frustum(width, height, view)
     let lastX = e.clientX
     let lastY = e.clientY
 
@@ -86,10 +101,10 @@ export function CornerPinOverlay() {
       const dyScreen = ev.clientY - lastY
       lastX = ev.clientX
       lastY = ev.clientY
-      // il delta schermo è nello spazio renderizzato: dividi per lo zoom per ottenere il delta base
+      // il delta schermo è nello spazio renderizzato (incluso lo zoom di anteprima): dividi per lo zoom del layer per ottenere il delta base
       moveCorners(
-        ((dxScreen / width) * 2 * aspect) / transform.zoom,
-        (-(dyScreen / height) * 2) / transform.zoom,
+        ((dxScreen / width) * (right - left)) / transform.zoom,
+        (-(dyScreen / height) * (top - bottom)) / transform.zoom,
       )
     }
     const onUp = () => {
@@ -106,7 +121,7 @@ export function CornerPinOverlay() {
 
   const screenCorners = corners.map((c) => {
     const r = applyTransform(c.x, c.y, transform)
-    return worldToScreen(r.x, r.y, width, height)
+    return worldToScreen(r.x, r.y, width, height, view)
   })
   // corners sono TL,TR,BL,BR: il poligono va tracciato in ordine di perimetro TL,TR,BR,BL
   const polygonPoints = [screenCorners[0], screenCorners[1], screenCorners[3], screenCorners[2]]

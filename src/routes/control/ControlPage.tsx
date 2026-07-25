@@ -1,4 +1,4 @@
-import type { CSSProperties } from 'react'
+import { useRef, type CSSProperties } from 'react'
 import { StageCanvas } from '@/engine/StageCanvas'
 import { TopToolbar } from '@/components/layout/TopToolbar'
 import { SidebarResizeHandle } from '@/components/layout/SidebarResizeHandle'
@@ -15,6 +15,7 @@ import { LayersPanel } from '@/components/Layers/LayersPanel'
 import { MaskPanel } from '@/components/Mask/MaskPanel'
 import { MaskOverlay } from '@/components/Mask/MaskOverlay'
 import { CornerPinOverlay } from '@/components/Positioning/CornerPinOverlay'
+import { ViewportZoomControls, useViewportPanZoom } from '@/components/layout/ViewportZoomControls'
 import {
   Sidebar,
   SidebarContent,
@@ -86,6 +87,8 @@ export function ControlPage() {
     max: 520,
     storageKey: 'easyvj-sidebar-width',
   })
+  const stageRef = useRef<HTMLDivElement>(null)
+  useViewportPanZoom(stageRef)
 
   return (
     <SidebarProvider style={{ '--sidebar-width': `${width}px` } as CSSProperties}>
@@ -113,9 +116,10 @@ export function ControlPage() {
       </div>
       <SidebarInset className="min-w-0">
         <TopToolbar />
-        <main className="relative min-h-0 flex-1 overflow-hidden bg-black">
-          <StageCanvas autoFit />
+        <main ref={stageRef} className="relative min-h-0 flex-1 overflow-hidden bg-black">
+          <StageCanvas autoFit controlView />
           {activePanel === 'mask' ? <MaskOverlay /> : <CornerPinOverlay />}
+          <ViewportZoomControls />
         </main>
       </SidebarInset>
     </SidebarProvider>

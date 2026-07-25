@@ -2,6 +2,19 @@
 
 Ogni modifica al progetto va registrata qui con data, descrizione e motivazione. Le voci più recenti in alto dentro ogni giornata.
 
+## 2026-07-25 — Zoom/pan della vista di anteprima (Control), indipendente dall'Output
+
+Bug segnalato: quando l'asset viene ingrandito/spostato molto (zoom layer alto in MOVE), le 4 maniglie viola del corner-pin escono dal canvas nero e vengono clippate da `overflow-hidden` sul `<main>` → diventano irraggiungibili, impossibile correggere il mapping.
+
+Soluzione: uno **zoom/pan di vista** puramente visivo, locale alla sola finestra Control, che scala il frustum della camera ortografica di R3F (non tocca mai `corners`/`transform` nello store, quindi l'Output resta invariato — la finestra Output non legge mai questo stato).
+
+- **`uiStore.ts`**: nuovo `view: { zoom, panX, panY }` (default 1/0/0, range zoom 0.2–4) + azioni `setViewZoom/zoomViewBy/panView/resetView`. Store separato da `layersStore` (l'unico broadcast via `sync.ts`), e comunque Control e Output sono finestre/realm JS distinti quindi anche senza guardie `uiStore` non attraverserebbe mai il `BroadcastChannel`.
+- **`StageCanvas.tsx`**: nuova prop `controlView` (come il pattern già esistente di `autoFit`). `ResponsiveCamera` accetta `view` opzionale e allarga/restringe il frustum (`halfWidth = aspect/zoom + pan`, ecc.) invece del fisso `-aspect..aspect / -1..1`. Passata `controlView` solo da `ControlPage`; `OutputPage` non la passa mai → camera Output sempre al frustum originale.
+- **`CornerPinOverlay.tsx` e `MaskOverlay.tsx`**: le funzioni `screenToWorld`/`worldToScreen` (e in MaskOverlay anche `scale` px/unità) ora derivano il frustum dallo stesso `view` (helper `frustum()` duplicato nei due file, stessa formula della camera) — così le maniglie/forme restano perfettamente allineate al contenuto renderizzato a qualsiasi zoom di vista. Il drag del poligono (pan dell'intera proiezione) e il drag delle singole maniglie sono stati corretti per convertire i delta schermo tramite il frustum corrente invece di `2*aspect`/`2` fissi.
+- **Nuovo `src/components/layout/ViewportZoomControls.tsx`**: hook `useViewportPanZoom(containerRef)` (rotellina = zoom centrato sulla vista corrente; Spazio+drag o click centrale = pan, con guardia per non intercettare Spazio quando si digita in un input) + componente `ViewportZoomControls` (mini toolbar flottante in basso a destra: −, percentuale/reset, +, "adatta"). Montati nel `<main>` di `ControlPage` insieme a `StageCanvas controlView` e all'overlay attivo.
+- Scelte utente (chiesto esplicitamente prima di implementare): trigger sia rotellina che pulsanti; pan incluso (Spazio+drag / click centrale), non solo zoom centrato, per coprire anche il caso di asset spostato molto lontano dal centro oltre che ingrandito.
+- **Verificato nel browser**: portato lo zoom del layer (MOVE) a ~2x → le maniglie sparivano oltre i bordi del canvas nero; con lo zoom vista ridotto al 46% le 4 maniglie sono tornate visibili e cliccabili, il riquadro viola combacia esattamente con i bordi dell'immagine renderizzata. Type-check pulito.
+
 ## 2026-07-24 — Fix sincronizzazione effetto: guidata dalle spunte (rimosso il toggle-gate)
 
 Bug segnalato: spuntando i layer nel riquadro e cambiando effetto, l'effetto cambiava solo sul layer sorgente. Causa: la propagazione era gated dal booleano `syncEffect` (il toggle "Applica a tutti"); con il toggle spento le spunte non facevano nulla, ma il riquadro (reso sempre visibile) faceva pensare che bastasse spuntare.
