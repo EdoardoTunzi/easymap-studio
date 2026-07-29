@@ -26,16 +26,21 @@ Spuntare gli step completati; aggiungere nuovi step quando emergono. Tenere alli
 - [x] Sistema palette colori (gradient map globale): 7 preset fluorescenti caldi + editor color picker + intensità, valido per ogni shader (tab Palette)
 - [x] Preset degli effetti: salva/carica il look (shader + parametri + size + palette) su IndexedDB (store effectPresets, DB v2), pannello nel tab Shader
 - [x] Sidebar shadcn (Provider/Sidebar/Inset) con collapse nativo (SidebarTrigger) e resize via drag handle (localStorage, min 240/max 520px). Toolbar Move/Shader/Palette/Assets/Output spostata dentro SidebarInset, brand EASYVJ in SidebarHeader
+- [x] Toggle visibilità dei riferimenti di mapping (pulsante occhio nella toolbar del canvas): nasconde cornice corner-pin e maniglie/forme mask per valutare l'effetto senza sovrapposizioni. Solo in Control, l'Output non li disegna mai
 - [x] Zoom/pan della vista di anteprima in Control (rotellina + pulsanti + Spazio/click centrale per il pan), puramente visivo — non altera corners/transform, l'Output non ne risente mai. Risolve le maniglie del corner-pin irraggiungibili quando l'asset è ingrandito oltre i bordi del canvas
 - [ ] Definire la palette colori dell'app (rimandata: per ora tema neutro shadcn dark)
 - [ ] Drag diretto dell'immagine sul canvas in modalità MOVE (ora il pan è solo da pad direzionale / trascinamento del quad corner-pin)
-- [ ] Pannello destro (descrizione/generazione shader) e timeline in basso come nello screenshot MAPSHROOM
-- [ ] Pannello live: luminosità / colore / velocità globali (oltre ai parametri per-shader)
-- [ ] Import shader GLSL da parte dell'utente (textarea/file → parser ISF)
+- [x] Pannello destro (generazione shader) e timeline in basso come nello screenshot MAPSHROOM — il pannello destro è il Generative Lab (vedi Fase 2.5), la timeline è la barra playlist
+- [x] Pannello live: controlli globali per-layer validi per QUALSIASI shader (velocità, rotazione, pan, kaleidoscopio, mirror X/Y, pixelate, luminosità, contrasto, saturazione, posterize, negativo) — implementati nel wrapper GLSL (`easyvj_fxUv`/`easyvj_fxColor`), UI in `FxControlsPanel`
+- [x] 30 shader psytrance/techno (`src/shaders/psy*.glsl`): libreria da 41 a 71 effetti, tutti verificati in compilazione WebGL
+- [x] 20 shader "Morph" source-driven (`src/shaders/morph*.glsl`) sulla scia di 3D Surface Morph Spirals: la luminanza dell'asset fa da mappa di quota (`lum * morphDepth`) e deforma la geometria dell'effetto. Libreria a 91 effetti; provino verificato renderizzandoli con l'asset reale, non con la texture di fallback
+- [x] Palette casuale con numero di colori selezionabile (2–5) e schemi di armonia (analoga/complementare/triadica/split/monocromatica), disponibile sia nel pannello Palette sia in quello Shader
+- [ ] Valutare se includere `FxControls` in `EffectSnapshot` (ora sono per-layer, quindi preset e clip della playlist non li catturano — scelta voluta: non si azzerano a ogni transizione)
+- [x] Import shader GLSL da parte dell'utente (editor GLSL live nel Generative Lab → parser ISF)
 - [x] Color picker UI per gli uniform vec3 dei singoli shader (sezione "Colori effetto" nel pannello Shader e nell'editor clip; per-layer in colorParams, incluso in preset/playlist/crossfade/thumbnail)
 - [x] 10 shader "Liquid" sulla scia di 3D Surface Morph Spirals (file liquid*.glsl, source-driven con morph da luminanza e uniform colore)
 - [x] Generatore casuale di palette (bottone "Palette casuale" nel pannello Palette: 5 colori HSL armonici scuro→acceso, attiva la palette)
-- [ ] Palette memorizzata per-shader (ora è globale) + salvataggio di palette custom dell'utente
+- [ ] Palette memorizzata per-shader (ora è per-layer) + salvataggio di palette custom dell'utente
 - [ ] Anteprime/thumbnail degli shader nella libreria (come i preset nello screenshot MAPSHROOM) — il motore esiste già: `src/engine/effectThumbnail.ts` (usato dalle card della playlist)
 - [ ] Export/import progetto come file JSON (backup portabile tra macchine)
 - [ ] PWA: icone reali (pwa-192x192.png, pwa-512x512.png mancanti in public/) e test offline
@@ -78,6 +83,29 @@ Modello: scena = pila di Layer indipendenti; ogni layer ha contenuto (img/gif/vi
 - [ ] Opzione "tratta il nero come trasparente" (luminance key) per immagini senza canale alpha
 - [ ] Warp proiettivo vero (omografia nello shader o mesh suddivisa) — il warp attuale a 2 triangoli può creare una piega diagonale con deformazioni estreme
 - [ ] Rimozione sfondo automatica (client-side ML o servizio esterno — decisione rimandata, per ora si caricano PNG già scontornati)
+
+## Fase 2.5 — Generative Lab (visual generativi creati nell'app)
+
+Pannello destro dedicato alla creazione di visual generativi in stile Refik Anadol. Il risultato è
+una sorgente GLSL nella stessa convenzione ISF-like degli shader statici, quindi diventa un effetto
+come tutti gli altri (palette, maschere, blend, playlist, sync funzionano senza codice dedicato).
+
+- [x] Pannello destro ridimensionabile (`generativeLabOpen` in uiStore, voce "Generative" in toolbar), con hook `use-resizable-width` esteso al bordo destro
+- [x] Catalogo di 6 moduli combinabili (Flow Field, FBM Domain Warp, Worley Cells, Wave Interference, Point Grid, Color Cycle) con peso e blend mode per istanza, stack riordinabile
+- [x] Composizione dello stack in un'unica sorgente GLSL (`composeModuleSource`) con identificatori prefissati dall'instanceId e valori correnti emessi come `@default`
+- [x] Editor GLSL live (CodeMirror) con modalità "codice manuale" e ritorno ai moduli ("Ricomponi dai moduli")
+- [x] Anteprima live nel pannello (mini Canvas R3F) e "Genera variante" (randomizzazione entro i range, sia da moduli sia da codice)
+- [x] Salvataggio su IndexedDB (store `generativeVisuals`, DB v4) + libreria "I miei visual" con thumbnail, duplica/rinomina/elimina; registrazione in `effectsStore` al load di Control e Output
+- [x] Applicazione come nuovo layer generativo o come effetto del layer attivo; broadcast `type: 'shader'` per aggiornare una finestra Output già aperta
+- [x] **Applicazione in tempo reale** (default, con interruttore per tornare al flusso manuale): ogni modifica del draft va subito sul layer attivo e sull'Output. Richiede `adoptShaderDefaults` in layersStore, che azzera i params memorizzati per quel nome di shader — altrimenti mascherano i nuovi `@default` e le modifiche sembrano non applicarsi
+- [x] Draft persistito in localStorage: sopravvive al reload con il suo `editingId`, così il Salva aggiorna il visual invece di creare duplicati
+- [x] Fix "sul layer si vede solo il primo modulo": la key del `<shaderMaterial>` usava il *nome* dello shader, che non cambia quando un visual viene rigenerato → Three riusava il programma GLSL già compilato. Ora `ParsedShader` ha un `id` per compilazione, usato come key del materiale e nella cache delle thumbnail
+- [x] Fix larghezza pannello: il Viewport di Radix ScrollArea (`display:table; min-width:100%`) impediva al contenuto di restringersi e a pannello stretto il lato destro finiva tagliato; larghezza massima limitata a due terzi del viewport
+- [ ] **Futuro: motore particellare 3D GPU-instanced** — è il passo che avvicinerebbe davvero le "data sculpture" di Anadol: point cloud reali con profondità e camera (GPGPU su render target per posizioni/velocità, `InstancedMesh` o `THREE.Points`, curl noise che muove le particelle invece di colorare i pixel). Richiede un motore nuovo accanto a `ShaderPlane` e una valutazione seria delle performance per l'uso live; l'attuale approccio fullscreen 2D resta la strada per il realtime leggero
+- [ ] Futuro: feedback/trail buffer (ping-pong render target) per le scie che si accumulano, l'altro elemento riconoscibile del look "data sculpture"
+- [ ] Futuro: post-processing condiviso (bloom/glow) sopra lo stack dei moduli
+- [ ] Futuro: moduli aggiuntivi (reaction-diffusion, curl noise 3D proiettato, campo di linee)
+- [ ] Futuro: export/import di un visual come file (.glsl o JSON) per condividerlo tra macchine
 
 ## Fase 3 — Live performance
 

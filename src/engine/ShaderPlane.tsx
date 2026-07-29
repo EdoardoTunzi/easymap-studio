@@ -44,6 +44,19 @@ export function buildUniforms(shader: ParsedShader | undefined): Record<string, 
     uMaskInvert: { value: new Array(MASK_SLOTS).fill(0) },
     uMaskTex: { value: FALLBACK_TEXTURE },
     uMaskTexOn: { value: 0 },
+    // controlli globali del layer: default neutri (nessuna alterazione)
+    uFxSpeed: { value: 1 },
+    uFxRotation: { value: 0 },
+    uFxOffset: { value: new THREE.Vector2(0, 0) },
+    uFxKaleido: { value: 0 },
+    uFxMirrorX: { value: 0 },
+    uFxMirrorY: { value: 0 },
+    uFxPixelate: { value: 0 },
+    uFxContrast: { value: 1 },
+    uFxBrightness: { value: 1 },
+    uFxSaturation: { value: 1 },
+    uFxPosterize: { value: 0 },
+    uFxInvert: { value: 0 },
   }
   if (shader) {
     for (const control of shader.controls) {
@@ -121,6 +134,20 @@ function EffectPass({ layerId, variant, renderOrder, geometry, controllerRef, ma
     u.uScale.value = fx.size
     u.uLumaKey.value = l.lumaKey
     u.uOpacity.value = fx.opacity
+    // controlli globali: proprietà del layer, valgono per qualunque shader
+    const g = l.fx
+    u.uFxSpeed.value = g.speed
+    u.uFxRotation.value = g.rotation
+    ;(u.uFxOffset.value as THREE.Vector2).set(g.offsetX, g.offsetY)
+    u.uFxKaleido.value = g.kaleido
+    u.uFxMirrorX.value = g.mirrorX ? 1 : 0
+    u.uFxMirrorY.value = g.mirrorY ? 1 : 0
+    u.uFxPixelate.value = g.pixelate
+    u.uFxContrast.value = g.contrast
+    u.uFxBrightness.value = g.brightness
+    u.uFxSaturation.value = g.saturation
+    u.uFxPosterize.value = g.posterize
+    u.uFxInvert.value = g.invert
     // palette del passaggio (gradient map)
     const pal = fx.palette
     u.uPaletteOn.value = pal.enabled ? 1 : 0
@@ -174,7 +201,9 @@ function EffectPass({ layerId, variant, renderOrder, geometry, controllerRef, ma
   return (
     <mesh geometry={geometry} renderOrder={renderOrder}>
       <shaderMaterial
-        key={`${shader.name}|${layer.blendMode}`}
+        // shader.id (non il nome): un visual generativo rigenerato mantiene il nome ma cambia
+        // sorgente, e senza ricreare il materiale Three riuserebbe il programma GLSL già compilato
+        key={`${shader.id}|${layer.blendMode}`}
         ref={materialRef}
         vertexShader={shader.vertexShader}
         fragmentShader={shader.fragmentShader}

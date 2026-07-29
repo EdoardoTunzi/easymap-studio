@@ -61,6 +61,49 @@ export interface LayerTransition extends EffectSnapshot {
   progress: number
 }
 
+/**
+ * Controlli globali del layer, validi per QUALSIASI shader: agiscono nel wrapper GLSL, prima
+ * (uv) e dopo (colore) `processColor`. Servono a dare profondità di regolazione anche agli
+ * effetti che espongono pochi uniform propri.
+ */
+export interface FxControls {
+  /** Moltiplicatore del tempo dell'effetto (1 = velocità originale). */
+  speed: number
+  /** Rotazione del pattern in radianti. */
+  rotation: number
+  offsetX: number
+  offsetY: number
+  /** Segmenti del caleidoscopio; < 2 = disattivato. */
+  kaleido: number
+  mirrorX: boolean
+  mirrorY: boolean
+  /** Lato della griglia di quantizzazione; < 1 = disattivato. */
+  pixelate: number
+  contrast: number
+  brightness: number
+  saturation: number
+  /** Livelli di colore per canale; < 2 = disattivato. */
+  posterize: number
+  /** Miscela col negativo, 0..1. */
+  invert: number
+}
+
+export const DEFAULT_FX: FxControls = {
+  speed: 1,
+  rotation: 0,
+  offsetX: 0,
+  offsetY: 0,
+  kaleido: 0,
+  mirrorX: false,
+  mirrorY: false,
+  pixelate: 0,
+  contrast: 1,
+  brightness: 1,
+  saturation: 1,
+  posterize: 0,
+  invert: 0,
+}
+
 /** Modalità di fusione del layer con quelli sottostanti. */
 export type BlendMode = 'normal' | 'add' | 'screen' | 'multiply'
 
@@ -91,6 +134,12 @@ export interface Layer {
   shaderName: string
   /** Size globale del pattern dello shader (uniform uScale). */
   size: number
+  /**
+   * Trattamenti globali dell'effetto (velocità, geometria, colore). Sono proprietà del LAYER
+   * come opacità e blend, non parte dell'`EffectSnapshot`: cambiando effetto o clip di playlist
+   * restano applicati, così il look del layer non si azzera a ogni transizione.
+   */
+  fx: FxControls
   /** Parametri live per shader: nome shader -> nome uniform -> valore. */
   params: Record<string, Record<string, number>>
   /** Colori (uniform vec3) per shader: nome shader -> nome uniform -> RGB 0..1. */
@@ -123,6 +172,7 @@ function withEffectOf(target: Layer, source: Layer): Layer {
     ...target,
     shaderName: source.shaderName,
     size: source.size,
+    fx: { ...source.fx },
     params: { ...target.params, [source.shaderName]: { ...source.params[source.shaderName] } },
     colorParams: {
       ...target.colorParams,
@@ -147,6 +197,7 @@ export function createLayer(partial?: Partial<Layer>): Layer {
     lumaKey: 0,
     shaderName: DEFAULT_SHADER_NAME,
     size: DEFAULT_SIZE,
+    fx: { ...DEFAULT_FX },
     params: {},
     colorParams: {},
     palette: createDefaultPalette(),
@@ -217,7 +268,18 @@ interface LayersState {
   setActiveMedia: (media: MediaAsset | null) => void
   setActiveLumaKey: (lumaKey: number) => void
   setActiveShader: (shaderName: string) => void
+  /**
+   * Applica uno shader al layer attivo AZZERANDO i parametri memorizzati per quel nome.
+   * Serve al Generative Lab: lì i valori correnti vivono nei `@default` della sorgente rigenerata,
+   * e i params che il layer aveva salvato per lo stesso nome li maschererebbero, facendo sembrare
+   * che le modifiche non vengano applicate.
+   */
+  adoptShaderDefaults: (shaderName: string) => void
   setActiveSize: (size: number) => void
+  /** Aggiorna i controlli globali dell'effetto sul layer attivo (+ layer sincronizzati). */
+  setActiveFx: (patch: Partial<FxControls>) => void
+  /** Riporta i controlli globali ai valori neutri. */
+  resetActiveFx: () => void
   setActiveParam: (uniformName: string, value: number) => void
   /** Imposta un uniform colore (vec3) dello shader attivo. */
   setActiveColorParam: (uniformName: string, rgb: RGB) => void
@@ -232,8 +294,12 @@ interface LayersState {
   setPaletteAmount: (amount: number) => void
   setPaletteCount: (count: number) => void
   setPaletteColor: (index: number, rgb: RGB) => void
-  /** Sostituisce tutti i colori della palette (es. generatore casuale) e la attiva. */
-  setPaletteColors: (colors: RGB[]) => void
+  /**
+   * Sostituisce tutti i colori della palette (es. generatore casuale) e la attiva.
+   * Con `count` imposta anche quanti stop sono attivi, così generare una palette a N colori
+   * non lascia visibili gli stop della palette precedente.
+   */
+  setPaletteColors: (colors: RGB[], count?: number) => void
   applyPalettePreset: (name: string) => void
 
   // maschere del layer attivo
@@ -388,7 +454,18 @@ export const useLayersStore = create<LayersState>((set, get) => {
     setActiveLumaKey: (lumaKey) => patchActive(() => ({ lumaKey })),
     // shader / size / param sono EFFETTO → passano da editEffect (propagazione col link)
     setActiveShader: (shaderName) => editEffect(() => ({ shaderName })),
+
+    adoptShaderDefaults: (shaderName) =>
+      editEffect((l) => ({
+        shaderName,
+        params: { ...l.params, [shaderName]: {} },
+        colorParams: { ...l.colorParams, [shaderName]: {} },
+      })),
+
     setActiveSize: (size) => editEffect(() => ({ size })),
+
+    setActiveFx: (patch) => editEffect((l) => ({ fx: { ...l.fx, ...patch } })),
+    resetActiveFx: () => editEffect(() => ({ fx: { ...DEFAULT_FX } })),
 
     setActiveParam: (uniformName, value) =>
       editEffect((l) => ({
@@ -440,11 +517,13 @@ export const useLayersStore = create<LayersState>((set, get) => {
         colors[index] = rgb
         return { palette: { ...l.palette, colors, activePreset: CUSTOM_PRESET } }
       }),
-    setPaletteColors: (colors) =>
+    setPaletteColors: (colors, count) =>
       editEffect((l) => ({
         palette: {
           ...l.palette,
           colors: colors.map((c) => [...c] as RGB),
+          count:
+            count == null ? l.palette.count : Math.max(2, Math.min(PALETTE_STOPS, Math.round(count))),
           activePreset: CUSTOM_PRESET,
           enabled: true,
         },

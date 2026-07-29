@@ -1,6 +1,8 @@
 import { useEffect, useRef, type RefObject } from 'react'
-import { Minus, Plus, Scan } from 'lucide-react'
+import { Minus, Plus, Scan, Eye, EyeOff } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { Separator } from '@/components/ui/separator'
+import { cn } from '@/lib/utils'
 import { useUiStore } from '@/store/uiStore'
 
 const WHEEL_STEP = 1.15
@@ -83,11 +85,16 @@ export function useViewportPanZoom(containerRef: RefObject<HTMLElement | null>) 
   }, [containerRef])
 }
 
-/** Mini toolbar flottante per zoom in/out/reset della vista di anteprima (angolo in basso a destra). */
+/**
+ * Mini toolbar flottante in basso a destra: zoom in/out/reset della vista di anteprima e
+ * visibilità degli overlay di mapping.
+ */
 export function ViewportZoomControls() {
   const zoom = useUiStore((s) => s.view.zoom)
   const zoomViewBy = useUiStore((s) => s.zoomViewBy)
   const resetView = useUiStore((s) => s.resetView)
+  const overlaysVisible = useUiStore((s) => s.overlaysVisible)
+  const toggleOverlays = useUiStore((s) => s.toggleOverlays)
 
   return (
     <div className="pointer-events-auto absolute bottom-3 right-3 flex items-center gap-0.5 rounded-lg border border-white/10 bg-black/70 p-1 backdrop-blur-sm">
@@ -125,6 +132,26 @@ export function ViewportZoomControls() {
         onClick={resetView}
       >
         <Scan className="size-3.5" />
+      </Button>
+
+      <Separator orientation="vertical" className="mx-0.5 h-5 bg-white/15" />
+
+      {/* Nasconde maniglie e cornice del mapping: servono a posizionare, ma coprono l'effetto
+          quando lo si vuole valutare davvero. */}
+      <Button
+        type="button"
+        variant="ghost"
+        size="icon-xs"
+        title={
+          overlaysVisible
+            ? 'Nascondi i riferimenti di mapping (cornice e maniglie)'
+            : 'Mostra i riferimenti di mapping (cornice e maniglie)'
+        }
+        aria-pressed={!overlaysVisible}
+        onClick={toggleOverlays}
+        className={cn(!overlaysVisible && 'text-amber-400 hover:text-amber-300')}
+      >
+        {overlaysVisible ? <Eye className="size-3.5" /> : <EyeOff className="size-3.5" />}
       </Button>
     </div>
   )

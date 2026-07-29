@@ -11,6 +11,13 @@ export interface ColorControl {
 }
 
 export interface ParsedShader {
+  /**
+   * Identità della *compilazione*, nuova a ogni parse: il nome non basta come chiave del
+   * materiale, perché un visual generativo può essere rigenerato mantenendolo (nuovi moduli,
+   * parametri diversi). Senza questo, React riusa il materiale e Three continua a girare il
+   * programma GLSL compilato la prima volta, ignorando la sorgente aggiornata.
+   */
+  id: string
   name: string
   raw: string
   controls: UniformControl[]
@@ -64,6 +71,19 @@ uniform float uMaskType[8];          // 0 = rettangolo, 1 = ellisse
 uniform float uMaskInvert[8];        // 1 = ritaglia fuori invece che dentro
 uniform sampler2D uMaskTex;          // maschera da immagine (stencil)
 uniform float uMaskTexOn;            // 1 = usa la maschera-immagine
+// --- Controlli globali del layer (validi per QUALSIASI shader) ---
+uniform float uFxSpeed;              // moltiplicatore del tempo
+uniform float uFxRotation;           // rotazione del pattern (rad)
+uniform vec2 uFxOffset;              // pan del pattern
+uniform float uFxKaleido;            // segmenti radiali (0 = off)
+uniform float uFxMirrorX;            // 1 = specchia orizzontalmente
+uniform float uFxMirrorY;            // 1 = specchia verticalmente
+uniform float uFxPixelate;           // 0 = off, altrimenti lato del blocco
+uniform float uFxContrast;
+uniform float uFxBrightness;
+uniform float uFxSaturation;
+uniform float uFxPosterize;          // 0 = off, altrimenti livelli per canale
+uniform float uFxInvert;             // 0..1 miscela col negativo
 varying vec2 vUv;
 varying vec2 vPos;
 
@@ -103,6 +123,49 @@ float easyvj_maskRegion() {
   return clamp(region, 0.0, 1.0);
 }
 
+// Trasformazioni della uv dell'effetto, comuni a tutti gli shader: agiscono PRIMA di
+// processColor, quindi valgono anche per gli shader che non ne sanno nulla.
+vec2 easyvj_fxUv(vec2 uv) {
+  vec2 p = uv - 0.5;
+  if (uFxMirrorX > 0.5) p.x = abs(p.x);
+  if (uFxMirrorY > 0.5) p.y = abs(p.y);
+  // caleidoscopio: ripiega l'angolo dentro un solo spicchio e lo replica in cerchio
+  if (uFxKaleido > 1.5) {
+    float a = atan(p.y, p.x);
+    float r = length(p);
+    float seg = 6.28318530718 / uFxKaleido;
+    a = abs(mod(a + seg * 0.5, seg) - seg * 0.5);
+    p = vec2(cos(a), sin(a)) * r;
+  }
+  if (abs(uFxRotation) > 0.0001) {
+    float c = cos(uFxRotation);
+    float s = sin(uFxRotation);
+    p = vec2(c * p.x - s * p.y, s * p.x + c * p.y);
+  }
+  p += uFxOffset;
+  vec2 result = p + 0.5;
+  // quantizzazione a blocchi: campiona l'effetto su una griglia grossolana
+  if (uFxPixelate > 0.5) {
+    float cells = max(uFxPixelate, 1.0);
+    result = (floor(result * cells) + 0.5) / cells;
+  }
+  return result;
+}
+
+// Correzioni di colore comuni, applicate DOPO processColor e prima della palette.
+vec3 easyvj_fxColor(vec3 col) {
+  col *= uFxBrightness;
+  col = (col - 0.5) * uFxContrast + 0.5;
+  float luma = dot(col, vec3(0.299, 0.587, 0.114));
+  col = mix(vec3(luma), col, uFxSaturation);
+  if (uFxPosterize > 1.5) {
+    float levels = max(uFxPosterize, 2.0);
+    col = floor(col * levels) / (levels - 1.0);
+  }
+  col = mix(col, 1.0 - col, uFxInvert);
+  return clamp(col, 0.0, 1.0);
+}
+
 ${raw}
 
 // Gradient map globale: mappa una scala 0..1 (luminanza dell'effetto) sulla palette scelta.
@@ -137,7 +200,11 @@ void main() {
   // La uv dell'effetto è scalata attorno al centro dal controllo Size globale (uScale):
   // uScale > 1 = pattern più grande, uScale < 1 = pattern più piccolo/ripetuto.
   vec2 fxUv = (vUv - 0.5) / uScale + 0.5;
-  vec4 color = processColor(uTexture, fxUv, uTime, uResolution);
+  // ...poi le trasformazioni globali del layer (mirror, kaleido, rotazione, pan, pixelate)
+  fxUv = easyvj_fxUv(fxUv);
+  // uFxSpeed scala il tempo dell'effetto: rallenta o accelera qualunque shader
+  vec4 color = processColor(uTexture, fxUv, uTime * uFxSpeed, uResolution);
+  color.rgb = easyvj_fxColor(color.rgb);
   // Ricolora l'effetto con la palette scelta (gradient map per luminanza), valido per ogni shader.
   if (uPaletteOn > 0.5) {
     float t = dot(color.rgb, vec3(0.299, 0.587, 0.114));
@@ -181,6 +248,7 @@ export function parseShader(raw: string): ParsedShader {
   }
 
   return {
+    id: crypto.randomUUID(),
     name,
     raw,
     controls,

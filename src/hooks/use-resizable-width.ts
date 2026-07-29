@@ -5,11 +5,19 @@ interface UseResizableWidthOptions {
   min: number
   max: number
   storageKey: string
+  /** Bordo su cui vive la maniglia: a destra il pannello cresce trascinando verso sinistra. */
+  edge?: 'left' | 'right'
 }
 
 /** Larghezza trascinabile persistita in localStorage. Non usa lo stato di collapse di shadcn Sidebar
  *  (che è on/off), qui gestiamo un valore continuo in pixel per il drag handle. */
-export function useResizableWidth({ defaultWidth, min, max, storageKey }: UseResizableWidthOptions) {
+export function useResizableWidth({
+  defaultWidth,
+  min,
+  max,
+  storageKey,
+  edge = 'left',
+}: UseResizableWidthOptions) {
   const [width, setWidth] = useState(() => {
     if (typeof window === 'undefined') return defaultWidth
     const stored = Number(window.localStorage.getItem(storageKey))
@@ -30,8 +38,15 @@ export function useResizableWidth({ defaultWidth, min, max, storageKey }: UseRes
       // React, quindi il valore scritto su pointerup è sempre quello davvero finale
       let latestWidth = startWidth
 
+      const direction = edge === 'right' ? -1 : 1
+      // su finestre strette il massimo teorico lascerebbe il pannello fuori dallo schermo:
+      // non si può occupare più di due terzi del viewport
+      const effectiveMax = Math.max(min, Math.min(max, Math.round(window.innerWidth * 0.66)))
       const onMove = (e: PointerEvent) => {
-        const next = Math.min(max, Math.max(min, startWidth + (e.clientX - startX)))
+        const next = Math.min(
+          effectiveMax,
+          Math.max(min, startWidth + direction * (e.clientX - startX)),
+        )
         latestWidth = next
         setWidth(next)
       }
@@ -43,7 +58,7 @@ export function useResizableWidth({ defaultWidth, min, max, storageKey }: UseRes
       window.addEventListener('pointermove', onMove)
       window.addEventListener('pointerup', onUp)
     },
-    [min, max, storageKey],
+    [min, max, storageKey, edge],
   )
 
   return { width, startResize }

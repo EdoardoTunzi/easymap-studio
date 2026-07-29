@@ -7,6 +7,7 @@ import { OutputLauncher } from '@/components/ControlPanel/OutputLauncher'
 import { ProjectsPanel } from '@/components/ControlPanel/ProjectsPanel'
 import { EffectsPanel } from '@/components/EffectsLibrary/EffectsPanel'
 import { EffectPresetsPanel } from '@/components/EffectsLibrary/EffectPresetsPanel'
+import { FxControlsPanel } from '@/components/EffectsLibrary/FxControlsPanel'
 import { PositioningPanel } from '@/components/Positioning/PositioningPanel'
 import { BackgroundKeyPanel } from '@/components/Positioning/BackgroundKeyPanel'
 import { MovePanel } from '@/components/Positioning/MovePanel'
@@ -17,6 +18,7 @@ import { MaskOverlay } from '@/components/Mask/MaskOverlay'
 import { CornerPinOverlay } from '@/components/Positioning/CornerPinOverlay'
 import { ViewportZoomControls, useViewportPanZoom } from '@/components/layout/ViewportZoomControls'
 import { PlaylistBar } from '@/components/Playlist/PlaylistBar'
+import { GenerativeLabPanel } from '@/components/Generative/GenerativeLabPanel'
 import {
   Sidebar,
   SidebarContent,
@@ -29,7 +31,7 @@ import { Separator } from '@/components/ui/separator'
 import { useResizableWidth } from '@/hooks/use-resizable-width'
 import { useUiStore } from '@/store/uiStore'
 import { useBroadcastPublisher } from '@/lib/sync'
-import { useAutosave } from '@/lib/persistence'
+import { useAutosave, useLoadGenerativeVisuals } from '@/lib/persistence'
 
 const PANEL_TITLE: Record<string, string> = {
   layers: 'Layers',
@@ -53,6 +55,8 @@ function PanelContent() {
       return (
         <div className="flex flex-col gap-6">
           <EffectsPanel />
+          <Separator />
+          <FxControlsPanel />
           <Separator />
           <EffectPresetsPanel />
         </div>
@@ -81,12 +85,22 @@ function PanelContent() {
 export function ControlPage() {
   useBroadcastPublisher()
   useAutosave()
+  useLoadGenerativeVisuals()
   const activePanel = useUiStore((s) => s.activePanel)
+  const generativeLabOpen = useUiStore((s) => s.generativeLabOpen)
+  const overlaysVisible = useUiStore((s) => s.overlaysVisible)
   const { width, startResize } = useResizableWidth({
     defaultWidth: 288,
     min: 240,
     max: 520,
     storageKey: 'easyvj-sidebar-width',
+  })
+  const { width: labWidth, startResize: startLabResize } = useResizableWidth({
+    defaultWidth: 340,
+    min: 280,
+    max: 640,
+    storageKey: 'easyvj-generative-width',
+    edge: 'right',
   })
   const stageRef = useRef<HTMLDivElement>(null)
   useViewportPanZoom(stageRef)
@@ -121,11 +135,27 @@ export function ControlPage() {
         <TopToolbar />
         <main ref={stageRef} className="relative min-h-0 flex-1 overflow-hidden bg-black">
           <StageCanvas autoFit controlView />
-          {activePanel === 'mask' ? <MaskOverlay /> : <CornerPinOverlay />}
+          {overlaysVisible && (activePanel === 'mask' ? <MaskOverlay /> : <CornerPinOverlay />)}
           <ViewportZoomControls />
         </main>
         <PlaylistBar />
       </SidebarInset>
+      {generativeLabOpen && (
+        <aside
+          // min-w-0 + overflow-hidden: senza, il codice GLSL a righe lunghe dell'editor
+          // allargherebbe il pannello oltre la larghezza impostata (min-width:auto dei flex item)
+          className="relative h-svh min-w-0 shrink-0 overflow-hidden border-l border-sidebar-border"
+          style={{ width: labWidth }}
+        >
+          <div
+            onPointerDown={startLabResize}
+            role="separator"
+            aria-orientation="vertical"
+            className="absolute inset-y-0 -left-1 z-30 w-2 cursor-col-resize touch-none select-none after:absolute after:inset-y-0 after:left-1/2 after:w-px after:-translate-x-1/2 after:bg-transparent after:transition-colors hover:after:bg-sidebar-ring active:after:bg-sidebar-ring"
+          />
+          <GenerativeLabPanel />
+        </aside>
+      )}
     </SidebarProvider>
   )
 }

@@ -2,6 +2,93 @@
 
 Ogni modifica al progetto va registrata qui con data, descrizione e motivazione. Le voci più recenti in alto dentro ogni giornata.
 
+## 2026-07-29 — README aggiornato con le feature recenti
+
+Richiesta dell'utente: documentare nel `README.md` le funzionalità aggiunte nelle ultime sessioni.
+
+- Contato il numero reale di shader prima di scriverlo (37 preesistenti + 30 `psy*` + 20 `morph*` = **87** file; le 91 voci viste nei test includevano i visual generativi salvati in locale durante le prove). Sostituiti i riferimenti obsoleti "oltre 35"/"37 shader".
+- Sezione **"Cosa fa, in pratica"**: aggiunti i passi su controlli globali e Generative Lab (da 7 a 9 punti).
+- **"Effetti e palette colori"**: libreria descritta per famiglie (Halo, Liquid, Psy, Morph) con la spiegazione del `morphDepth`; aggiunti controlli globali e palette casuale 2–5 colori con schemi di armonia.
+- Nuova sezione **"Generative Lab — crea i tuoi visual"** (lato utente) e **"Generative Lab"** (lato tecnico, con la nota sugli identificatori prefissati e i valori emessi come `@default`).
+- **"Layer e maschere"**: aggiunti i riferimenti di mapping nascondibili; precisato che la sincronizzazione fra layer propaga anche i controlli globali.
+- **"Progetti e preset"**: chiarito che i controlli globali *non* sono catturati da preset e clip, ed è una scelta voluta — evita che l'utente lo scambi per un bug.
+- Stack: aggiunto CodeMirror 6. Roadmap: aggiunta la Fase 2.5 completata e una voce "Oltre" con motore particellare 3D e feedback buffer. Aggiornato lo stato in cima.
+
+## 2026-07-29 — 20 effetti "Morph": source-driven con morphDepth come 3D Surface Morph Spirals
+
+Richiesta dell'utente: altri 20 effetti sulla scia di `3DSurfaceMorphSpirals.glsl`, di cui apprezza il `morphDepth`.
+
+**Cos'è il morph depth** (la caratteristica da replicare): lo shader legge la texture sorgente, ne ricava la luminanza e la usa come **mappa di quota** per deformare la geometria dell'effetto (`lum * morphDepth`). L'asset non fa solo da maschera: modella il pattern, che così sembra avvolgere il soggetto. Lo schema, già usato dai `liquid*.glsl`, è: leggi `source`, esci se `length(source.rgb) <= blackThreshold`, calcola `lum`, inserisci `lum * morphDepth` nella geometria, chiudi con `mix(source.rgb, fx + source.rgb * psyColor, 0.85)`.
+
+**20 nuovi file `src/shaders/morph*.glsl`** (libreria da 71 a 91 effetti): Concentric Waves, Electric Contours (isoipse della luminanza), Hex Lattice, Ribbon Flow, Crystal Facets, Radial Shards, Liquid Dunes, Torus Field, Kaleido Depth, Spiral Galaxy, Voronoi Depth, Interference Grid (moiré sfasato dal rilievo), Chrome Folds, Tunnel Depth, Petal Bloom, Lightning Web, Fractal Depth, Aurora Depth, Molten Rings, Depth Scan (piano di scansione tipo lidar che attraversa la quota). Ognuno espone `speed`, `morphDepth`, `blackThreshold`, un uniform colore e 2-4 parametri propri, quindi eredita gratis slider, palette e controlli globali.
+
+**Verifica**: compilati tutti e 91 i fragment shader in WebGL — 0 errori. Poiché sono source-driven, la verifica con la texture di fallback sarebbe inutile: ho renderizzato un provino di tutti e 20 **con l'asset reale** (`/default-stage.png`) tramite un renderer offscreen, misurando luminanza media e percentuale di pixel bruciati dentro la sagoma. `Morph Fractal Depth` risultava un verde piatto saturo (accumulo IFS senza limite): corretto con decadimento più rapido e `clamp`. Risultato finale: luma 19–64, bruciature ≤1.3%, nessuno spento. Type-check, build e console puliti.
+
+## 2026-07-28 — 30 nuovi effetti psytrance/techno + controlli globali + palette casuale a N colori
+
+Richiesta dell'utente: più effetti creativi ispirati ai software di visual mapping, palette casuali fino a 5 colori per *tutti* gli effetti, e più controlli di regolazione.
+
+**30 nuovi shader** in `src/shaders/psy*.glsl` (la libreria passa da 41 a 71 voci), pensati per stage psytrance/techno: Strobe Grid, Tunnel Rush, Bass Rings, Fractal Mandala, DNA Helix, Laser Sweep, Hex Pulse, Plasma Storm, Sacred Geometry, Digital Rain, Warp Stars, Liquid Mercury, Trippy Spiral, Circuit Board, Kaleido Fractal, Neon Wireframe, Acid Melt, Pulse Bars, Vortex Fractal, Techno Scanlines, Eye, Infinite Zoom, Energy Web, Chrome Ripple, Alien Organism, Strobe Tunnel, Fractal Flower, Glitch Blocks, Aurora Veil, Mandel Slice. Nessuna modifica al parser: rispettano la convenzione ISF-like già in uso, quindi sono caricati da `import.meta.glob` come gli altri.
+
+**Controlli globali per-layer** (`FxControls` in `layersStore`, uniform `uFx*` nel wrapper di `isfParser.ts`): velocità, rotazione, pan X/Y, kaleidoscopio, mirror X/Y, pixelate, luminosità, contrasto, saturazione, posterize, negativo. Applicati nel wrapper — `easyvj_fxUv` prima di `processColor` e `easyvj_fxColor` dopo — quindi valgono per **qualsiasi** shader, inclusi i 41 preesistenti e i visual generativi, senza toccarne il codice. È la risposta scalabile a "più controlli": con 71 effetti, aggiungere uniform a ciascuno non lo sarebbe. UI in `FxControlsPanel.tsx` (tab Shader).
+- Scelta: `fx` è proprietà del **layer** (come opacità/blend/lumaKey), non parte di `EffectSnapshot`. Così cambiando effetto o clip della playlist i trattamenti restano applicati invece di azzerarsi a ogni transizione. Viene però propagato ai layer sincronizzati (`withEffectOf`) perché passa da `editEffect`.
+- Retrocompatibilità: i progetti salvati senza `fx` prendono i default da `createLayer` in `deserializeLayer` (lo spread non sovrascrive con `undefined`).
+
+**Palette casuale a N colori**: `randomPaletteColors(count)` ora accetta il numero di stop (2..5) e sceglie tra 5 schemi di armonia (analoga, complementare, triadica, split-complementare, monocromatica) invece della sola deriva di tinta. Riempie comunque tutti i `PALETTE_STOPS` ripetendo l'ultimo colore, così alzare "Numero colori" non lascia buchi. `setPaletteColors(colors, count)` imposta anche il conteggio attivo. Pulsanti 2/3/4/5 sia nel pannello Palette sia nel pannello Shader — la palette è una gradient map, quindi ricolora ogni effetto.
+
+**Verifica**: compilati tutti e 71 i fragment shader in un contesto WebGL reale — 0 errori GLSL. Misurata la luminanza media delle anteprime per scovare shader "morti": 8 erano troppo scuri o saturi (Warp Stars a 0.4/255, Tunnel Rush 1.2, Neon Wireframe 1.8, Kaleido Fractal 209.9) e sono stati corretti nelle formule e nei default; ora il range è 10–153. Provino visivo dei 30 controllato a schermo. Lint e `npm run build` puliti, nessun errore in console.
+
+## 2026-07-28 — Fix: sul layer si vedeva solo il primo modulo del visual generativo
+
+Segnalazione dell'utente: aggiungendo più moduli a un visual, il layer continuava a mostrare solo il primo, mentre l'anteprima nel pannello li mostrava tutti.
+
+**Causa**: in `ShaderPlane.tsx` la `key` del `<shaderMaterial>` era `` `${shader.name}|${blendMode}` ``. Un visual rigenerato **mantiene il nome** ma cambia sorgente, quindi la key non cambiava: React riusava il materiale e Three continuava a eseguire il **programma GLSL già compilato** (assegnare `fragmentShader` a un materiale esistente non lo ricompila senza `needsUpdate`). Il layer restava così alla versione registrata la prima volta. L'anteprima non ne soffriva perché usava `key={shader.fragmentShader}`, che cambia a ogni ricomposizione.
+
+- **`src/engine/isfParser.ts`**: `ParsedShader` ha ora un campo `id` (`crypto.randomUUID()` a ogni parse) — è l'identità della *compilazione*, non del visual. Vive solo in memoria: i visual salvati persistono la `source`, non il ParsedShader, quindi nulla cambia per la persistenza.
+- **`src/engine/ShaderPlane.tsx`**: key del materiale basata su `shader.id`.
+- **`src/engine/effectThumbnail.ts`**: `shader.id` nella chiave di cache, che aveva lo stesso difetto — restituiva la miniatura della versione precedente per un visual rigenerato con lo stesso nome. Spostata la ricerca dello shader prima del calcolo della chiave.
+- **`src/components/Generative/GenerativePreview.tsx`**: key da `shader.id` invece dell'intera sorgente (stesso effetto, molto più leggero).
+- Verificato nel browser: un visual con tre moduli (Flow Field + Point Grid + Worley Cells) ora appare sul layer identico all'anteprima. Type-check e `npm run build` puliti, nessun errore in console.
+
+## 2026-07-28 — Fix larghezza pannello Generative Lab + toggle overlay di mapping
+
+Due richieste dell'utente: a larghezza minima il lato destro del Generative Lab finiva tagliato fuori dallo schermo, e la cornice viola del corner-pin impediva di valutare l'effetto applicato.
+
+- **Causa del taglio**: il `Viewport` di Radix ScrollArea avvolge i figli in un div con `display: table; min-width: 100%`, che **non si restringe** sotto la larghezza naturale del contenuto. Col pannello stretto il contenuto sforava e l'`overflow-hidden` dell'`<aside>` lo tagliava invece di adattarlo. Fix in `GenerativeLabPanel.tsx`: `[&>div>div]:block!` sullo ScrollArea (sintassi important di Tailwind v4 — il postfisso `!`, non il prefisso), più `min-w-0`/`truncate` sui controlli che potevano sforare (input nome e i 4 pulsanti azione).
+- **`src/hooks/use-resizable-width.ts`**: il massimo è ora limitato a due terzi del viewport (`window.innerWidth * 0.66`), così su finestre strette il pannello non può essere trascinato fuori dallo schermo.
+- **Toggle overlay**: nuovo `overlaysVisible` + `toggleOverlays` in `uiStore`, pulsante occhio (Eye/EyeOff, ambra quando spento) nella toolbar flottante `ViewportZoomControls`, e `ControlPage` che condiziona il rendering di `MaskOverlay`/`CornerPinOverlay`. È puramente visivo e locale alla finestra Control: l'Output non ha mai disegnato quegli overlay, quindi la proiezione non è toccata.
+- Verificato nel browser: a 280px tutto il contenuto sta dentro il pannello; il drag della maniglia allarga/restringe e persiste; il trascinamento estremo si ferma al limite senza uscire dallo schermo; l'occhio nasconde e ripristina cornice e maniglie. Type-check, lint e `npm run build` puliti.
+
+## 2026-07-28 — Generative Lab: applicazione in tempo reale + fix salvataggi
+
+Segnalazione dell'utente: i salvataggi non funzionavano, le modifiche dal pannello Shader non venivano applicate bene, e non voleva premere "Al layer attivo" a ogni modifica.
+
+**Causa comune dei primi due problemi**: il layer memorizza i parametri per *nome di shader* (`layer.params[shaderName]`). Rigenerando un visual con lo stesso nome, quei valori vecchi **mascheravano i nuovi `@default`** della sorgente ricomposta, quindi le modifiche sembravano non arrivare mai. Il salvataggio invece "non funzionava" perché il draft non sopravviveva al reload: `editingId` andava perso e ogni Salva creava un duplicato (`Visual generativo 2`, `3`, …) invece di aggiornare.
+
+- **`src/store/layersStore.ts`**: nuova azione `adoptShaderDefaults(shaderName)` che assegna lo shader **azzerando** `params`/`colorParams` per quel nome. Passa da `editEffect`, quindi si propaga anche ai layer sincronizzati.
+- **`src/store/generativeStore.ts`**: aggiunto `liveApply` (default **true**) e persistenza del draft in `localStorage` (`easyvj-generative-draft`) via `subscribe`, così ricaricando l'app si riprende con lo stesso `editingId` e il Salva successivo aggiorna il record.
+- **`src/components/Generative/useLiveApply.ts`** (nuovo): sottoscrive il draft e, a ogni cambio dello shader, lo registra in libreria + `adoptShaderDefaults` + `publishGenerativeShader`. Scelte non ovvie: (a) **non applica al mount**, solo su modifica reale o riattivazione dell'interruttore, così aprire il pannello non sovrascrive a sorpresa l'effetto del layer selezionato; (b) digitando il nome si crea uno shader per ogni carattere, quindi i nomi precedenti orfani vengono rimossi dalla libreria — ma **solo se non corrispondono a un visual salvato** (`setSavedVisualNames`, aggiornata dal pannello), altrimenti si cancellerebbero visual veri.
+- **`src/lib/sync.ts`**: `publishGenerativeShader` riusa un `BroadcastChannel` singleton invece di aprirne uno per messaggio — in live viene chiamato a ogni movimento di slider. Serve perché l'Output non conosce un visual **non ancora salvato**: senza, il layer sparirebbe dalla proiezione.
+- **`src/components/ui/switch.tsx`** (nuovo, pattern shadcn su Radix) e pannello: interruttore "Applica in tempo reale", "Al layer attivo" disabilitato quando il live è attivo (con tooltip esplicativo), conferma "Salvato" temporanea sul pulsante Salva.
+- Verificato nel browser: slider mosso → canvas aggiornato all'istante; aggiunta di un modulo → comparsa immediata anche nella finestra `/output` senza salvare; due Salva consecutivi aggiornano lo stesso record; dopo il reload il draft mantiene nome ed `editingId`. Type-check, lint e `npm run build` puliti.
+
+## 2026-07-28 — Generative Lab: editor di visual generativi (moduli + GLSL live)
+
+Nuova feature richiesta dall'utente: una sezione dedicata a creare e gestire visual generativi al momento, in stile Refik Anadol, usabili a tutto schermo o mappati su un asset/layer. Scelte concordate in brainstorming: editor ibrido (moduli no-code **+** editor GLSL live) in una sidebar a **destra**; si resta sul motore shader 2D attuale (il particellare 3D GPU-instanced è rimandato, vedi `TODO.md`); niente audio-reactive per ora; il risultato è un `Layer` normale.
+
+**Perché si integra senza riscritture**: un visual generativo è semplicemente una sorgente GLSL nella stessa convenzione ISF-like già usata da `src/shaders/*.glsl`, quindi passa da `parseShader()` invariato ed eredita gratis palette, maschere, blend mode, corner-pin, playlist e sync. Nessuna modifica al parser né al wrapper GLSL.
+
+- **`src/engine/generativeModules.ts`** (nuovo): catalogo di 6 moduli (Flow Field, FBM Domain Warp, Worley Cells, Wave Interference, Point Grid, Color Cycle) + `composeModuleSource()`. Decisioni non ovvie: (a) gli uniform NON sono dichiarati nei template GLSL ma emessi dalla composizione a partire dai `controls`, così i **valori correnti finiscono nei `@default`** e il parser resta l'unica fonte di verità; (b) ogni identificatore è **prefissato con l'instanceId** (`flowField1_speed`, `flowField1_noise`) per evitare collisioni tra istanze/moduli con helper omonimi, e perché nel pannello Shader gli slider risultano leggibili e raggruppati per modulo; (c) il **primo modulo dello stack assegna sempre** (`acc = c * w`) invece di applicare il blend, altrimenti un `multiply` su `acc = 0` restituirebbe nero; (d) blend di default `screen` per i moduli aggiunti, così si sommano invece di coprirsi.
+- **`src/store/generativeStore.ts`** (nuovo): draft in editing con modalità `modules` (sorgente ricomposta dallo stack) o `code` (il GLSL scritto a mano è la verità e i moduli si congelano). `setSource` ha un guard sull'uguaglianza per evitare che l'editor, ri-sincronizzandosi, passi da solo in modalità codice. `randomize` muta i params in modalità moduli e riscrive i `@default` via regex in modalità codice.
+- **`src/components/Generative/`** (nuovo): `GenerativeLabPanel` (contenitore + azioni), `ModuleStackEditor` (stack riordinabile con slider/colori/blend), `CodeEditorTab` (CodeMirror con `lineWrapping`), `GenerativePreview` (mini Canvas R3F), `GenerativeLibrary` (visual salvati con thumbnail).
+- **`src/store/effectsStore.ts`**: aggiunte `registerShaders` (upsert per nome) e `unregisterShader` per la libreria a runtime.
+- **`src/lib/persistence.ts`**: nuovo store IDB `generativeVisuals` (DB **v4**), CRUD e hook `useLoadGenerativeVisuals` (montato in Control e Output). `uniqueVisualName` deduplica i nomi perché **il nome dello shader è la sua identità** nella libreria e in `layer.shaderName`.
+- **`src/lib/sync.ts`**: nuovo messaggio broadcast `{ type: 'shader' }` per registrare un visual appena salvato anche in una finestra Output già aperta.
+- **`src/hooks/use-resizable-width.ts`**: opzione `edge: 'left' | 'right'` (default invariato) perché a destra il delta del drag va invertito.
+- **Trappole di layout risolte** (il pannello si allargava oltre la sua larghezza): l'`<aside>` ha bisogno di `min-w-0 overflow-hidden` (i flex item hanno `min-width: auto`), il Canvas R3F della preview va ancorato in `absolute inset-0` o detta lui l'altezza ignorando l'`aspect-video`, e CodeMirror va messo in `lineWrapping` per non spingere la larghezza con le righe lunghe.
+- **Dipendenze**: `@uiw/react-codemirror` + `@codemirror/lang-cpp` (highlight C-like, la migliore approssimazione per GLSL su CodeMirror 6).
+- Verificato nel browser: preview live, creazione layer generativo, comparsa nel dropdown Effetto con slider auto-generati, persistenza dopo reload, rendering in `/output` e aggiornamento live via broadcast. Type-check, lint e `npm run build` puliti; nessun errore in console (resta il warning noto THREE.Clock).
+
 ## 2026-07-25 — Link live preview nel README
 
 Richiesta dell'utente: aggiungere il link alla live preview su Vercel (https://easymap-studio-nine.vercel.app/control) nel `README.md`, subito sotto titolo e logo.

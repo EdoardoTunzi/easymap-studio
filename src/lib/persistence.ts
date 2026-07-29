@@ -3,9 +3,12 @@ import { useEffect } from 'react'
 import { useLayersStore, createLayer, type Layer } from '../store/layersStore'
 import { usePlaylistStore, playlistSnapshot, type PlaylistData } from '../store/playlistStore'
 import { loadDefaultStageIfFirstVisit } from './defaultAsset'
-import { DEFAULT_SIZE } from '../store/effectsStore'
+import { DEFAULT_SIZE, useEffectsStore } from '../store/effectsStore'
 import { type Palette, type RGB } from '../store/paletteStore'
 import type { MediaAsset, MediaType } from '../store/projectStore'
+import { parseShader } from '../engine/isfParser'
+import type { ModuleInstance } from '../engine/generativeModules'
+import type { GenerativeMode } from '../store/generativeStore'
 
 const AUTOSAVE_ID = '__autosave__'
 const AUTOSAVE_DEBOUNCE_MS = 600
@@ -49,6 +52,18 @@ export interface EffectPreset {
   palette: Palette
 }
 
+/** Un visual generativo creato dall'utente nel Generative Lab. */
+export interface GenerativeVisual {
+  id: string
+  /** Coincide col nome dello shader (`// NAME:` nella sorgente): è la chiave in effectsStore. */
+  name: string
+  updatedAt: number
+  mode: GenerativeMode
+  stack: ModuleInstance[]
+  /** Sorgente GLSL completa, pronta per `parseShader()`. */
+  source: string
+}
+
 interface EasyVjDB extends DBSchema {
   projects: {
     key: string
@@ -58,18 +73,23 @@ interface EasyVjDB extends DBSchema {
     key: string
     value: EffectPreset
   }
+  generativeVisuals: {
+    key: string
+    value: GenerativeVisual
+  }
 }
 
 let dbPromise: Promise<IDBPDatabase<EasyVjDB>> | null = null
 
 function getDb() {
-  dbPromise ??= openDB<EasyVjDB>('easyvj', 3, {
+  dbPromise ??= openDB<EasyVjDB>('easyvj', 4, {
     upgrade(db, oldVersion) {
       if (oldVersion < 1) db.createObjectStore('projects', { keyPath: 'id' })
       if (oldVersion < 2) db.createObjectStore('effectPresets', { keyPath: 'id' })
       // v3: i progetti passano da stato piatto a array di layer. Gli oggetti vecchi
       // sono incompatibili col nuovo formato: si svuota lo store dei progetti.
       if (oldVersion > 0 && oldVersion < 3) db.clear('projects')
+      if (oldVersion < 4) db.createObjectStore('generativeVisuals', { keyPath: 'id' })
     },
   })
   return dbPromise
@@ -232,6 +252,96 @@ export async function listEffectPresets(): Promise<EffectPreset[]> {
   const db = await getDb()
   const all = await db.getAll('effectPresets')
   return all.sort((a, b) => b.updatedAt - a.updatedAt)
+}
+
+// ---- Visual generativi (Generative Lab) ----
+
+/** Registra in `effectsStore` gli shader di una lista di visual, così sono selezionabili come effetti. */
+function registerVisuals(visuals: GenerativeVisual[]) {
+  const shaders = visuals.map((v) => parseShader(v.source))
+  useEffectsStore.getState().registerShaders(shaders)
+}
+
+/**
+ * Nome libero per un visual: il nome è anche l'identità dello shader nella libreria, quindi due
+ * visual diversi non possono chiamarsi uguale. Aggiunge un suffisso numerico se serve.
+ */
+export function uniqueVisualName(desired: string, ownId: string | null, existing: GenerativeVisual[]) {
+  const base = desired.trim() || 'Visual generativo'
+  const ownName = existing.find((v) => v.id === ownId)?.name
+  // occupati: gli altri visual e tutti gli shader già in libreria, tranne il proprio nome attuale
+  const taken = new Set<string>()
+  for (const v of existing) if (v.id !== ownId) taken.add(v.name.toLowerCase())
+  for (const s of useEffectsStore.getState().shaders) {
+    if (s.name !== ownName) taken.add(s.name.toLowerCase())
+  }
+  if (!taken.has(base.toLowerCase())) return base
+  let n = 2
+  while (taken.has(`${base} ${n}`.toLowerCase())) n += 1
+  return `${base} ${n}`
+}
+
+/**
+ * Salva (o aggiorna) un visual generativo e lo registra subito come shader disponibile.
+ * Restituisce il record salvato: il `name` può differire da quello richiesto se era già preso.
+ */
+export async function saveGenerativeVisual(visual: {
+  id: string | null
+  name: string
+  mode: GenerativeMode
+  stack: ModuleInstance[]
+  source: string
+}): Promise<GenerativeVisual> {
+  const db = await getDb()
+  const existing = await db.getAll('generativeVisuals')
+  const previous = visual.id ? existing.find((v) => v.id === visual.id) : undefined
+  const name = uniqueVisualName(visual.name, visual.id, existing)
+  // il nome è dentro la sorgente (`// NAME:`): va riallineato se è stato deduplicato
+  const source = visual.source.replace(/\/\/\s*NAME:\s*.+/, `// NAME: ${name}`)
+
+  const record: GenerativeVisual = {
+    id: visual.id ?? crypto.randomUUID(),
+    name,
+    updatedAt: Date.now(),
+    mode: visual.mode,
+    stack: visual.stack,
+    source,
+  }
+  await db.put('generativeVisuals', record)
+
+  // rinominando, lo shader vecchio non esiste più nella libreria
+  if (previous && previous.name !== name) useEffectsStore.getState().unregisterShader(previous.name)
+  registerVisuals([record])
+  return record
+}
+
+export async function listGenerativeVisuals(): Promise<GenerativeVisual[]> {
+  const db = await getDb()
+  const all = await db.getAll('generativeVisuals')
+  return all.sort((a, b) => b.updatedAt - a.updatedAt)
+}
+
+export async function deleteGenerativeVisual(id: string): Promise<void> {
+  const db = await getDb()
+  const visual = await db.get('generativeVisuals', id)
+  await db.delete('generativeVisuals', id)
+  if (visual) useEffectsStore.getState().unregisterShader(visual.name)
+}
+
+/**
+ * Da montare in Control e Output: carica i visual generativi salvati e li registra nella libreria
+ * shader, così i layer che li usano trovano il loro effetto anche dopo un reload.
+ */
+export function useLoadGenerativeVisuals() {
+  useEffect(() => {
+    let cancelled = false
+    listGenerativeVisuals().then((visuals) => {
+      if (!cancelled) registerVisuals(visuals)
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [])
 }
 
 /**

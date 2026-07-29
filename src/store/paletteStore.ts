@@ -94,19 +94,36 @@ function hslToRgb(h: number, s: number, l: number): RGB {
   return [f(0), f(8), f(4)]
 }
 
+/** Schemi di armonia usati dal generatore casuale, in gradi di tinta rispetto alla base. */
+const HARMONIES: number[][] = [
+  [0, 30, 60, 90, 120], // analoga: tinte vicine, molto coesa
+  [0, 180, 30, 210, 60], // complementare: due poli opposti
+  [0, 120, 240, 60, 300], // triadica: massimo contrasto cromatico
+  [0, 150, 210, 30, 180], // split-complementare
+  [0, 15, 345, 30, 330], // monocromatica: variazioni sulla stessa tinta
+]
+
 /**
- * Genera 5 colori casuali armonici, dal più scuro al più acceso (stessa struttura dei preset:
- * la palette è mappata per luminanza, lo stop 0 è l'ombra e l'ultimo la luce).
+ * Genera `count` colori casuali armonici, dal più scuro al più acceso (stessa struttura dei
+ * preset: la palette è mappata per luminanza, lo stop 0 è l'ombra e l'ultimo la luce).
+ * L'array restituito ha sempre PALETTE_STOPS elementi — gli stop oltre `count` sono riempiti
+ * ripetendo l'ultimo, così cambiare "Numero colori" non lascia buchi.
  */
-export function randomPaletteColors(): RGB[] {
+export function randomPaletteColors(count: number = PALETTE_STOPS): RGB[] {
+  const n = Math.max(2, Math.min(PALETTE_STOPS, Math.round(count)))
   const baseHue = Math.random() * 360
-  // deriva di tinta lungo la rampa: palette "viva" ma coerente
-  const hueDrift = (Math.random() * 2 - 1) * 100
+  const harmony = HARMONIES[Math.floor(Math.random() * HARMONIES.length)]
   const sat = 0.75 + Math.random() * 0.25
-  return Array.from({ length: PALETTE_STOPS }, (_, i) => {
-    const t = i / (PALETTE_STOPS - 1)
-    const h = ((baseHue + hueDrift * t) % 360 + 360) % 360
-    const light = 0.07 + t * 0.6
+  const flip = Math.random() < 0.5 ? 1 : -1
+
+  const ramp: RGB[] = Array.from({ length: n }, (_, i) => {
+    const t = n > 1 ? i / (n - 1) : 0
+    const h = (((baseHue + flip * harmony[i % harmony.length]) % 360) + 360) % 360
+    // dal quasi-nero all'acceso: è la rampa che la gradient map si aspetta
+    const light = 0.07 + t * 0.62
     return hslToRgb(h, sat, light)
   })
+
+  const last = ramp[ramp.length - 1]
+  return Array.from({ length: PALETTE_STOPS }, (_, i) => (i < n ? ramp[i] : ([...last] as RGB)))
 }

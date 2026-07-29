@@ -36,16 +36,28 @@ export function defaultParamsFor(shader: ParsedShader): Record<string, number> {
 }
 
 interface EffectsState {
-  /** Libreria globale di shader disponibili (sola lettura, derivata dai file). */
+  /** Libreria shader completa: statici (dai file) + custom (registrati a runtime dal Generative Lab). */
   shaders: ParsedShader[]
+  /** Aggiunge/aggiorna (per nome) shader generati dall'utente nella libreria. */
+  registerShaders: (shaders: ParsedShader[]) => void
+  /** Rimuove uno shader custom dalla libreria (es. eliminazione di un visual generativo). */
+  unregisterShader: (name: string) => void
 }
 
 /**
  * Store della sola libreria shader. I parametri live (shader attivo, size, params) sono
  * ora per-layer e vivono in `layersStore.ts`.
  */
-export const useEffectsStore = create<EffectsState>(() => ({
+export const useEffectsStore = create<EffectsState>((set) => ({
   shaders: builtInShaders,
+  registerShaders: (shaders) =>
+    set((state) => {
+      const byName = new Map(state.shaders.map((s) => [s.name, s]))
+      for (const shader of shaders) byName.set(shader.name, shader)
+      return { shaders: Array.from(byName.values()) }
+    }),
+  unregisterShader: (name) =>
+    set((state) => ({ shaders: state.shaders.filter((s) => s.name !== name) })),
 }))
 
 /** Valori di default degli uniform colore (vec3) di uno shader. */
