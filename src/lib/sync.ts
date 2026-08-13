@@ -8,6 +8,8 @@ interface Payload {
   type: 'state'
   layers: Layer[]
   activeLayerId: string
+  /** Griglia di calibrazione: deve comparire sul proiettore, non solo nell'anteprima. */
+  testPattern: boolean
 }
 
 /** Rimuove i blob (locali, servono solo alla persistenza) mantenendo i blob URL, validi cross-window. */
@@ -29,8 +31,8 @@ export function useBroadcastPublisher() {
     const channel = new BroadcastChannel(CHANNEL_NAME)
 
     const buildPayload = (): Payload => {
-      const { layers, activeLayerId } = useLayersStore.getState()
-      return { type: 'state', layers: stripBlobs(layers), activeLayerId }
+      const { layers, activeLayerId, testPattern } = useLayersStore.getState()
+      return { type: 'state', layers: stripBlobs(layers), activeLayerId, testPattern }
     }
 
     // ultimo stato effettivamente inviato: risponde agli "hello" delle finestre Output appena aperte
@@ -85,8 +87,9 @@ export function useBroadcastSubscriber() {
     const channel = new BroadcastChannel(CHANNEL_NAME)
     channel.onmessage = (event) => {
       if (event.data?.type !== 'state') return
-      const { layers, activeLayerId } = event.data
+      const { layers, activeLayerId, testPattern } = event.data
       if (layers) useLayersStore.getState().setScene(layers, activeLayerId)
+      useLayersStore.getState().setTestPattern(Boolean(testPattern))
     }
     channel.postMessage({ type: 'hello' })
     return () => channel.close()

@@ -16,6 +16,8 @@ import { LayersPanel } from '@/components/Layers/LayersPanel'
 import { MaskPanel } from '@/components/Mask/MaskPanel'
 import { MaskOverlay } from '@/components/Mask/MaskOverlay'
 import { CornerPinOverlay } from '@/components/Positioning/CornerPinOverlay'
+import { AlignmentGrid } from '@/components/Positioning/AlignmentGrid'
+import { MappingControls } from '@/components/Positioning/MappingControls'
 import { ViewportZoomControls, useViewportPanZoom } from '@/components/layout/ViewportZoomControls'
 import { PlaylistBar } from '@/components/Playlist/PlaylistBar'
 import {
@@ -86,6 +88,7 @@ export function ControlPage() {
   useAutosave()
   const activePanel = useUiStore((s) => s.activePanel)
   const overlaysVisible = useUiStore((s) => s.overlaysVisible)
+  const gridVisible = useUiStore((s) => s.gridVisible)
   const { width, startResize } = useResizableWidth({
     defaultWidth: 288,
     min: 240,
@@ -125,7 +128,10 @@ export function ControlPage() {
         <TopToolbar />
         <main ref={stageRef} className="relative min-h-0 flex-1 overflow-hidden bg-black">
           <StageCanvas autoFit controlView />
+          {/* la griglia sta sotto le maniglie e segue lo stesso toggle degli altri riferimenti */}
+          {overlaysVisible && gridVisible && <AlignmentGrid />}
           {overlaysVisible && (activePanel === 'mask' ? <MaskOverlay /> : <CornerPinOverlay />)}
+          <MappingControls />
           <ViewportZoomControls />
         </main>
         <PlaylistBar />

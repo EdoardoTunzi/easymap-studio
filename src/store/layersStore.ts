@@ -9,6 +9,12 @@ import {
 } from './projectStore'
 import { DEFAULT_SIZE, DEFAULT_SHADER_NAME } from './effectsStore'
 import {
+  rotateCorners,
+  scaleCorners,
+  flipCorners,
+  straightenCorners,
+} from '../lib/mappingGeometry'
+import {
   type Palette,
   type RGB,
   createDefaultPalette,
@@ -154,6 +160,12 @@ export interface Layer {
   corners: Corners
   /** Transform (zoom + pan) applicato sopra il corner-pin. */
   transform: Transform
+  /**
+   * Mapping bloccato: corner e transform diventano immutabili (drag sul canvas incluso).
+   * Allineare una proiezione su una statua è lento e delicato: il lucchetto evita di
+   * perdere il lavoro con un click accidentale sul canvas durante il live.
+   */
+  locked: boolean
   /** Crossfade in corso (effetto uscente): transiente, non persistito. */
   transition: LayerTransition | null
 }
@@ -205,6 +217,7 @@ export function createLayer(partial?: Partial<Layer>): Layer {
     maskImage: null,
     corners: cloneCorners(DEFAULT_CORNERS),
     transform: { ...DEFAULT_TRANSFORM },
+    locked: false,
     transition: null,
     ...partial,
   }
@@ -250,6 +263,13 @@ interface LayersState {
   syncTargetIds: string[]
   /** Incrementato per richiedere un ri-adattamento dei corner del layer attivo (vedi AutoFit). */
   fitRequestId: number
+  /**
+   * Griglia di calibrazione disegnata sopra il layer attivo, in Control **e in Output**: serve a
+   * far coincidere fisicamente i bordi della proiezione con quelli dell'oggetto reale prima di
+   * mandare in scena il contenuto. Stato di scena transiente: viaggia nel sync ma non è persistito.
+   */
+  testPattern: boolean
+  setTestPattern: (on: boolean) => void
 
   getActiveLayer: () => Layer | undefined
 
@@ -281,6 +301,24 @@ interface LayersState {
   moveActiveCorners: (dx: number, dy: number) => void
   setActiveTransform: (transform: Partial<Transform>) => void
   resetActiveTransform: () => void
+
+  // mapping geometrico del layer attivo (operazioni sui corner, vedi lib/mappingGeometry.ts)
+  /** Ruota la proiezione attorno al suo centro (radianti, positivo = antiorario). */
+  rotateActiveCorners: (radians: number) => void
+  /** Scala la proiezione attorno al suo centro, per asse (1 = invariato). */
+  scaleActiveCorners: (sx: number, sy: number) => void
+  /** Specchia il contenuto proiettato senza spostare il quad. */
+  flipActiveCorners: (axis: 'horizontal' | 'vertical') => void
+  /** Riporta i corner a un rettangolo, conservando centro e dimensioni. */
+  straightenActiveCorners: () => void
+  /**
+   * Sposta di (dx, dy) un singolo corner, oppure tutti e quattro se `index` è null.
+   * È il gesto dell'allineamento fine da tastiera.
+   */
+  nudgeActiveCorners: (dx: number, dy: number, index: 0 | 1 | 2 | 3 | null) => void
+  /** Blocca/sblocca il mapping di un layer (corner e transform diventano immutabili). */
+  setLayerLocked: (id: string, locked: boolean) => void
+  toggleActiveLocked: () => void
 
   // palette del layer attivo
   setPaletteEnabled: (enabled: boolean) => void
@@ -335,6 +373,18 @@ export const useLayersStore = create<LayersState>((set, get) => {
     }))
 
   /**
+   * Come `patchActive`, ma per le modifiche di MAPPING: se il layer è bloccato non fa nulla.
+   * Unico punto di applicazione del lucchetto, così ogni via d'ingresso (drag sul canvas,
+   * pad direzionale, frecce da tastiera, toolbar) lo rispetta senza doverlo ricontrollare.
+   */
+  const patchActiveMapping = (patch: (layer: Layer) => Partial<Layer>) =>
+    set((state) => ({
+      layers: state.layers.map((l) =>
+        l.id === state.activeLayerId && !l.locked ? { ...l, ...patch(l) } : l,
+      ),
+    }))
+
+  /**
    * Applica una patch di EFFETTO al layer attivo e propaga l'effetto completo (shader + params +
    * size + palette) ai layer spuntati (syncTargetIds). Vuoto = nessuna propagazione.
    */
@@ -359,6 +409,9 @@ export const useLayersStore = create<LayersState>((set, get) => {
     activeMaskId: null,
     syncTargetIds: [], // di default i layer sono indipendenti
     fitRequestId: 0,
+    testPattern: false,
+
+    setTestPattern: (testPattern) => set({ testPattern }),
 
     getActiveLayer: () => {
       const s = get()
@@ -470,23 +523,54 @@ export const useLayersStore = create<LayersState>((set, get) => {
       })),
 
     setActiveCorner: (index, corner) =>
-      patchActive((l) => {
+      patchActiveMapping((l) => {
         const corners = cloneCorners(l.corners)
         corners[index] = corner
         return { corners }
       }),
 
-    setActiveCorners: (corners) => patchActive(() => ({ corners })),
+    setActiveCorners: (corners) => patchActiveMapping(() => ({ corners })),
 
     moveActiveCorners: (dx, dy) =>
-      patchActive((l) => ({
+      patchActiveMapping((l) => ({
         corners: l.corners.map((c) => ({ x: c.x + dx, y: c.y + dy })) as Corners,
       })),
 
     setActiveTransform: (transform) =>
-      patchActive((l) => ({ transform: { ...l.transform, ...transform } })),
+      patchActiveMapping((l) => ({ transform: { ...l.transform, ...transform } })),
 
-    resetActiveTransform: () => patchActive(() => ({ transform: { ...DEFAULT_TRANSFORM } })),
+    resetActiveTransform: () => patchActiveMapping(() => ({ transform: { ...DEFAULT_TRANSFORM } })),
+
+    rotateActiveCorners: (radians) =>
+      patchActiveMapping((l) => ({ corners: rotateCorners(l.corners, radians) })),
+
+    scaleActiveCorners: (sx, sy) =>
+      patchActiveMapping((l) => ({ corners: scaleCorners(l.corners, sx, sy) })),
+
+    flipActiveCorners: (axis) =>
+      patchActiveMapping((l) => ({ corners: flipCorners(l.corners, axis) })),
+
+    straightenActiveCorners: () =>
+      patchActiveMapping((l) => ({ corners: straightenCorners(l.corners) })),
+
+    nudgeActiveCorners: (dx, dy, index) =>
+      patchActiveMapping((l) => ({
+        corners: l.corners.map((c, i) =>
+          index === null || i === index ? { x: c.x + dx, y: c.y + dy } : c,
+        ) as Corners,
+      })),
+
+    setLayerLocked: (id, locked) =>
+      set((state) => ({
+        layers: state.layers.map((l) => (l.id === id ? { ...l, locked } : l)),
+      })),
+
+    toggleActiveLocked: () =>
+      set((state) => ({
+        layers: state.layers.map((l) =>
+          l.id === state.activeLayerId ? { ...l, locked: !l.locked } : l,
+        ),
+      })),
 
     // la palette è EFFETTO → editEffect (propagazione col link)
     setPaletteEnabled: (enabled) =>

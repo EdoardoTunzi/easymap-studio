@@ -22,6 +22,25 @@ function clamp(value: number, min: number, max: number) {
   return Math.min(max, Math.max(min, value))
 }
 
+/** Angolo del corner-pin bersaglio delle frecce: indice TL/TR/BL/BR, oppure null = tutti insieme. */
+export type CornerSelection = 0 | 1 | 2 | 3 | null
+
+/**
+ * Passo di spostamento in unità mondo (il frustum è alto 2 unità): "fine" vale circa un pixel
+ * su un'anteprima da 1080px ed è il passo dell'allineamento millimetrico su un oggetto reale.
+ */
+export const NUDGE_STEPS = [
+  { id: 'fine', label: 'Fine', value: 0.002 },
+  { id: 'medium', label: 'Medio', value: 0.01 },
+  { id: 'coarse', label: 'Grande', value: 0.05 },
+] as const
+
+export type NudgeStepId = (typeof NUDGE_STEPS)[number]['id']
+
+/** Numero di celle sull'altezza del frustum: il passo di snap in unità mondo è 2 / divisioni. */
+export const GRID_DIVISIONS = 24
+export const GRID_STEP = 2 / GRID_DIVISIONS
+
 interface UiState {
   activePanel: Panel
   setActivePanel: (panel: Panel) => void
@@ -32,6 +51,18 @@ interface UiState {
    */
   overlaysVisible: boolean
   toggleOverlays: () => void
+  /** Angolo bersaglio delle frecce da tastiera e della toolbar di mapping. */
+  selectedCorner: CornerSelection
+  setSelectedCorner: (corner: CornerSelection) => void
+  /** Passo corrente dello spostamento fine. */
+  nudgeStep: NudgeStepId
+  setNudgeStep: (step: NudgeStepId) => void
+  /** Griglia di allineamento disegnata sul canvas di anteprima (solo Control). */
+  gridVisible: boolean
+  toggleGrid: () => void
+  /** Aggancio dei corner alla griglia durante il trascinamento. */
+  snapEnabled: boolean
+  toggleSnap: () => void
   view: ViewTransform
   setViewZoom: (zoom: number) => void
   zoomViewBy: (factor: number) => void
@@ -44,6 +75,14 @@ export const useUiStore = create<UiState>((set) => ({
   setActivePanel: (activePanel) => set({ activePanel }),
   overlaysVisible: true,
   toggleOverlays: () => set((s) => ({ overlaysVisible: !s.overlaysVisible })),
+  selectedCorner: null,
+  setSelectedCorner: (selectedCorner) => set({ selectedCorner }),
+  nudgeStep: 'medium',
+  setNudgeStep: (nudgeStep) => set({ nudgeStep }),
+  gridVisible: false,
+  toggleGrid: () => set((s) => ({ gridVisible: !s.gridVisible })),
+  snapEnabled: false,
+  toggleSnap: () => set((s) => ({ snapEnabled: !s.snapEnabled })),
   view: DEFAULT_VIEW,
   setViewZoom: (zoom) =>
     set((s) => ({ view: { ...s.view, zoom: clamp(zoom, MIN_VIEW_ZOOM, MAX_VIEW_ZOOM) } })),

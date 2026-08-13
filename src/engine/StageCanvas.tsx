@@ -3,6 +3,7 @@ import { Canvas, useThree } from '@react-three/fiber'
 import type * as THREE from 'three'
 import { ShaderPlane } from './ShaderPlane'
 import { AutoFit } from './AutoFit'
+import { TestPattern } from './TestPattern'
 import { useUiStore, type ViewTransform } from '../store/uiStore'
 
 /**
@@ -53,6 +54,8 @@ export function StageCanvas({ autoFit = false, controlView = false }: StageCanva
       <ResponsiveCamera view={controlView ? view : undefined} />
       {autoFit && <AutoFit />}
       <ShaderPlane />
+      {/* la griglia di calibrazione va anche sul proiettore: è lì che serve per allinearsi all'oggetto */}
+      <TestPattern />
     </Canvas>
   )
 }
