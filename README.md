@@ -22,7 +22,7 @@ Progetto solista, sviluppato in modo iterativo con un ciclo di lavoro rigoroso (
 
 1. Carichi una foto con sfondo trasparente (o nero, con rilevamento automatico) di ciò su cui vuoi proiettare.
 2. Allinei i 4 angoli dell'immagine alla superficie reale tramite corner-pin, direttamente da finestra di controllo.
-3. Scegli tra **87 shader GLSL** generativi/psichedelici, ognuno con parametri regolabili via slider e colori personalizzabili.
+3. Scegli tra **97 shader GLSL** generativi/psichedelici, ognuno con parametri regolabili via slider e colori personalizzabili.
 4. Regoli l'effetto con i **controlli globali** (velocità, rotazione, kaleidoscopio, mirror, pixelate, colore): funzionano su qualsiasi shader, senza doverne conoscere i parametri.
 5. Oppure ne **crei di nuovi** nel Generative Lab, combinando moduli generativi o scrivendo GLSL direttamente nell'app.
 6. Componi più layer indipendenti (immagine/video/GIF), ciascuno con la propria maschera, il proprio effetto, opacità e blend mode.
@@ -48,10 +48,11 @@ Tutto quello che puoi fare dall'editor, pannello per pannello.
 
 ### Effetti e palette colori
 
-- Libreria di **87 shader GLSL** generativi/psichedelici, in quattro famiglie:
+- Libreria di **97 shader GLSL** generativi/psichedelici, in cinque famiglie:
   - **Halo** e **Liquid** — simmetrie radiali e superfici fluide;
   - **Psy** (30 effetti) — pensati per stage psytrance e techno: strobo, tunnel, laser, griglie esagonali, digital rain, wireframe synthwave, glitch, barre spettro, geometria sacra, frattali;
   - **Morph** (20 effetti) — *source-driven*: usano la luminanza del tuo asset come mappa di profondità (`morphDepth`), così il pattern non ci si appoggia sopra ma lo **modella**, seguendone i rilievi.
+  - **SD** (10 effetti) — source-driven di seconda generazione: oltre alla luminanza leggono la **pendenza locale** dell'immagine (il gradiente), cioè la direzione in cui la superficie sale. Così creste, trame e onde si orientano lungo le curve reali dell'oggetto e ne ricevono anche l'illuminazione. Ognuno espone 11-12 controlli, tra cui il raggio di campionamento del rilievo e l'angolo della luce.
 - **Controlli globali dell'effetto**, validi per **qualsiasi** shader (anche quelli che espongono pochi parametri propri): velocità, rotazione, pan X/Y, kaleidoscopio, mirror X/Y, pixelate, luminosità, contrasto, saturazione, posterize, negativo — con reset immediato.
 - Opzione **"Nessun effetto"** per mostrare il contenuto grezzo del layer.
 - **Palette colori** con 7 preset fluorescenti pronti, editor a 5 colori personalizzabile e **generatore di palette casuali** con numero di colori a scelta (2–5) e schemi di armonia (analoga, complementare, triadica, split-complementare, monocromatica). Essendo una gradient map, ricolora ogni effetto della libreria; disponibile sia dal pannello Palette sia direttamente da quello Shader.
@@ -96,7 +97,7 @@ Un editor dedicato (pannello destro ridimensionabile) per costruire effetti nuov
 ### Motore di rendering shader
 
 - Parser **ISF-like** che legge uniform GLSL commentati (`// @min @max @default`) e genera automaticamente slider e color picker nell'UI — basta aggiungere un file `.glsl` per far apparire un nuovo effetto, senza toccare codice React.
-- Libreria di **87 shader** originali (famiglie _Halo_, _Liquid_, _Psy_, _Morph_), molti dei quali source-driven: reagiscono alla luminanza dell'immagine sorgente e restano sempre ritagliati dentro la sua sagoma. Gli shader _Morph_ spingono l'idea oltre, usando quella luminanza come **campo di quota** che deforma la geometria dell'effetto.
+- Libreria di **97 shader** originali (famiglie _Halo_, _Liquid_, _Psy_, _Morph_, _SD_), molti dei quali source-driven: reagiscono alla luminanza dell'immagine sorgente e restano sempre ritagliati dentro la sua sagoma. Gli shader _Morph_ spingono l'idea oltre, usando quella luminanza come **campo di quota** che deforma la geometria dell'effetto; gli _SD_ aggiungono il **gradiente** della luminanza, che dà la direzione della pendenza: i pattern seguono le curve dell'oggetto e ricevono un'illuminazione coerente con la superficie.
 - **Controlli globali nel wrapper GLSL**: trasformazioni della uv (`easyvj_fxUv`: mirror, kaleidoscopio, rotazione, pan, pixelate) e correzioni di colore (`easyvj_fxColor`: luminosità, contrasto, saturazione, posterize, negativo) applicate rispettivamente prima e dopo `processColor`. Valgono per ogni shader senza modificarne il codice — con quasi novanta effetti in libreria, aggiungere uniform uno per uno non sarebbe scalabile.
 - **Maschera automatica per canale alpha**, con **luma key** opzionale (rilevata automaticamente all'upload) per le immagini con sfondo nero opaco anziché trasparente.
 - Palette colori con 7 preset fluorescenti, editor a 5 colori, generatore di **palette casuali** a numero di stop variabile con cinque schemi di armonia, e colori assegnabili ai singoli parametri `vec3` di ogni shader.
