@@ -9,6 +9,12 @@ import {
 } from './projectStore'
 import { DEFAULT_SIZE, DEFAULT_SHADER_NAME } from './effectsStore'
 import {
+  rotateCorners,
+  scaleCorners,
+  flipCorners,
+  straightenCorners,
+} from '../lib/mappingGeometry'
+import {
   type Palette,
   type RGB,
   createDefaultPalette,
@@ -61,6 +67,49 @@ export interface LayerTransition extends EffectSnapshot {
   progress: number
 }
 
+/**
+ * Controlli globali del layer, validi per QUALSIASI shader: agiscono nel wrapper GLSL, prima
+ * (uv) e dopo (colore) `processColor`. Servono a dare profondità di regolazione anche agli
+ * effetti che espongono pochi uniform propri.
+ */
+export interface FxControls {
+  /** Moltiplicatore del tempo dell'effetto (1 = velocità originale). */
+  speed: number
+  /** Rotazione del pattern in radianti. */
+  rotation: number
+  offsetX: number
+  offsetY: number
+  /** Segmenti del caleidoscopio; < 2 = disattivato. */
+  kaleido: number
+  mirrorX: boolean
+  mirrorY: boolean
+  /** Lato della griglia di quantizzazione; < 1 = disattivato. */
+  pixelate: number
+  contrast: number
+  brightness: number
+  saturation: number
+  /** Livelli di colore per canale; < 2 = disattivato. */
+  posterize: number
+  /** Miscela col negativo, 0..1. */
+  invert: number
+}
+
+export const DEFAULT_FX: FxControls = {
+  speed: 1,
+  rotation: 0,
+  offsetX: 0,
+  offsetY: 0,
+  kaleido: 0,
+  mirrorX: false,
+  mirrorY: false,
+  pixelate: 0,
+  contrast: 1,
+  brightness: 1,
+  saturation: 1,
+  posterize: 0,
+  invert: 0,
+}
+
 /** Modalità di fusione del layer con quelli sottostanti. */
 export type BlendMode = 'normal' | 'add' | 'screen' | 'multiply'
 
@@ -91,6 +140,12 @@ export interface Layer {
   shaderName: string
   /** Size globale del pattern dello shader (uniform uScale). */
   size: number
+  /**
+   * Trattamenti globali dell'effetto (velocità, geometria, colore). Sono proprietà del LAYER
+   * come opacità e blend, non parte dell'`EffectSnapshot`: cambiando effetto o clip di playlist
+   * restano applicati, così il look del layer non si azzera a ogni transizione.
+   */
+  fx: FxControls
   /** Parametri live per shader: nome shader -> nome uniform -> valore. */
   params: Record<string, Record<string, number>>
   /** Colori (uniform vec3) per shader: nome shader -> nome uniform -> RGB 0..1. */
@@ -105,6 +160,12 @@ export interface Layer {
   corners: Corners
   /** Transform (zoom + pan) applicato sopra il corner-pin. */
   transform: Transform
+  /**
+   * Mapping bloccato: corner e transform diventano immutabili (drag sul canvas incluso).
+   * Allineare una proiezione su una statua è lento e delicato: il lucchetto evita di
+   * perdere il lavoro con un click accidentale sul canvas durante il live.
+   */
+  locked: boolean
   /** Crossfade in corso (effetto uscente): transiente, non persistito. */
   transition: LayerTransition | null
 }
@@ -123,6 +184,7 @@ function withEffectOf(target: Layer, source: Layer): Layer {
     ...target,
     shaderName: source.shaderName,
     size: source.size,
+    fx: { ...source.fx },
     params: { ...target.params, [source.shaderName]: { ...source.params[source.shaderName] } },
     colorParams: {
       ...target.colorParams,
@@ -147,6 +209,7 @@ export function createLayer(partial?: Partial<Layer>): Layer {
     lumaKey: 0,
     shaderName: DEFAULT_SHADER_NAME,
     size: DEFAULT_SIZE,
+    fx: { ...DEFAULT_FX },
     params: {},
     colorParams: {},
     palette: createDefaultPalette(),
@@ -154,6 +217,7 @@ export function createLayer(partial?: Partial<Layer>): Layer {
     maskImage: null,
     corners: cloneCorners(DEFAULT_CORNERS),
     transform: { ...DEFAULT_TRANSFORM },
+    locked: false,
     transition: null,
     ...partial,
   }
@@ -199,6 +263,27 @@ interface LayersState {
   syncTargetIds: string[]
   /** Incrementato per richiedere un ri-adattamento dei corner del layer attivo (vedi AutoFit). */
   fitRequestId: number
+  /**
+   * Scena uscente durante il crossfade di un invio all'Output. Vive solo nella finestra Output
+   * e solo per la durata della dissolvenza: è una copia congelata dei layer precedenti, che
+   * viene renderizzata sotto quella nuova con opacità decrescente. null = nessun crossfade.
+   * A differenza di `Layer.transition` (che sfuma il solo effetto) copre l'intera scena, quindi
+   * anche media, mapping, maschere e layer aggiunti o rimossi.
+   */
+  outgoingLayers: Layer[] | null
+  /** Avanzamento del crossfade di scena: 0 = solo scena uscente, 1 = solo scena nuova. */
+  sceneFade: number
+  /** Applica la nuova scena conservando quella corrente come uscente, e riparte da fade 0. */
+  beginSceneCrossfade: (layers: Layer[], activeLayerId: string) => void
+  /** Avanza il crossfade di scena; a >= 1 lo chiude e libera la scena uscente. */
+  setSceneFade: (progress: number) => void
+  /**
+   * Griglia di calibrazione disegnata sopra il layer attivo, in Control **e in Output**: serve a
+   * far coincidere fisicamente i bordi della proiezione con quelli dell'oggetto reale prima di
+   * mandare in scena il contenuto. Stato di scena transiente: viaggia nel sync ma non è persistito.
+   */
+  testPattern: boolean
+  setTestPattern: (on: boolean) => void
 
   getActiveLayer: () => Layer | undefined
 
@@ -218,6 +303,10 @@ interface LayersState {
   setActiveLumaKey: (lumaKey: number) => void
   setActiveShader: (shaderName: string) => void
   setActiveSize: (size: number) => void
+  /** Aggiorna i controlli globali dell'effetto sul layer attivo (+ layer sincronizzati). */
+  setActiveFx: (patch: Partial<FxControls>) => void
+  /** Riporta i controlli globali ai valori neutri. */
+  resetActiveFx: () => void
   setActiveParam: (uniformName: string, value: number) => void
   /** Imposta un uniform colore (vec3) dello shader attivo. */
   setActiveColorParam: (uniformName: string, rgb: RGB) => void
@@ -227,13 +316,35 @@ interface LayersState {
   setActiveTransform: (transform: Partial<Transform>) => void
   resetActiveTransform: () => void
 
+  // mapping geometrico del layer attivo (operazioni sui corner, vedi lib/mappingGeometry.ts)
+  /** Ruota la proiezione attorno al suo centro (radianti, positivo = antiorario). */
+  rotateActiveCorners: (radians: number) => void
+  /** Scala la proiezione attorno al suo centro, per asse (1 = invariato). */
+  scaleActiveCorners: (sx: number, sy: number) => void
+  /** Specchia il contenuto proiettato senza spostare il quad. */
+  flipActiveCorners: (axis: 'horizontal' | 'vertical') => void
+  /** Riporta i corner a un rettangolo, conservando centro e dimensioni. */
+  straightenActiveCorners: () => void
+  /**
+   * Sposta di (dx, dy) un singolo corner, oppure tutti e quattro se `index` è null.
+   * È il gesto dell'allineamento fine da tastiera.
+   */
+  nudgeActiveCorners: (dx: number, dy: number, index: 0 | 1 | 2 | 3 | null) => void
+  /** Blocca/sblocca il mapping di un layer (corner e transform diventano immutabili). */
+  setLayerLocked: (id: string, locked: boolean) => void
+  toggleActiveLocked: () => void
+
   // palette del layer attivo
   setPaletteEnabled: (enabled: boolean) => void
   setPaletteAmount: (amount: number) => void
   setPaletteCount: (count: number) => void
   setPaletteColor: (index: number, rgb: RGB) => void
-  /** Sostituisce tutti i colori della palette (es. generatore casuale) e la attiva. */
-  setPaletteColors: (colors: RGB[]) => void
+  /**
+   * Sostituisce tutti i colori della palette (es. generatore casuale) e la attiva.
+   * Con `count` imposta anche quanti stop sono attivi, così generare una palette a N colori
+   * non lascia visibili gli stop della palette precedente.
+   */
+  setPaletteColors: (colors: RGB[], count?: number) => void
   applyPalettePreset: (name: string) => void
 
   // maschere del layer attivo
@@ -276,6 +387,18 @@ export const useLayersStore = create<LayersState>((set, get) => {
     }))
 
   /**
+   * Come `patchActive`, ma per le modifiche di MAPPING: se il layer è bloccato non fa nulla.
+   * Unico punto di applicazione del lucchetto, così ogni via d'ingresso (drag sul canvas,
+   * pad direzionale, frecce da tastiera, toolbar) lo rispetta senza doverlo ricontrollare.
+   */
+  const patchActiveMapping = (patch: (layer: Layer) => Partial<Layer>) =>
+    set((state) => ({
+      layers: state.layers.map((l) =>
+        l.id === state.activeLayerId && !l.locked ? { ...l, ...patch(l) } : l,
+      ),
+    }))
+
+  /**
    * Applica una patch di EFFETTO al layer attivo e propaga l'effetto completo (shader + params +
    * size + palette) ai layer spuntati (syncTargetIds). Vuoto = nessuna propagazione.
    */
@@ -300,6 +423,11 @@ export const useLayersStore = create<LayersState>((set, get) => {
     activeMaskId: null,
     syncTargetIds: [], // di default i layer sono indipendenti
     fitRequestId: 0,
+    outgoingLayers: null,
+    sceneFade: 1,
+    testPattern: false,
+
+    setTestPattern: (testPattern) => set({ testPattern }),
 
     getActiveLayer: () => {
       const s = get()
@@ -388,7 +516,11 @@ export const useLayersStore = create<LayersState>((set, get) => {
     setActiveLumaKey: (lumaKey) => patchActive(() => ({ lumaKey })),
     // shader / size / param sono EFFETTO → passano da editEffect (propagazione col link)
     setActiveShader: (shaderName) => editEffect(() => ({ shaderName })),
+
     setActiveSize: (size) => editEffect(() => ({ size })),
+
+    setActiveFx: (patch) => editEffect((l) => ({ fx: { ...l.fx, ...patch } })),
+    resetActiveFx: () => editEffect(() => ({ fx: { ...DEFAULT_FX } })),
 
     setActiveParam: (uniformName, value) =>
       editEffect((l) => ({
@@ -407,23 +539,54 @@ export const useLayersStore = create<LayersState>((set, get) => {
       })),
 
     setActiveCorner: (index, corner) =>
-      patchActive((l) => {
+      patchActiveMapping((l) => {
         const corners = cloneCorners(l.corners)
         corners[index] = corner
         return { corners }
       }),
 
-    setActiveCorners: (corners) => patchActive(() => ({ corners })),
+    setActiveCorners: (corners) => patchActiveMapping(() => ({ corners })),
 
     moveActiveCorners: (dx, dy) =>
-      patchActive((l) => ({
+      patchActiveMapping((l) => ({
         corners: l.corners.map((c) => ({ x: c.x + dx, y: c.y + dy })) as Corners,
       })),
 
     setActiveTransform: (transform) =>
-      patchActive((l) => ({ transform: { ...l.transform, ...transform } })),
+      patchActiveMapping((l) => ({ transform: { ...l.transform, ...transform } })),
 
-    resetActiveTransform: () => patchActive(() => ({ transform: { ...DEFAULT_TRANSFORM } })),
+    resetActiveTransform: () => patchActiveMapping(() => ({ transform: { ...DEFAULT_TRANSFORM } })),
+
+    rotateActiveCorners: (radians) =>
+      patchActiveMapping((l) => ({ corners: rotateCorners(l.corners, radians) })),
+
+    scaleActiveCorners: (sx, sy) =>
+      patchActiveMapping((l) => ({ corners: scaleCorners(l.corners, sx, sy) })),
+
+    flipActiveCorners: (axis) =>
+      patchActiveMapping((l) => ({ corners: flipCorners(l.corners, axis) })),
+
+    straightenActiveCorners: () =>
+      patchActiveMapping((l) => ({ corners: straightenCorners(l.corners) })),
+
+    nudgeActiveCorners: (dx, dy, index) =>
+      patchActiveMapping((l) => ({
+        corners: l.corners.map((c, i) =>
+          index === null || i === index ? { x: c.x + dx, y: c.y + dy } : c,
+        ) as Corners,
+      })),
+
+    setLayerLocked: (id, locked) =>
+      set((state) => ({
+        layers: state.layers.map((l) => (l.id === id ? { ...l, locked } : l)),
+      })),
+
+    toggleActiveLocked: () =>
+      set((state) => ({
+        layers: state.layers.map((l) =>
+          l.id === state.activeLayerId ? { ...l, locked: !l.locked } : l,
+        ),
+      })),
 
     // la palette è EFFETTO → editEffect (propagazione col link)
     setPaletteEnabled: (enabled) =>
@@ -440,11 +603,13 @@ export const useLayersStore = create<LayersState>((set, get) => {
         colors[index] = rgb
         return { palette: { ...l.palette, colors, activePreset: CUSTOM_PRESET } }
       }),
-    setPaletteColors: (colors) =>
+    setPaletteColors: (colors, count) =>
       editEffect((l) => ({
         palette: {
           ...l.palette,
           colors: colors.map((c) => [...c] as RGB),
+          count:
+            count == null ? l.palette.count : Math.max(2, Math.min(PALETTE_STOPS, Math.round(count))),
           activePreset: CUSTOM_PRESET,
           enabled: true,
         },
@@ -555,7 +720,28 @@ export const useLayersStore = create<LayersState>((set, get) => {
         layers: next,
         activeLayerId: next.find((l) => l.id === activeLayerId)?.id ?? next[0]?.id ?? '',
         syncTargetIds: [], // il caricamento riparte con layer indipendenti
+        // un cambio scena secco interrompe un eventuale crossfade in corso
+        outgoingLayers: null,
+        sceneFade: 1,
       })
     },
+
+    beginSceneCrossfade: (layers, activeLayerId) => {
+      const next = layers.length > 0 ? layers : [createLayer({ name: 'Layer 1' })]
+      set((state) => ({
+        // se un crossfade è già in corso la scena uscente resta quella di partenza: ripartire
+        // da quella intermedia farebbe "saltare" indietro l'immagine già in dissolvenza
+        outgoingLayers: state.outgoingLayers ?? state.layers,
+        sceneFade: 0,
+        layers: next,
+        activeLayerId: next.find((l) => l.id === activeLayerId)?.id ?? next[0]?.id ?? '',
+        syncTargetIds: [],
+      }))
+    },
+
+    setSceneFade: (progress) =>
+      set(() =>
+        progress >= 1 ? { sceneFade: 1, outgoingLayers: null } : { sceneFade: progress },
+      ),
   }
 })

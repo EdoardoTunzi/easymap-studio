@@ -1,20 +1,15 @@
 import { useRef, useState } from 'react'
-import { Eye, EyeOff, Plus, Copy, Trash2, GripVertical } from 'lucide-react'
+import { Eye, EyeOff, Plus, Copy, Trash2, GripVertical, Lock } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { Slider } from '@/components/ui/slider'
-import { Separator } from '@/components/ui/separator'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
 import { cn } from '@/lib/utils'
-import { useLayersStore, BLEND_MODES, type BlendMode } from '@/store/layersStore'
+import { useLayersStore } from '@/store/layersStore'
 
-export function LayersPanel() {
+/**
+ * Lista dei layer: è la selezione che comanda tutto il resto della colonna destra, quindi resta
+ * ancorata in alto e non scorre con i blocchi sottostanti (scorre al proprio interno se i layer
+ * sono molti).
+ */
+export function LayerList() {
   const layers = useLayersStore((s) => s.layers)
   const activeLayerId = useLayersStore((s) => s.activeLayerId)
   const selectLayer = useLayersStore((s) => s.selectLayer)
@@ -22,10 +17,7 @@ export function LayersPanel() {
   const removeLayer = useLayersStore((s) => s.removeLayer)
   const duplicateLayer = useLayersStore((s) => s.duplicateLayer)
   const reorderLayers = useLayersStore((s) => s.reorderLayers)
-  const renameLayer = useLayersStore((s) => s.renameLayer)
   const setLayerVisible = useLayersStore((s) => s.setLayerVisible)
-  const setLayerOpacity = useLayersStore((s) => s.setLayerOpacity)
-  const setLayerBlendMode = useLayersStore((s) => s.setLayerBlendMode)
 
   const dragIndex = useRef<number | null>(null)
   const [dragOver, setDragOver] = useState<number | null>(null)
@@ -34,8 +26,6 @@ export function LayersPanel() {
   // dell'array è il topmost. displayIndex 0 = topmost.
   const display = [...layers].reverse()
   const toArrayIndex = (displayIndex: number) => layers.length - 1 - displayIndex
-
-  const activeLayer = layers.find((l) => l.id === activeLayerId)
 
   const handleDrop = (displayTo: number) => {
     const from = dragIndex.current
@@ -46,7 +36,7 @@ export function LayersPanel() {
   }
 
   return (
-    <div className="flex flex-col gap-4">
+    <div className="flex flex-col gap-2">
       <div className="flex items-center justify-between">
         <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
           Layers
@@ -57,7 +47,8 @@ export function LayersPanel() {
         </Button>
       </div>
 
-      <ul className="flex flex-col gap-1">
+      {/* max-h: con molti layer la lista scorre da sola invece di spingere fuori i blocchi sotto */}
+      <ul className="flex max-h-52 flex-col gap-1 overflow-y-auto">
         {display.map((layer, di) => {
           const active = layer.id === activeLayerId
           return (
@@ -102,6 +93,10 @@ export function LayersPanel() {
               >
                 {layer.name}
               </span>
+              {/* il lucchetto del mapping è uno stato che va visto senza dover selezionare il layer */}
+              {layer.locked && (
+                <Lock className="size-3 shrink-0 text-amber-400" aria-label="Mapping bloccato" />
+              )}
               <span className="shrink-0 text-[10px] uppercase text-muted-foreground">
                 {layer.shaderName ? layer.blendMode : ''}
               </span>
@@ -132,64 +127,6 @@ export function LayersPanel() {
           )
         })}
       </ul>
-
-      {activeLayer && (
-        <>
-          <Separator />
-          <div className="flex flex-col gap-3">
-            <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-              Layer attivo
-            </span>
-
-            <Input
-              value={activeLayer.name}
-              onChange={(e) => renameLayer(activeLayer.id, e.target.value)}
-              className="h-8"
-              aria-label="Nome layer"
-            />
-
-            <div className="flex flex-col gap-1.5">
-              <div className="flex items-center justify-between">
-                <span className="text-xs text-muted-foreground">Opacità</span>
-                <span className="text-xs tabular-nums text-muted-foreground">
-                  {Math.round(activeLayer.opacity * 100)}%
-                </span>
-              </div>
-              <Slider
-                min={0}
-                max={1}
-                step={0.01}
-                value={[activeLayer.opacity]}
-                onValueChange={([v]) => setLayerOpacity(activeLayer.id, v)}
-              />
-            </div>
-
-            <div className="flex flex-col gap-1.5">
-              <span className="text-xs text-muted-foreground">Blend mode</span>
-              <Select
-                value={activeLayer.blendMode}
-                onValueChange={(v) => setLayerBlendMode(activeLayer.id, v as BlendMode)}
-              >
-                <SelectTrigger className="h-8 w-full">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {BLEND_MODES.map((b) => (
-                    <SelectItem key={b.value} value={b.value}>
-                      {b.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-        </>
-      )}
-
-      <p className="text-xs leading-relaxed text-muted-foreground">
-        Trascina i layer per riordinarli. Il layer in cima alla lista è in primo piano. Seleziona un
-        layer per modificarne effetto, palette, posizione e maschera.
-      </p>
     </div>
   )
 }

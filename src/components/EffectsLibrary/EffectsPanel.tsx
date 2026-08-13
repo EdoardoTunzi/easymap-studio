@@ -1,4 +1,4 @@
-import { Link2, CheckSquare, Square } from 'lucide-react'
+import { Link2, CheckSquare, Square, Dices } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Slider } from '@/components/ui/slider'
 import { Separator } from '@/components/ui/separator'
@@ -12,7 +12,7 @@ import {
 import { cn } from '@/lib/utils'
 import { useEffectsStore } from '@/store/effectsStore'
 import { useLayersStore } from '@/store/layersStore'
-import { rgbToHex, hexToRgb } from '@/store/paletteStore'
+import { rgbToHex, hexToRgb, randomPaletteColors } from '@/store/paletteStore'
 
 export function EffectsPanel() {
   const shaders = useEffectsStore((s) => s.shaders)
@@ -23,6 +23,8 @@ export function EffectsPanel() {
   const setSize = useLayersStore((s) => s.setActiveSize)
   const setParam = useLayersStore((s) => s.setActiveParam)
   const setColorParam = useLayersStore((s) => s.setActiveColorParam)
+  const setPaletteColors = useLayersStore((s) => s.setPaletteColors)
+  const paletteCount = activeLayer?.palette.count ?? 5
   const syncTargetIds = useLayersStore((s) => s.syncTargetIds)
   const toggleSyncTarget = useLayersStore((s) => s.toggleSyncTarget)
   const setSyncAll = useLayersStore((s) => s.setSyncAll)
@@ -119,6 +121,37 @@ export function EffectsPanel() {
           value={[size]}
           onValueChange={([v]) => setSize(v)}
         />
+      </div>
+
+      {/* Colorazione rapida: la palette è una gradient map, quindi ricolora QUALSIASI effetto.
+          Qui accanto all'effetto per non dover passare dal pannello Palette a ogni prova. */}
+      <div className="flex flex-col gap-1.5">
+        <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+          Colori casuali
+        </span>
+        <div className="flex items-center gap-1.5">
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-7 flex-1 gap-1.5 px-2 text-xs"
+            onClick={() => setPaletteColors(randomPaletteColors(paletteCount), paletteCount)}
+          >
+            <Dices className="size-3.5 shrink-0" />
+            <span className="truncate">Genera</span>
+          </Button>
+          {[2, 3, 4, 5].map((n) => (
+            <Button
+              key={n}
+              variant={paletteCount === n ? 'secondary' : 'outline'}
+              size="sm"
+              className="h-7 w-7 shrink-0 px-0 text-xs tabular-nums"
+              onClick={() => setPaletteColors(randomPaletteColors(n), n)}
+              title={`Palette casuale di ${n} colori`}
+            >
+              {n}
+            </Button>
+          ))}
+        </div>
       </div>
 
       {shader && shader.controls.length > 0 && <Separator />}

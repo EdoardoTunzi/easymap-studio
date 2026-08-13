@@ -36,7 +36,7 @@ export function defaultParamsFor(shader: ParsedShader): Record<string, number> {
 }
 
 interface EffectsState {
-  /** Libreria globale di shader disponibili (sola lettura, derivata dai file). */
+  /** Libreria shader completa, caricata dai file in `src/shaders/*.glsl`. */
   shaders: ParsedShader[]
 }
 

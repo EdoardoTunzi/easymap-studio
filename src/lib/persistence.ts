@@ -63,7 +63,7 @@ interface EasyVjDB extends DBSchema {
 let dbPromise: Promise<IDBPDatabase<EasyVjDB>> | null = null
 
 function getDb() {
-  dbPromise ??= openDB<EasyVjDB>('easyvj', 3, {
+  dbPromise ??= openDB<EasyVjDB>('easyvj', 4, {
     upgrade(db, oldVersion) {
       if (oldVersion < 1) db.createObjectStore('projects', { keyPath: 'id' })
       if (oldVersion < 2) db.createObjectStore('effectPresets', { keyPath: 'id' })

@@ -77,16 +77,32 @@ export function PalettePanel() {
             </button>
           ))}
         </div>
-        {/* generatore casuale: 5 colori armonici da scuro ad acceso, attiva la palette */}
+        {/* Generatore casuale: colori armonici da scuro ad acceso, attiva la palette.
+            Il numero scelto diventa anche il conteggio degli stop attivi. */}
         <Button
           variant="outline"
           size="sm"
-          onClick={() => setColors(randomPaletteColors())}
+          onClick={() => setColors(randomPaletteColors(count), count)}
           className="gap-1.5"
         >
           <Dices className="size-3.5" />
-          Palette casuale
+          Palette casuale ({count} colori)
         </Button>
+        <div className="flex items-center gap-1.5">
+          <span className="shrink-0 text-[11px] text-muted-foreground">Genera con</span>
+          {[2, 3, 4, 5].map((n) => (
+            <Button
+              key={n}
+              variant={count === n ? 'secondary' : 'outline'}
+              size="sm"
+              className="h-7 flex-1 px-0 text-xs tabular-nums"
+              onClick={() => setColors(randomPaletteColors(n), n)}
+              title={`Genera una palette casuale di ${n} colori`}
+            >
+              {n}
+            </Button>
+          ))}
+        </div>
       </div>
 
       <Separator />

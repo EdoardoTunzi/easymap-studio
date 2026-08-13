@@ -42,9 +42,14 @@ function ensureRenderer() {
  * o se il rendering fallisce (es. WebGL non disponibile).
  */
 export function effectThumbnail(effect: EffectSnapshot): string | null {
+  const shader = useEffectsStore.getState().shaders.find((s) => s.name === effect.shaderName)
+  if (!shader) return null
+
   const p = effect.palette
+  // shader.id nella chiave: un visual generativo rigenerato conserva il nome ma non l'aspetto,
+  // e senza questo la cache restituirebbe la miniatura della versione precedente
   const key = JSON.stringify([
-    effect.shaderName,
+    shader.id,
     effect.params,
     effect.colors,
     effect.size,
@@ -53,9 +58,6 @@ export function effectThumbnail(effect: EffectSnapshot): string | null {
   ])
   const hit = cache.get(key)
   if (hit) return hit
-
-  const shader = useEffectsStore.getState().shaders.find((s) => s.name === effect.shaderName)
-  if (!shader) return null
 
   try {
     ensureRenderer()

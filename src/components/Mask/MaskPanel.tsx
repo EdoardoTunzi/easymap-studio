@@ -60,7 +60,10 @@ export function MaskPanel() {
           {masks.map((m, i) => (
             <li
               key={m.id}
-              onClick={() => selectMask(m.id)}
+              // toggle: le maniglie sul canvas mostrano la maschera selezionata al posto del
+              // corner-pin, quindi ri-cliccarla è l'unico modo per tornare a regolare il mapping
+              onClick={() => selectMask(m.id === activeMaskId ? null : m.id)}
+              title={m.id === activeMaskId ? 'Clicca per deselezionare e tornare al corner-pin' : undefined}
               className={cn(
                 'flex cursor-pointer items-center gap-2 rounded-md border px-2 py-1.5 transition-colors',
                 m.id === activeMaskId

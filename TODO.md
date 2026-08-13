@@ -26,16 +26,26 @@ Spuntare gli step completati; aggiungere nuovi step quando emergono. Tenere alli
 - [x] Sistema palette colori (gradient map globale): 7 preset fluorescenti caldi + editor color picker + intensità, valido per ogni shader (tab Palette)
 - [x] Preset degli effetti: salva/carica il look (shader + parametri + size + palette) su IndexedDB (store effectPresets, DB v2), pannello nel tab Shader
 - [x] Sidebar shadcn (Provider/Sidebar/Inset) con collapse nativo (SidebarTrigger) e resize via drag handle (localStorage, min 240/max 520px). Toolbar Move/Shader/Palette/Assets/Output spostata dentro SidebarInset, brand EASYVJ in SidebarHeader
+- [x] Toggle visibilità dei riferimenti di mapping (pulsante occhio nella toolbar del canvas): nasconde cornice corner-pin e maniglie/forme mask per valutare l'effetto senza sovrapposizioni. Solo in Control, l'Output non li disegna mai
 - [x] Zoom/pan della vista di anteprima in Control (rotellina + pulsanti + Spazio/click centrale per il pan), puramente visivo — non altera corners/transform, l'Output non ne risente mai. Risolve le maniglie del corner-pin irraggiungibili quando l'asset è ingrandito oltre i bordi del canvas
 - [ ] Definire la palette colori dell'app (rimandata: per ora tema neutro shadcn dark)
 - [ ] Drag diretto dell'immagine sul canvas in modalità MOVE (ora il pan è solo da pad direzionale / trascinamento del quad corner-pin)
-- [ ] Pannello destro (descrizione/generazione shader) e timeline in basso come nello screenshot MAPSHROOM
-- [ ] Pannello live: luminosità / colore / velocità globali (oltre ai parametri per-shader)
-- [ ] Import shader GLSL da parte dell'utente (textarea/file → parser ISF)
+- [x] Toolbar di mapping sul canvas (in basso a sinistra): spostamento fine da tastiera sull'angolo selezionato (passo fine/medio/grande, Shift ×5), rotazione ±90° e ±1°, scala non uniforme, flip H/V, raddrizza, lucchetto del mapping, griglia con snap, test pattern di calibrazione visibile anche in Output. Rotazione/scala/flip agiscono sui corner (`src/lib/mappingGeometry.ts`), non su `Transform`: nessuna modifica a shader, persistence e sync
+- [x] Timeline in basso come nello screenshot MAPSHROOM (barra playlist)
+- [x] Pannello destro: ora è l'**ispettore del layer** (lista layer fissa + Proprietà/Asset/Mask/Move richiudibili, tutti riferiti al layer selezionato), collassabile e ridimensionabile. La sidebar sinistra resta al look e al progetto (Shader, Palette, Progetti, Output)
+- [x] Pannello live: controlli globali per-layer validi per QUALSIASI shader (velocità, rotazione, pan, kaleidoscopio, mirror X/Y, pixelate, luminosità, contrasto, saturazione, posterize, negativo) — implementati nel wrapper GLSL (`easyvj_fxUv`/`easyvj_fxColor`), UI in `FxControlsPanel`
+- [x] 30 shader psytrance/techno (`src/shaders/psy*.glsl`): libreria da 41 a 71 effetti, tutti verificati in compilazione WebGL
+- [x] 20 shader "Morph" source-driven (`src/shaders/morph*.glsl`) sulla scia di 3D Surface Morph Spirals: la luminanza dell'asset fa da mappa di quota (`lum * morphDepth`) e deforma la geometria dell'effetto. Libreria a 91 effetti; provino verificato renderizzandoli con l'asset reale, non con la texture di fallback
+- [x] Palette casuale con numero di colori selezionabile (2–5) e schemi di armonia (analoga/complementare/triadica/split/monocromatica), disponibile sia nel pannello Palette sia in quello Shader
+- [x] Shader "Emboss Light Pro" (`src/shaders/embossLightPro.glsl`): rilievo dai gradienti dell'immagine con una sorgente di luce animata che si muove in cerchio, colore della luce personalizzabile. Fornito già pronto dall'utente, aggiunto senza modifiche funzionali
+- [x] 10 shader "SD" (`src/shaders/sd*.glsl`): source-driven di seconda generazione che, oltre alla luminanza, usano il **gradiente** dell'immagine (la pendenza locale) per orientare i pattern lungo le curve dell'oggetto, warpare le trame sui fianchi e illuminare la superficie apparente. 11-12 controlli ciascuno, incluso il raggio di campionamento del rilievo e l'angolo della luce. Libreria a 97 effetti
+- [x] Shader "Morph Pulse Beacon" (`src/shaders/morphPulseBeacon.glsl`): campo radiale pulsante con interferenza, tradotto dal formato uniform del runtime MAPSHROOM (`tex`/`fparams`/`ftime`...) alla convenzione ISF-like del progetto, poi reso source-driven come la famiglia Morph — la luminanza dell'asset deforma il raggio del campo (`morphDepth`), così il pattern segue i rilievi della statua invece di sovrapporsi come un piano piatto
+- [ ] Valutare se includere `FxControls` in `EffectSnapshot` (ora sono per-layer, quindi preset e clip della playlist non li catturano — scelta voluta: non si azzerano a ogni transizione)
+- [ ] Import shader GLSL da parte dell'utente (era nell'editor GLSL live del Generative Lab, rimosso — da reintrodurre altrove se richiesto)
 - [x] Color picker UI per gli uniform vec3 dei singoli shader (sezione "Colori effetto" nel pannello Shader e nell'editor clip; per-layer in colorParams, incluso in preset/playlist/crossfade/thumbnail)
 - [x] 10 shader "Liquid" sulla scia di 3D Surface Morph Spirals (file liquid*.glsl, source-driven con morph da luminanza e uniform colore)
 - [x] Generatore casuale di palette (bottone "Palette casuale" nel pannello Palette: 5 colori HSL armonici scuro→acceso, attiva la palette)
-- [ ] Palette memorizzata per-shader (ora è globale) + salvataggio di palette custom dell'utente
+- [ ] Palette memorizzata per-shader (ora è per-layer) + salvataggio di palette custom dell'utente
 - [ ] Anteprime/thumbnail degli shader nella libreria (come i preset nello screenshot MAPSHROOM) — il motore esiste già: `src/engine/effectThumbnail.ts` (usato dalle card della playlist)
 - [ ] Export/import progetto come file JSON (backup portabile tra macchine)
 - [ ] PWA: icone reali (pwa-192x192.png, pwa-512x512.png mancanti in public/) e test offline
@@ -67,8 +77,10 @@ Modello: scena = pila di Layer indipendenti; ogni layer ha contenuto (img/gif/vi
 - [x] "Nessun effetto" (shader passthrough) per mostrare l'asset grezzo
 - [x] Link effetto: toggle persistente "Applica a tutti i layer" (Effetto sincronizzato) con selezione dei layer target (nuovi inclusi di default); propaga shader+params+size+palette in live
 - [x] Modalità Live: l'Output non si aggiorna in automatico; pulsante "Esegui in output" invia lo stato corrente (toggle LIVE + indicatore modifiche in sospeso in toolbar). Uscendo da Live l'Output si allinea subito
+- [x] Crossfade dell'intera scena sugli invii all'Output (push manuale e uscita da Live), al posto del cambio secco: copre effetto, media, mapping, maschere e layer aggiunti/rimossi. Durata dai valori della barra playlist; gli aggiornamenti automatici fuori da Live restano istantanei
 
 ### Altro editor avanzato
+- [ ] Undo/redo del mapping (proposto e scartato dall'utente il 2026-08-13: per ora il lucchetto previene gli incidenti; riconsiderare se emerge il bisogno)
 - [ ] Rotazione/scala non-uniforme delle maschere via overlay (ora solo move + resize uniforme; rotazione da slider)
 - [ ] Editor maschera manuale di rifinitura (freehand/poligono) per bordi imperfetti
 - [x] Playlist/sequenze di effetti con transizioni: barra timeline in basso (clip da libreria/preset, editor al click con anteprima, durata trascinabile, play/pause, loop, transizione smooth con crossfade a durata regolabile o secca; agisce su layer attivo + spunte sync; persistita nel progetto)
@@ -78,6 +90,13 @@ Modello: scena = pila di Layer indipendenti; ogni layer ha contenuto (img/gif/vi
 - [ ] Opzione "tratta il nero come trasparente" (luminance key) per immagini senza canale alpha
 - [ ] Warp proiettivo vero (omografia nello shader o mesh suddivisa) — il warp attuale a 2 triangoli può creare una piega diagonale con deformazioni estreme
 - [ ] Rimozione sfondo automatica (client-side ML o servizio esterno — decisione rimandata, per ora si caricano PNG già scontornati)
+
+## Fase 2.5 — Generative Lab (rimosso)
+
+Pannello destro per creare visual generativi (moduli + editor GLSL live), implementato tra il
+2026-07-28 e il 2026-07-29 (vedi MEMORY.md per il dettaglio). **Rimosso interamente il 2026-08-13
+su richiesta esplicita dell'utente** ("non mi piace"): codice, store, voce in toolbar e store IDB
+`generativeVisuals` eliminati. Nessun rimpiazzo pianificato.
 
 ## Fase 3 — Live performance
 

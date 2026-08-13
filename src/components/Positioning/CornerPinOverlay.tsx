@@ -1,7 +1,9 @@
 import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react'
 import type { Transform } from '../../store/projectStore'
 import { useLayersStore } from '../../store/layersStore'
-import { useUiStore, type ViewTransform } from '../../store/uiStore'
+import { useUiStore, GRID_STEP, type ViewTransform } from '../../store/uiStore'
+import { snapCorner } from '../../lib/mappingGeometry'
+import { cn } from '../../lib/utils'
 
 // stesse formule usate dalla camera ortografica in StageCanvas, includendo lo zoom/pan di anteprima
 // (view): frustum = -aspect/zoom+panX .. aspect/zoom+panX, -1/zoom+panY .. 1/zoom+panY
@@ -52,7 +54,11 @@ export function CornerPinOverlay() {
   const moveCorners = useLayersStore((s) => s.moveActiveCorners)
   const corners = activeLayer?.corners
   const transform = activeLayer?.transform
+  const locked = activeLayer?.locked ?? false
   const view = useUiStore((s) => s.view)
+  const selectedCorner = useUiStore((s) => s.selectedCorner)
+  const setSelectedCorner = useUiStore((s) => s.setSelectedCorner)
+  const snapEnabled = useUiStore((s) => s.snapEnabled)
 
   useEffect(() => {
     const el = containerRef.current
@@ -71,13 +77,17 @@ export function CornerPinOverlay() {
     (index: 0 | 1 | 2 | 3) => (e: ReactPointerEvent<HTMLDivElement>) => {
       e.preventDefault()
       e.stopPropagation()
-      if (!transform) return
+      // il click seleziona comunque l'angolo, così le frecce agiscono su quello appena toccato
+      setSelectedCorner(index)
+      if (!transform || locked) return
       const rect = containerRef.current!.getBoundingClientRect()
 
       const onMove = (ev: PointerEvent) => {
         const px = ev.clientX - rect.left
         const py = ev.clientY - rect.top
-        const world = screenToWorld(px, py, width, height, view)
+        let world = screenToWorld(px, py, width, height, view)
+        // lo snap agisce sulla posizione renderizzata: è lì che l'utente vede la griglia
+        if (snapEnabled) world = snapCorner(world, GRID_STEP)
         // la maniglia vive nello spazio renderizzato: riportala nello spazio base del corner
         setCorner(index, invertTransform(world.x, world.y, transform))
       }
@@ -91,7 +101,7 @@ export function CornerPinOverlay() {
 
   const handlePanStart = (e: ReactPointerEvent<SVGPolygonElement>) => {
     e.preventDefault()
-    if (!transform) return
+    if (!transform || locked) return
     const { left, right, top, bottom } = frustum(width, height, view)
     let lastX = e.clientX
     let lastY = e.clientY
@@ -128,26 +138,39 @@ export function CornerPinOverlay() {
     .map((c) => `${c.x},${c.y}`)
     .join(' ')
 
+  // bloccato = ambra e non trascinabile, così lo stato è leggibile a colpo d'occhio durante il live
+  const stroke = locked ? 'rgba(251, 191, 36, 0.75)' : 'rgba(168, 85, 247, 0.6)'
+  const fill = locked ? 'rgba(251, 191, 36, 0.06)' : 'rgba(168, 85, 247, 0.08)'
+
   return (
     <div ref={containerRef} className="absolute inset-0">
       <svg className="absolute inset-0 h-full w-full">
         <polygon
           points={polygonPoints}
-          fill="rgba(168, 85, 247, 0.08)"
-          stroke="rgba(168, 85, 247, 0.6)"
+          fill={fill}
+          stroke={stroke}
           strokeWidth={1.5}
-          style={{ pointerEvents: 'auto', cursor: 'move' }}
+          strokeDasharray={locked ? '6 4' : undefined}
+          style={{ pointerEvents: 'auto', cursor: locked ? 'not-allowed' : 'move' }}
           onPointerDown={handlePanStart}
         />
       </svg>
-      {screenCorners.map((c, i) => (
-        <div
-          key={i}
-          onPointerDown={handleCornerDrag(i as 0 | 1 | 2 | 3)}
-          className="absolute h-4 w-4 -translate-x-1/2 -translate-y-1/2 cursor-grab rounded-full border-2 border-white bg-purple-500 active:cursor-grabbing"
-          style={{ left: c.x, top: c.y, pointerEvents: 'auto' }}
-        />
-      ))}
+      {screenCorners.map((c, i) => {
+        const isSelected = selectedCorner === i
+        return (
+          <div
+            key={i}
+            onPointerDown={handleCornerDrag(i as 0 | 1 | 2 | 3)}
+            className={cn(
+              'absolute -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-white transition-[height,width]',
+              // l'angolo selezionato è più grande: è il bersaglio delle frecce, va riconosciuto subito
+              isSelected ? 'h-5 w-5 ring-2 ring-white/70' : 'h-4 w-4',
+              locked ? 'cursor-not-allowed bg-amber-500' : 'cursor-grab bg-purple-500 active:cursor-grabbing',
+            )}
+            style={{ left: c.x, top: c.y, pointerEvents: 'auto' }}
+          />
+        )
+      })}
     </div>
   )
 }
