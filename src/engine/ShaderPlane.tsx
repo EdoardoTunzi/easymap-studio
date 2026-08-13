@@ -95,9 +95,32 @@ function passEffect(l: Layer, variant: PassVariant) {
   }
 }
 
+/**
+ * Da quale scena viene il layer: quella corrente o quella uscente durante il crossfade di un
+ * invio all'Output. La scena uscente è congelata, quindi si legge da `outgoingLayers`.
+ */
+type SceneSource = 'current' | 'outgoing'
+
+/** Layer della scena indicata, o undefined se non c'è (es. layer aggiunto solo nella nuova). */
+function findLayer(state: LayersSnapshot, layerId: string, source: SceneSource) {
+  const list = source === 'outgoing' ? state.outgoingLayers : state.layers
+  return list?.find((l) => l.id === layerId)
+}
+
+type LayersSnapshot = ReturnType<typeof useLayersStore.getState>
+
+/**
+ * Peso della scena nel crossfade: la uscente sfuma da 1 a 0 mentre la nuova sale da 0 a 1.
+ * Senza crossfade in corso `sceneFade` vale 1, quindi la scena corrente resta a piena opacità.
+ */
+function sceneWeight(state: LayersSnapshot, source: SceneSource) {
+  return source === 'outgoing' ? 1 - state.sceneFade : state.sceneFade
+}
+
 interface EffectPassProps {
   layerId: string
   variant: PassVariant
+  source: SceneSource
   renderOrder: number
   geometry: THREE.PlaneGeometry
   controllerRef: RefObject<MediaTextureController>
@@ -109,10 +132,10 @@ interface EffectPassProps {
  * Il layer ne ha uno ('main'); durante un crossfade se ne aggiunge un secondo ('ghost')
  * con l'effetto uscente, in dissolvenza sotto quello nuovo.
  */
-function EffectPass({ layerId, variant, renderOrder, geometry, controllerRef, maskTexRef }: EffectPassProps) {
+function EffectPass({ layerId, variant, source, renderOrder, geometry, controllerRef, maskTexRef }: EffectPassProps) {
   const materialRef = useRef<THREE.ShaderMaterial>(null)
 
-  const layer = useLayersStore((s) => s.layers.find((l) => l.id === layerId))
+  const layer = useLayersStore((s) => findLayer(s, layerId, source))
   const shaders = useEffectsStore((s) => s.shaders)
   const shaderName = variant === 'main' ? layer?.shaderName : layer?.transition?.shaderName
   const shader = shaderName ? shaders.find((s) => s.name === shaderName) : undefined
@@ -122,7 +145,8 @@ function EffectPass({ layerId, variant, renderOrder, geometry, controllerRef, ma
   useFrame((state) => {
     const mat = materialRef.current
     if (!mat || !shader) return
-    const l = useLayersStore.getState().layers.find((x) => x.id === layerId)
+    const storeState = useLayersStore.getState()
+    const l = findLayer(storeState, layerId, source)
     if (!l) return
     const fx = passEffect(l, variant)
     if (!fx || fx.shaderName !== shader.name) return
@@ -133,7 +157,8 @@ function EffectPass({ layerId, variant, renderOrder, geometry, controllerRef, ma
     ;(u.uResolution.value as THREE.Vector2).set(state.size.width, state.size.height)
     u.uScale.value = fx.size
     u.uLumaKey.value = l.lumaKey
-    u.uOpacity.value = fx.opacity
+    // il peso della scena scala l'opacità: è così che le due scene si dissolvono l'una nell'altra
+    u.uOpacity.value = fx.opacity * sceneWeight(storeState, source)
     // controlli globali: proprietà del layer, valgono per qualunque shader
     const g = l.fx
     u.uFxSpeed.value = g.speed
@@ -222,8 +247,16 @@ function EffectPass({ layerId, variant, renderOrder, geometry, controllerRef, ma
 }
 
 /** Una singola mesh warpata dai corner-pin, con lo shader, il contenuto e le maschere del suo layer. */
-function LayerMesh({ layerId, index }: { layerId: string; index: number }) {
-  const layer = useLayersStore((s) => s.layers.find((l) => l.id === layerId))
+function LayerMesh({
+  layerId,
+  index,
+  source = 'current',
+}: {
+  layerId: string
+  index: number
+  source?: SceneSource
+}) {
+  const layer = useLayersStore((s) => findLayer(s, layerId, source))
 
   // geometria a 4 vertici, warpata in base ai corner-pin (condivisa dai passaggi main/ghost)
   const geometry = useMemo(() => {
@@ -280,7 +313,10 @@ function LayerMesh({ layerId, index }: { layerId: string; index: number }) {
 
   if (!layer) return null
 
-  const passProps = { layerId, geometry, controllerRef, maskTexRef }
+  const passProps = { layerId, source, geometry, controllerRef, maskTexRef }
+  // la scena uscente sta interamente sotto quella nuova, così l'ordine di compositing
+  // resta prevedibile anche coi blend mode
+  const order = source === 'outgoing' ? index * 2 - OUTGOING_ORDER_OFFSET : index * 2
 
   return (
     <group
@@ -288,18 +324,28 @@ function LayerMesh({ layerId, index }: { layerId: string; index: number }) {
       scale={layer.transform.zoom}
     >
       {/* effetto uscente sotto (renderOrder minore), nuovo effetto sopra: crossfade */}
-      {layer.transition && <EffectPass {...passProps} variant="ghost" renderOrder={index * 2} />}
-      <EffectPass {...passProps} variant="main" renderOrder={index * 2 + 1} />
+      {layer.transition && <EffectPass {...passProps} variant="ghost" renderOrder={order} />}
+      <EffectPass {...passProps} variant="main" renderOrder={order + 1} />
     </group>
   )
 }
 
+/** Scarto di renderOrder che tiene l'intera scena uscente sotto quella entrante. */
+const OUTGOING_ORDER_OFFSET = 10000
+
 /** Impila tutte le mesh dei layer (index 0 = sfondo, ultimo = in primo piano). */
 export function ShaderPlane() {
   const layerIds = useLayersStore((s) => s.layers.map((l) => l.id).join(','))
+  // durante un invio all'Output con transizione, la scena precedente resta montata e sfuma
+  const outgoingIds = useLayersStore((s) => s.outgoingLayers?.map((l) => l.id).join(',') ?? '')
   const ids = layerIds ? layerIds.split(',') : []
+  const outIds = outgoingIds ? outgoingIds.split(',') : []
   return (
     <>
+      {/* key distinta: lo stesso layer può comparire in entrambe le scene */}
+      {outIds.map((id, i) => (
+        <LayerMesh key={`out-${id}`} layerId={id} index={i} source="outgoing" />
+      ))}
       {ids.map((id, i) => (
         <LayerMesh key={id} layerId={id} index={i} />
       ))}

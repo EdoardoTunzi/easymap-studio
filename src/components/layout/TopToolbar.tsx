@@ -1,4 +1,4 @@
-import { Layers, Move, Sparkles, Scissors, Palette, Images, MonitorPlay, MonitorUp, Radio } from "lucide-react";
+import { Move, Sparkles, Palette, FolderOpen, MonitorPlay, MonitorUp, Radio, PanelRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 import { SidebarTrigger } from "@/components/ui/sidebar";
@@ -6,19 +6,20 @@ import { useUiStore, type Panel } from "@/store/uiStore";
 import { useOutputStore } from "@/store/outputStore";
 import { cn } from "@/lib/utils";
 
+// Solo ciò che NON riguarda il singolo layer: contenuto, maschere e posizione del layer
+// selezionato vivono nella colonna destra, tutti visibili insieme.
 const NAV: { id: Panel; label: string; icon: typeof Move }[] = [
-  { id: "layers", label: "Layers", icon: Layers },
-  { id: "move", label: "Move", icon: Move },
   { id: "shader", label: "Shader", icon: Sparkles },
-  { id: "mask", label: "Mask", icon: Scissors },
   { id: "palette", label: "Palette", icon: Palette },
-  { id: "assets", label: "Assets", icon: Images },
+  { id: "projects", label: "Progetti", icon: FolderOpen },
   { id: "output", label: "Output", icon: MonitorPlay }
 ];
 
 export function TopToolbar() {
   const activePanel = useUiStore((s) => s.activePanel);
   const setActivePanel = useUiStore((s) => s.setActivePanel);
+  const rightSidebarOpen = useUiStore((s) => s.rightSidebarOpen);
+  const toggleRightSidebar = useUiStore((s) => s.toggleRightSidebar);
   const live = useOutputStore((s) => s.live);
   const dirty = useOutputStore((s) => s.dirty);
   const setLive = useOutputStore((s) => s.setLive);
@@ -74,11 +75,17 @@ export function TopToolbar() {
           </Button>
         )}
 
-        {/*  <Separator orientation="vertical" className="mx-0.5 h-5" /> */}
-
-        {/* <Button variant="ghost" size="icon" className="text-muted-foreground" aria-label="Impostazioni">
-          <Settings className="size-4" />
-        </Button> */}
+        {/* apre/chiude l'ispettore del layer selezionato (colonna destra) */}
+        <Button
+          variant={rightSidebarOpen ? "secondary" : "ghost"}
+          size="icon"
+          onClick={toggleRightSidebar}
+          aria-pressed={rightSidebarOpen}
+          className={cn(!rightSidebarOpen && "text-muted-foreground")}
+          title={rightSidebarOpen ? "Nascondi il pannello del layer" : "Mostra il pannello del layer"}
+        >
+          <PanelRight className="size-4" />
+        </Button>
       </div>
     </header>
   );

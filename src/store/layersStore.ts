@@ -264,6 +264,20 @@ interface LayersState {
   /** Incrementato per richiedere un ri-adattamento dei corner del layer attivo (vedi AutoFit). */
   fitRequestId: number
   /**
+   * Scena uscente durante il crossfade di un invio all'Output. Vive solo nella finestra Output
+   * e solo per la durata della dissolvenza: è una copia congelata dei layer precedenti, che
+   * viene renderizzata sotto quella nuova con opacità decrescente. null = nessun crossfade.
+   * A differenza di `Layer.transition` (che sfuma il solo effetto) copre l'intera scena, quindi
+   * anche media, mapping, maschere e layer aggiunti o rimossi.
+   */
+  outgoingLayers: Layer[] | null
+  /** Avanzamento del crossfade di scena: 0 = solo scena uscente, 1 = solo scena nuova. */
+  sceneFade: number
+  /** Applica la nuova scena conservando quella corrente come uscente, e riparte da fade 0. */
+  beginSceneCrossfade: (layers: Layer[], activeLayerId: string) => void
+  /** Avanza il crossfade di scena; a >= 1 lo chiude e libera la scena uscente. */
+  setSceneFade: (progress: number) => void
+  /**
    * Griglia di calibrazione disegnata sopra il layer attivo, in Control **e in Output**: serve a
    * far coincidere fisicamente i bordi della proiezione con quelli dell'oggetto reale prima di
    * mandare in scena il contenuto. Stato di scena transiente: viaggia nel sync ma non è persistito.
@@ -409,6 +423,8 @@ export const useLayersStore = create<LayersState>((set, get) => {
     activeMaskId: null,
     syncTargetIds: [], // di default i layer sono indipendenti
     fitRequestId: 0,
+    outgoingLayers: null,
+    sceneFade: 1,
     testPattern: false,
 
     setTestPattern: (testPattern) => set({ testPattern }),
@@ -704,7 +720,28 @@ export const useLayersStore = create<LayersState>((set, get) => {
         layers: next,
         activeLayerId: next.find((l) => l.id === activeLayerId)?.id ?? next[0]?.id ?? '',
         syncTargetIds: [], // il caricamento riparte con layer indipendenti
+        // un cambio scena secco interrompe un eventuale crossfade in corso
+        outgoingLayers: null,
+        sceneFade: 1,
       })
     },
+
+    beginSceneCrossfade: (layers, activeLayerId) => {
+      const next = layers.length > 0 ? layers : [createLayer({ name: 'Layer 1' })]
+      set((state) => ({
+        // se un crossfade è già in corso la scena uscente resta quella di partenza: ripartire
+        // da quella intermedia farebbe "saltare" indietro l'immagine già in dissolvenza
+        outgoingLayers: state.outgoingLayers ?? state.layers,
+        sceneFade: 0,
+        layers: next,
+        activeLayerId: next.find((l) => l.id === activeLayerId)?.id ?? next[0]?.id ?? '',
+        syncTargetIds: [],
+      }))
+    },
+
+    setSceneFade: (progress) =>
+      set(() =>
+        progress >= 1 ? { sceneFade: 1, outgoingLayers: null } : { sceneFade: progress },
+      ),
   }
 })

@@ -32,7 +32,7 @@ Spuntare gli step completati; aggiungere nuovi step quando emergono. Tenere alli
 - [ ] Drag diretto dell'immagine sul canvas in modalità MOVE (ora il pan è solo da pad direzionale / trascinamento del quad corner-pin)
 - [x] Toolbar di mapping sul canvas (in basso a sinistra): spostamento fine da tastiera sull'angolo selezionato (passo fine/medio/grande, Shift ×5), rotazione ±90° e ±1°, scala non uniforme, flip H/V, raddrizza, lucchetto del mapping, griglia con snap, test pattern di calibrazione visibile anche in Output. Rotazione/scala/flip agiscono sui corner (`src/lib/mappingGeometry.ts`), non su `Transform`: nessuna modifica a shader, persistence e sync
 - [x] Timeline in basso come nello screenshot MAPSHROOM (barra playlist)
-- [ ] Pannello destro (generazione shader) come nello screenshot MAPSHROOM — era il Generative Lab (Fase 2.5), rimosso su richiesta dell'utente
+- [x] Pannello destro: ora è l'**ispettore del layer** (lista layer fissa + Proprietà/Asset/Mask/Move richiudibili, tutti riferiti al layer selezionato), collassabile e ridimensionabile. La sidebar sinistra resta al look e al progetto (Shader, Palette, Progetti, Output)
 - [x] Pannello live: controlli globali per-layer validi per QUALSIASI shader (velocità, rotazione, pan, kaleidoscopio, mirror X/Y, pixelate, luminosità, contrasto, saturazione, posterize, negativo) — implementati nel wrapper GLSL (`easyvj_fxUv`/`easyvj_fxColor`), UI in `FxControlsPanel`
 - [x] 30 shader psytrance/techno (`src/shaders/psy*.glsl`): libreria da 41 a 71 effetti, tutti verificati in compilazione WebGL
 - [x] 20 shader "Morph" source-driven (`src/shaders/morph*.glsl`) sulla scia di 3D Surface Morph Spirals: la luminanza dell'asset fa da mappa di quota (`lum * morphDepth`) e deforma la geometria dell'effetto. Libreria a 91 effetti; provino verificato renderizzandoli con l'asset reale, non con la texture di fallback
@@ -74,6 +74,7 @@ Modello: scena = pila di Layer indipendenti; ogni layer ha contenuto (img/gif/vi
 - [x] "Nessun effetto" (shader passthrough) per mostrare l'asset grezzo
 - [x] Link effetto: toggle persistente "Applica a tutti i layer" (Effetto sincronizzato) con selezione dei layer target (nuovi inclusi di default); propaga shader+params+size+palette in live
 - [x] Modalità Live: l'Output non si aggiorna in automatico; pulsante "Esegui in output" invia lo stato corrente (toggle LIVE + indicatore modifiche in sospeso in toolbar). Uscendo da Live l'Output si allinea subito
+- [x] Crossfade dell'intera scena sugli invii all'Output (push manuale e uscita da Live), al posto del cambio secco: copre effetto, media, mapping, maschere e layer aggiunti/rimossi. Durata dai valori della barra playlist; gli aggiornamenti automatici fuori da Live restano istantanei
 
 ### Altro editor avanzato
 - [ ] Undo/redo del mapping (proposto e scartato dall'utente il 2026-08-13: per ora il lucchetto previene gli incidenti; riconsiderare se emerge il bisogno)

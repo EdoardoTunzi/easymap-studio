@@ -1,7 +1,32 @@
 import { create } from 'zustand'
 
-/** Sezioni selezionabili dalla top toolbar; determinano il contenuto del pannello sinistro. */
-export type Panel = 'layers' | 'move' | 'shader' | 'mask' | 'palette' | 'assets' | 'output'
+/**
+ * Sezioni della sidebar SINISTRA: riguardano il look e il progetto, non il singolo layer.
+ * Tutto ciò che descrive il layer selezionato (contenuto, maschere, posizione) vive invece
+ * nella colonna destra, dove è visibile tutto insieme.
+ */
+export type Panel = 'shader' | 'palette' | 'projects' | 'output'
+
+/** Blocchi richiudibili della colonna destra, sotto la lista dei layer (che resta fissa). */
+export type LayerSection = 'properties' | 'asset' | 'mask' | 'move'
+
+const SECTIONS_STORAGE_KEY = 'easyvj-layer-sections'
+const DEFAULT_SECTIONS: Record<LayerSection, boolean> = {
+  properties: true,
+  asset: true,
+  mask: true,
+  move: true,
+}
+
+function loadSections(): Record<LayerSection, boolean> {
+  if (typeof window === 'undefined') return { ...DEFAULT_SECTIONS }
+  try {
+    const raw = window.localStorage.getItem(SECTIONS_STORAGE_KEY)
+    return raw ? { ...DEFAULT_SECTIONS, ...JSON.parse(raw) } : { ...DEFAULT_SECTIONS }
+  } catch {
+    return { ...DEFAULT_SECTIONS }
+  }
+}
 
 /**
  * Zoom/pan della vista di anteprima nella finestra Control. Puramente visivo: sposta solo il
@@ -44,6 +69,12 @@ export const GRID_STEP = 2 / GRID_DIVISIONS
 interface UiState {
   activePanel: Panel
   setActivePanel: (panel: Panel) => void
+  /** Colonna destra (ispettore del layer selezionato): apribile/richiudibile come la sidebar sinistra. */
+  rightSidebarOpen: boolean
+  toggleRightSidebar: () => void
+  /** Blocchi aperti nella colonna destra, ricordati tra le sessioni. */
+  sectionsOpen: Record<LayerSection, boolean>
+  toggleSection: (section: LayerSection) => void
   /**
    * Visibilità degli overlay di mapping (maniglie corner-pin e forme delle maschere) sul canvas
    * di anteprima: nasconderli permette di valutare l'effetto senza la cornice che lo sovrasta.
@@ -71,8 +102,21 @@ interface UiState {
 }
 
 export const useUiStore = create<UiState>((set) => ({
-  activePanel: 'layers',
+  activePanel: 'shader',
   setActivePanel: (activePanel) => set({ activePanel }),
+  rightSidebarOpen: true,
+  toggleRightSidebar: () => set((s) => ({ rightSidebarOpen: !s.rightSidebarOpen })),
+  sectionsOpen: loadSections(),
+  toggleSection: (section) =>
+    set((s) => {
+      const sectionsOpen = { ...s.sectionsOpen, [section]: !s.sectionsOpen[section] }
+      try {
+        window.localStorage.setItem(SECTIONS_STORAGE_KEY, JSON.stringify(sectionsOpen))
+      } catch {
+        // storage pieno o disabilitato: lo stato resta valido per la sessione corrente
+      }
+      return { sectionsOpen }
+    }),
   overlaysVisible: true,
   toggleOverlays: () => set((s) => ({ overlaysVisible: !s.overlaysVisible })),
   selectedCorner: null,
