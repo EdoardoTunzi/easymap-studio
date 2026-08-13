@@ -268,13 +268,6 @@ interface LayersState {
   setActiveMedia: (media: MediaAsset | null) => void
   setActiveLumaKey: (lumaKey: number) => void
   setActiveShader: (shaderName: string) => void
-  /**
-   * Applica uno shader al layer attivo AZZERANDO i parametri memorizzati per quel nome.
-   * Serve al Generative Lab: lì i valori correnti vivono nei `@default` della sorgente rigenerata,
-   * e i params che il layer aveva salvato per lo stesso nome li maschererebbero, facendo sembrare
-   * che le modifiche non vengano applicate.
-   */
-  adoptShaderDefaults: (shaderName: string) => void
   setActiveSize: (size: number) => void
   /** Aggiorna i controlli globali dell'effetto sul layer attivo (+ layer sincronizzati). */
   setActiveFx: (patch: Partial<FxControls>) => void
@@ -454,13 +447,6 @@ export const useLayersStore = create<LayersState>((set, get) => {
     setActiveLumaKey: (lumaKey) => patchActive(() => ({ lumaKey })),
     // shader / size / param sono EFFETTO → passano da editEffect (propagazione col link)
     setActiveShader: (shaderName) => editEffect(() => ({ shaderName })),
-
-    adoptShaderDefaults: (shaderName) =>
-      editEffect((l) => ({
-        shaderName,
-        params: { ...l.params, [shaderName]: {} },
-        colorParams: { ...l.colorParams, [shaderName]: {} },
-      })),
 
     setActiveSize: (size) => editEffect(() => ({ size })),
 

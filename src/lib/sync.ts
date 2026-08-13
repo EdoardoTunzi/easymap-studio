@@ -1,8 +1,6 @@
 import { useEffect } from 'react'
 import { useLayersStore, type Layer } from '../store/layersStore'
 import { useOutputStore } from '../store/outputStore'
-import { useEffectsStore } from '../store/effectsStore'
-import { parseShader } from '../engine/isfParser'
 
 const CHANNEL_NAME = 'easyvj-sync'
 
@@ -10,21 +8,6 @@ interface Payload {
   type: 'state'
   layers: Layer[]
   activeLayerId: string
-}
-
-// Canale riusato: in modalità live il Generative Lab pubblica a ogni movimento di slider,
-// aprirne e chiuderne uno per messaggio sarebbe inutilmente costoso.
-let shaderChannel: BroadcastChannel | null = null
-
-/**
- * Comunica un visual generativo (in editing, appena salvato o rinominato) alle finestre Output
- * già aperte: senza questo, l'Output conoscerebbe solo gli shader letti da IndexedDB al proprio
- * avvio e un layer che usa un visual non ancora salvato non verrebbe disegnato.
- * Fire-and-forget, fuori dal payload di stato.
- */
-export function publishGenerativeShader(source: string) {
-  shaderChannel ??= new BroadcastChannel(CHANNEL_NAME)
-  shaderChannel.postMessage({ type: 'shader', source })
 }
 
 /** Rimuove i blob (locali, servono solo alla persistenza) mantenendo i blob URL, validi cross-window. */
@@ -101,10 +84,6 @@ export function useBroadcastSubscriber() {
   useEffect(() => {
     const channel = new BroadcastChannel(CHANNEL_NAME)
     channel.onmessage = (event) => {
-      if (event.data?.type === 'shader') {
-        useEffectsStore.getState().registerShaders([parseShader(event.data.source)])
-        return
-      }
       if (event.data?.type !== 'state') return
       const { layers, activeLayerId } = event.data
       if (layers) useLayersStore.getState().setScene(layers, activeLayerId)

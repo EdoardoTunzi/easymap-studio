@@ -25,9 +25,6 @@ function clamp(value: number, min: number, max: number) {
 interface UiState {
   activePanel: Panel
   setActivePanel: (panel: Panel) => void
-  /** Pannello Generative Lab sulla destra: indipendente da `activePanel` (sidebar sinistra). */
-  generativeLabOpen: boolean
-  toggleGenerativeLab: () => void
   /**
    * Visibilità degli overlay di mapping (maniglie corner-pin e forme delle maschere) sul canvas
    * di anteprima: nasconderli permette di valutare l'effetto senza la cornice che lo sovrasta.
@@ -45,8 +42,6 @@ interface UiState {
 export const useUiStore = create<UiState>((set) => ({
   activePanel: 'layers',
   setActivePanel: (activePanel) => set({ activePanel }),
-  generativeLabOpen: false,
-  toggleGenerativeLab: () => set((s) => ({ generativeLabOpen: !s.generativeLabOpen })),
   overlaysVisible: true,
   toggleOverlays: () => set((s) => ({ overlaysVisible: !s.overlaysVisible })),
   view: DEFAULT_VIEW,

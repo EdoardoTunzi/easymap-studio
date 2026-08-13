@@ -1,4 +1,4 @@
-import { Layers, Move, Sparkles, Scissors, Palette, Images, MonitorPlay, MonitorUp, Radio, Wand2 } from "lucide-react";
+import { Layers, Move, Sparkles, Scissors, Palette, Images, MonitorPlay, MonitorUp, Radio } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 import { SidebarTrigger } from "@/components/ui/sidebar";
@@ -19,8 +19,6 @@ const NAV: { id: Panel; label: string; icon: typeof Move }[] = [
 export function TopToolbar() {
   const activePanel = useUiStore((s) => s.activePanel);
   const setActivePanel = useUiStore((s) => s.setActivePanel);
-  const generativeLabOpen = useUiStore((s) => s.generativeLabOpen);
-  const toggleGenerativeLab = useUiStore((s) => s.toggleGenerativeLab);
   const live = useOutputStore((s) => s.live);
   const dirty = useOutputStore((s) => s.dirty);
   const setLive = useOutputStore((s) => s.setLive);
@@ -49,18 +47,6 @@ export function TopToolbar() {
       </nav>
 
       <div className="flex items-center gap-1.5">
-        {/* Generative Lab: pannello destro, indipendente dalla sidebar sinistra */}
-        <Button
-          variant={generativeLabOpen ? "secondary" : "ghost"}
-          size="sm"
-          onClick={toggleGenerativeLab}
-          className={cn("gap-1.5 text-xs uppercase tracking-wide", !generativeLabOpen && "text-muted-foreground")}
-          title="Crea visual generativi (moduli + editor GLSL)"
-        >
-          <Wand2 className="size-3.5" />
-          Generative
-        </Button>
-
         {/* Modalità Live: congela l'Output finché non si preme "Esegui in output" */}
         <Button
           variant={live ? "default" : "ghost"}

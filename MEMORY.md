@@ -2,6 +2,22 @@
 
 Ogni modifica al progetto va registrata qui con data, descrizione e motivazione. Le voci più recenti in alto dentro ogni giornata.
 
+## 2026-08-13 — Rimosso interamente il Generative Lab
+
+Richiesta esplicita dell'utente ("elimina tutta la sezione generative lab... non mi piace"). Chiarito prima di procedere: i dati vecchi in IndexedDB restano orfani (nessun bump di versione DB, nessuna migrazione di pulizia) e i meccanismi generici usati solo dal Generative Lab vanno rimossi insieme al resto.
+
+- **Eliminati**: `src/components/Generative/` (intera cartella: `GenerativeLabPanel`, `ModuleStackEditor`, `CodeEditorTab`, `GenerativePreview`, `GenerativeLibrary`, `useLiveApply`), `src/engine/generativeModules.ts`, `src/store/generativeStore.ts`.
+- **`src/lib/persistence.ts`**: rimossi `GenerativeVisual`, l'object store `generativeVisuals` dallo schema `EasyVjDB` (DB resta a v4, nessun bump: lo store residuo nei browser che l'avevano già creato resta semplicemente inutilizzato), `saveGenerativeVisual`/`listGenerativeVisuals`/`deleteGenerativeVisual`/`uniqueVisualName`/`registerVisuals`/`useLoadGenerativeVisuals`.
+- **`src/lib/sync.ts`**: rimossi `publishGenerativeShader`, il canale `shaderChannel` e la gestione del messaggio broadcast `{ type: 'shader' }` in `useBroadcastSubscriber`.
+- **`src/store/effectsStore.ts`**: rimossi `registerShaders`/`unregisterShader` (nessun altro consumatore: la libreria shader torna a essere solo quella statica caricata dai file).
+- **`src/store/layersStore.ts`**: rimossa l'azione `adoptShaderDefaults` (usata solo da `useLiveApply.ts` del Generative Lab).
+- **`src/store/uiStore.ts`**: rimossi `generativeLabOpen`/`toggleGenerativeLab`.
+- **`src/components/layout/TopToolbar.tsx`**: rimosso il bottone "Generative".
+- **`src/routes/control/ControlPage.tsx`**: rimossi il pannello destro ridimensionabile (`labWidth`/`startLabResize`, storageKey `easyvj-generative-width`), `useLoadGenerativeVisuals()` e l'import di `GenerativeLabPanel`.
+- **`src/routes/output/OutputPage.tsx`**: rimossa la chiamata a `useLoadGenerativeVisuals()`.
+- **`TODO.md`**: sezione "Fase 2.5 — Generative Lab" sostituita da una nota di rimozione; ripristinati a `[ ]` i due item di Fase 1 che referenziavano la feature (pannello destro, import shader GLSL utente).
+- Verificato: `npx tsc -b --noEmit` pulito, nessun riferimento residuo a "generative" nel codice (`grep -rli` su `src`). **Verifica visiva nel browser non eseguita**: il profilo Chrome condiviso di chrome-devtools-mcp risultava già occupato da un'altra istanza (probabilmente un processo orfano di una sessione precedente) e non è stato possibile aprire una pagina per lo screenshot.
+
 ## 2026-07-29 — README aggiornato con le feature recenti
 
 Richiesta dell'utente: documentare nel `README.md` le funzionalità aggiunte nelle ultime sessioni.
