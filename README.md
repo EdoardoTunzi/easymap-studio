@@ -2,7 +2,7 @@
 
 ![Logo EasyMap Studio](public/logo.png)
 
-**Live preview**: https://easymap-studio-nine.vercel.app/control
+**Live preview**: https://easymap-studio-nine.vercel.app
 
 **Webapp frontend per projection mapping e performance VJ live**, pensata per essere usata sul palco: si carica l'immagine di una statua, un palco o una superficie qualsiasi, si allinea la proiezione con un corner-pin, si applicano shader GLSL generativi ritagliati automaticamente dentro i bordi del soggetto, e si proietta da una finestra dedicata sincronizzata in tempo reale con l'editor di controllo.
 
@@ -51,7 +51,7 @@ Tutto quello che puoi fare dall'editor, pannello per pannello.
 - Libreria di **97 shader GLSL** generativi/psichedelici, in cinque famiglie:
   - **Halo** e **Liquid** — simmetrie radiali e superfici fluide;
   - **Psy** (30 effetti) — pensati per stage psytrance e techno: strobo, tunnel, laser, griglie esagonali, digital rain, wireframe synthwave, glitch, barre spettro, geometria sacra, frattali;
-  - **Morph** (20 effetti) — *source-driven*: usano la luminanza del tuo asset come mappa di profondità (`morphDepth`), così il pattern non ci si appoggia sopra ma lo **modella**, seguendone i rilievi.
+  - **Morph** (20 effetti) — _source-driven_: usano la luminanza del tuo asset come mappa di profondità (`morphDepth`), così il pattern non ci si appoggia sopra ma lo **modella**, seguendone i rilievi.
   - **SD** (10 effetti) — source-driven di seconda generazione: oltre alla luminanza leggono la **pendenza locale** dell'immagine (il gradiente), cioè la direzione in cui la superficie sale. Così creste, trame e onde si orientano lungo le curve reali dell'oggetto e ne ricevono anche l'illuminazione. Ognuno espone 11-12 controlli, tra cui il raggio di campionamento del rilievo e l'angolo della luce.
 - **Controlli globali dell'effetto**, validi per **qualsiasi** shader (anche quelli che espongono pochi parametri propri): velocità, rotazione, pan X/Y, kaleidoscopio, mirror X/Y, pixelate, luminosità, contrasto, saturazione, posterize, negativo — con reset immediato.
 - Opzione **"Nessun effetto"** per mostrare il contenuto grezzo del layer.
@@ -181,7 +181,7 @@ Il progetto segue una roadmap tracciata in dettaglio in `TODO.md`. Macro-fasi:
 - ✅ **Fase 2 — Multi-layer**: layer indipendenti, maschere, media dinamici (video/GIF), modalità Live, playlist con transizioni.
 - ✅ **Fase 2.5 — Generative Lab**: editor di visual generativi (moduli combinabili + GLSL live), controlli globali per qualsiasi effetto, libreria estesa a 87 shader.
 - ⏳ **Fase 3 — Live performance**: audio-reactive (Web Audio API + FFT), BPM sync, controller MIDI, bridge OSC/DMX, multi-output.
-- 🔭 **Oltre**: motore particellare 3D GPU-instanced (point cloud reali con profondità e camera) e feedback buffer per le scie accumulate — i due passi che avvicinerebbero davvero l'estetica delle *data sculpture*.
+- 🔭 **Oltre**: motore particellare 3D GPU-instanced (point cloud reali con profondità e camera) e feedback buffer per le scie accumulate — i due passi che avvicinerebbero davvero l'estetica delle _data sculpture_.
 
 ---
 
