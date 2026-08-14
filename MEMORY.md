@@ -2,6 +2,29 @@
 
 Ogni modifica al progetto va registrata qui con data, descrizione e motivazione. Le voci più recenti in alto dentro ogni giornata.
 
+## 2026-08-14 — Purga dai file markdown di una feature non più esistente
+
+Richiesta dell'utente: eliminare da tutti i `.md` ogni traccia di una sezione dell'app rimossa il 2026-08-13. Chiesto prima di procedere fin dove spingersi, dato che `MEMORY.md` è un registro storico e non una descrizione del prodotto: scelta esplicita dell'utente la **purga totale**, log compreso.
+
+- **`README.md`**: eliminate le due sezioni dedicate (lato utente e lato tecnico), il passo 5 di "Cosa fa, in pratica" (da 9 a 8 punti, gli altri rinumerati), la riga di fase completata nella roadmap, una riga dello stack tecnologico ormai senza riscontro nel codice e una frase in coda alla nota sugli shader ISF-like. I **controlli globali**, che erano citati solo nella riga di roadmap eliminata, sono stati spostati nella voce di Fase 2: esistono ancora, e cancellarli sarebbe stato perdere informazione vera.
+- **`TODO.md`**: eliminata la sezione "Fase 2.5"; ripulite la voce sull'import di shader GLSL da parte dell'utente e la descrizione del modello multi-layer, che vi rimandavano.
+- **`MEMORY.md`**: eliminate le quattro voci di changelog dedicate (28-29 luglio) e quella della rimozione (13 agosto), più i riferimenti sparsi dentro voci di altro argomento. **Eccezione motivata**: la voce del 2026-07-28 sul toggle degli overlay di mapping è stata mantenuta e riscritta, perché documentava anche due cose ancora vive nel codice — il limite di larghezza in `use-resizable-width` e la trappola del `Viewport` di Radix ScrollArea (`display: table; min-width: 100%`, che non si restringe sotto la larghezza del contenuto), ora formulata in modo generale invece che legata a un pannello che non c'è più.
+- Restano invece le occorrenze dell'aggettivo "generativo" riferite agli **shader** della libreria (che sono davvero generativi): non sono tracce della feature.
+- **Residuo fuori scope** (non è un `.md`): `@uiw/react-codemirror` e `@codemirror/lang-cpp` sono ancora in `package.json` senza essere importati da nessun file di `src/`.
+
+## 2026-08-14 — Pannello Move: pad direzionale centrato e grafica allineata all'ispettore
+
+Richiesta dell'utente: migliorare grafica e posizionamento dei tasti del pannello Move, e centrarlo.
+
+**Perché il pad era sbilanciato**: la griglia usava `grid-cols-3` dentro la colonna dell'ispettore, quindi ogni colonna prendeva un terzo della larghezza disponibile (~95px) mentre i pulsanti restavano `size-8`. Le frecce si ancoravano a sinistra della propria cella e la croce si leggeva come tre tasti sparsi invece che come un pad. Ora le colonne sono dimensionate sul contenuto e il blocco è centrato da un wrapper `flex justify-center` (misurato in pagina: pad 130px, 78.5px di margine identici sui due lati in un pannello da 287px).
+
+- **`src/components/Positioning/MovePanel.tsx`**: il pad è dentro un riquadro (`rounded-xl border bg-muted/25`) che lo fa leggere come un unico controllo fisico. Nuovo componente interno `PadButton` (36px, bordo + `bg-secondary/60`, ombra leggera) al posto del `Button` shadcn: serve una dimensione fissa e indipendente dalla griglia, che `size="icon"` da solo non garantiva nel contesto sbagliato.
+- Il tasto **Centra** resta visivamente distinto (fondo `background`, bordo pieno) e si **disabilita quando l'offset è già 0**, come il **Reset** quando l'intero transform è al default: così lo stato del layer si legge dai pulsanti, senza dover confrontare i numeri.
+- Aggiunta la **lettura numerica dell'offset** (`0.00 : 0.00`) accanto al titolo Posizione, nello stesso stile del valore di zoom già presente; entrambi ora sono chip su `bg-muted/60`.
+- I due pulsanti dello zoom passano da `ghost` (di fatto invisibili finché non ci si passa sopra) a `outline` `icon-sm`, e si disabilitano ai limiti 0.1×/4×. Reset a larghezza piena.
+- **Nessun cambio di comportamento**: passi, limiti e azioni dello store sono gli stessi di prima.
+- **Verificato nel browser**: pad centrato e simmetrico, frecce e zoom aggiornano readout e proiezione, Centra e Reset si accendono appena il transform esce dal default e tornano spenti dopo il Reset. Stato dell'app riportato ai valori iniziali dopo il test. Type-check e lint puliti, console col solo warning noto THREE.Clock.
+
 ## 2026-08-13 — 10 shader "SD": source-driven guidati dal gradiente (libreria a 97 effetti)
 
 Richiesta dell'utente: 10 effetti nuovi sulla scia del source-driven, con nome che inizia per "SD", che si deformino insieme alle curve dello stage o dell'oggetto, con almeno 8 controlli ciascuno.
@@ -51,7 +74,7 @@ Richiesta dell'utente: spostare Layers, Mask e Assets in una sidebar destra coll
 - **`LayersPanel.tsx` eliminato**, diviso in due: **`LayerList.tsx`** (lista riordinabile + "Nuovo", con `max-h-52` e scroll proprio così molti layer non spingono fuori i blocchi sotto; mostra un lucchetto ambra sui layer con mapping bloccato, stato che va visto senza doverli selezionare) e **`LayerProperties.tsx`** (nome, opacità, blend mode).
 - **Nuovo `CollapsibleSection.tsx`**: intestazione cliccabile con chevron e `badge` opzionale, leggibile anche a sezione chiusa.
 - **Nuovo `LayerInspector.tsx`**: header, blocco fisso con la lista, poi `ScrollArea` con le quattro sezioni. Badge utili a colpo d'occhio: numero di maschere (forme + stencil) e "vuoto" sull'Asset se il layer non ha media.
-- **`ControlPage.tsx`**: la colonna destra è un `<aside>` ridimensionabile (`easyvj-inspector-width`, 260–560px) con lo stesso pattern del vecchio Generative Lab — non il componente shadcn `Sidebar`, che in modalità collassabile usa `position: fixed inset-y-0` e confliggerebbe col TopToolbar (trappola già documentata il 2026-07-24). `PanelContent` ridotto ai 4 pannelli rimasti; `ProjectsPanel` è ora un pannello a sé (era dentro "Assets", ma è **globale**, non per-layer, quindi non appartiene a una colonna che parla del layer selezionato).
+- **`ControlPage.tsx`**: la colonna destra è un `<aside>` ridimensionabile (`easyvj-inspector-width`, 260–560px) — non il componente shadcn `Sidebar`, che in modalità collassabile usa `position: fixed inset-y-0` e confliggerebbe col TopToolbar (trappola già documentata il 2026-07-24). `PanelContent` ridotto ai 4 pannelli rimasti; `ProjectsPanel` è ora un pannello a sé (era dentro "Assets", ma è **globale**, non per-layer, quindi non appartiene a una colonna che parla del layer selezionato).
 - **`TopToolbar.tsx`**: nav a 4 voci (Shader, Palette, Progetti, Output) più un pulsante `PanelRight` che apre/chiude l'ispettore.
 - **Overlay maschere**: il trigger passa da `activePanel === 'mask'` (non più esistente) a **`activeMaskId != null`**. Conseguenza non ovvia scoperta provando: `selectMask` non aveva un modo di deselezionare, quindi una volta scelta una maschera non si sarebbe mai più tornati al corner-pin. Il click sulla voce in `MaskPanel` è ora un **toggle** (ri-cliccare la maschera selezionata la deseleziona).
 - **Verificato nel browser**: layout a tre colonne; le quattro sezioni si aprono/chiudono e lo stato sopravvive al reload (Asset chiuso resta chiuso); aggiungendo una maschera compare il badge "1" e sul canvas le maniglie della maschera sostituiscono il corner-pin; deselezionandola torna il corner-pin; il toggle in toolbar chiude la colonna e il canvas si allarga (1064px). Stato dell'app ripulito dopo i test (maschera di prova rimossa, sezioni riaperte). Type-check pulito, console col solo warning noto THREE.Clock.
@@ -72,33 +95,16 @@ Richiesta dell'utente: più controlli per gestire il mapping su un oggetto fisic
 - **Trappola**: un commento GLSL dentro il template literal conteneva backtick, che chiudevano la stringa (`TS1005`). Nei template literal degli shader niente backtick, nemmeno nei commenti.
 - **Verificato nel browser** (Control + Output): griglia e test pattern renderizzati correttamente; rotazione 90° ruota contenuto e quad insieme; frecce con TL selezionato spostano **solo** TL di +0.01 e Shift di +0.05 (letto dallo store); col lucchetto attivo frecce, `rotateActiveCorners` e `moveActiveCorners` non hanno alcun effetto e i pulsanti risultano disabilitati; il test pattern compare nella finestra `/output` col mapping deformato identico. Stato dell'app riportato ai valori iniziali dopo i test. Type-check pulito, console con il solo warning noto THREE.Clock.
 
-## 2026-08-13 — Rimosso interamente il Generative Lab
-
-Richiesta esplicita dell'utente ("elimina tutta la sezione generative lab... non mi piace"). Chiarito prima di procedere: i dati vecchi in IndexedDB restano orfani (nessun bump di versione DB, nessuna migrazione di pulizia) e i meccanismi generici usati solo dal Generative Lab vanno rimossi insieme al resto.
-
-- **Eliminati**: `src/components/Generative/` (intera cartella: `GenerativeLabPanel`, `ModuleStackEditor`, `CodeEditorTab`, `GenerativePreview`, `GenerativeLibrary`, `useLiveApply`), `src/engine/generativeModules.ts`, `src/store/generativeStore.ts`.
-- **`src/lib/persistence.ts`**: rimossi `GenerativeVisual`, l'object store `generativeVisuals` dallo schema `EasyVjDB` (DB resta a v4, nessun bump: lo store residuo nei browser che l'avevano già creato resta semplicemente inutilizzato), `saveGenerativeVisual`/`listGenerativeVisuals`/`deleteGenerativeVisual`/`uniqueVisualName`/`registerVisuals`/`useLoadGenerativeVisuals`.
-- **`src/lib/sync.ts`**: rimossi `publishGenerativeShader`, il canale `shaderChannel` e la gestione del messaggio broadcast `{ type: 'shader' }` in `useBroadcastSubscriber`.
-- **`src/store/effectsStore.ts`**: rimossi `registerShaders`/`unregisterShader` (nessun altro consumatore: la libreria shader torna a essere solo quella statica caricata dai file).
-- **`src/store/layersStore.ts`**: rimossa l'azione `adoptShaderDefaults` (usata solo da `useLiveApply.ts` del Generative Lab).
-- **`src/store/uiStore.ts`**: rimossi `generativeLabOpen`/`toggleGenerativeLab`.
-- **`src/components/layout/TopToolbar.tsx`**: rimosso il bottone "Generative".
-- **`src/routes/control/ControlPage.tsx`**: rimossi il pannello destro ridimensionabile (`labWidth`/`startLabResize`, storageKey `easyvj-generative-width`), `useLoadGenerativeVisuals()` e l'import di `GenerativeLabPanel`.
-- **`src/routes/output/OutputPage.tsx`**: rimossa la chiamata a `useLoadGenerativeVisuals()`.
-- **`TODO.md`**: sezione "Fase 2.5 — Generative Lab" sostituita da una nota di rimozione; ripristinati a `[ ]` i due item di Fase 1 che referenziavano la feature (pannello destro, import shader GLSL utente).
-- Verificato: `npx tsc -b --noEmit` pulito, nessun riferimento residuo a "generative" nel codice (`grep -rli` su `src`). **Verifica visiva nel browser non eseguita**: il profilo Chrome condiviso di chrome-devtools-mcp risultava già occupato da un'altra istanza (probabilmente un processo orfano di una sessione precedente) e non è stato possibile aprire una pagina per lo screenshot.
-
 ## 2026-07-29 — README aggiornato con le feature recenti
 
 Richiesta dell'utente: documentare nel `README.md` le funzionalità aggiunte nelle ultime sessioni.
 
-- Contato il numero reale di shader prima di scriverlo (37 preesistenti + 30 `psy*` + 20 `morph*` = **87** file; le 91 voci viste nei test includevano i visual generativi salvati in locale durante le prove). Sostituiti i riferimenti obsoleti "oltre 35"/"37 shader".
-- Sezione **"Cosa fa, in pratica"**: aggiunti i passi su controlli globali e Generative Lab (da 7 a 9 punti).
+- Contato il numero reale di shader prima di scriverlo (37 preesistenti + 30 `psy*` + 20 `morph*` = **87** file). Sostituiti i riferimenti obsoleti "oltre 35"/"37 shader".
+- Sezione **"Cosa fa, in pratica"**: aggiunto il passo sui controlli globali.
 - **"Effetti e palette colori"**: libreria descritta per famiglie (Halo, Liquid, Psy, Morph) con la spiegazione del `morphDepth`; aggiunti controlli globali e palette casuale 2–5 colori con schemi di armonia.
-- Nuova sezione **"Generative Lab — crea i tuoi visual"** (lato utente) e **"Generative Lab"** (lato tecnico, con la nota sugli identificatori prefissati e i valori emessi come `@default`).
 - **"Layer e maschere"**: aggiunti i riferimenti di mapping nascondibili; precisato che la sincronizzazione fra layer propaga anche i controlli globali.
 - **"Progetti e preset"**: chiarito che i controlli globali *non* sono catturati da preset e clip, ed è una scelta voluta — evita che l'utente lo scambi per un bug.
-- Stack: aggiunto CodeMirror 6. Roadmap: aggiunta la Fase 2.5 completata e una voce "Oltre" con motore particellare 3D e feedback buffer. Aggiornato lo stato in cima.
+- Roadmap: aggiunta una voce "Oltre" con motore particellare 3D e feedback buffer. Aggiornato lo stato in cima.
 
 ## 2026-07-29 — 20 effetti "Morph": source-driven con morphDepth come 3D Surface Morph Spirals
 
@@ -116,7 +122,7 @@ Richiesta dell'utente: più effetti creativi ispirati ai software di visual mapp
 
 **30 nuovi shader** in `src/shaders/psy*.glsl` (la libreria passa da 41 a 71 voci), pensati per stage psytrance/techno: Strobe Grid, Tunnel Rush, Bass Rings, Fractal Mandala, DNA Helix, Laser Sweep, Hex Pulse, Plasma Storm, Sacred Geometry, Digital Rain, Warp Stars, Liquid Mercury, Trippy Spiral, Circuit Board, Kaleido Fractal, Neon Wireframe, Acid Melt, Pulse Bars, Vortex Fractal, Techno Scanlines, Eye, Infinite Zoom, Energy Web, Chrome Ripple, Alien Organism, Strobe Tunnel, Fractal Flower, Glitch Blocks, Aurora Veil, Mandel Slice. Nessuna modifica al parser: rispettano la convenzione ISF-like già in uso, quindi sono caricati da `import.meta.glob` come gli altri.
 
-**Controlli globali per-layer** (`FxControls` in `layersStore`, uniform `uFx*` nel wrapper di `isfParser.ts`): velocità, rotazione, pan X/Y, kaleidoscopio, mirror X/Y, pixelate, luminosità, contrasto, saturazione, posterize, negativo. Applicati nel wrapper — `easyvj_fxUv` prima di `processColor` e `easyvj_fxColor` dopo — quindi valgono per **qualsiasi** shader, inclusi i 41 preesistenti e i visual generativi, senza toccarne il codice. È la risposta scalabile a "più controlli": con 71 effetti, aggiungere uniform a ciascuno non lo sarebbe. UI in `FxControlsPanel.tsx` (tab Shader).
+**Controlli globali per-layer** (`FxControls` in `layersStore`, uniform `uFx*` nel wrapper di `isfParser.ts`): velocità, rotazione, pan X/Y, kaleidoscopio, mirror X/Y, pixelate, luminosità, contrasto, saturazione, posterize, negativo. Applicati nel wrapper — `easyvj_fxUv` prima di `processColor` e `easyvj_fxColor` dopo — quindi valgono per **qualsiasi** shader, inclusi i 41 preesistenti, senza toccarne il codice. È la risposta scalabile a "più controlli": con 71 effetti, aggiungere uniform a ciascuno non lo sarebbe. UI in `FxControlsPanel.tsx` (tab Shader).
 - Scelta: `fx` è proprietà del **layer** (come opacità/blend/lumaKey), non parte di `EffectSnapshot`. Così cambiando effetto o clip della playlist i trattamenti restano applicati invece di azzerarsi a ogni transizione. Viene però propagato ai layer sincronizzati (`withEffectOf`) perché passa da `editEffect`.
 - Retrocompatibilità: i progetti salvati senza `fx` prendono i default da `createLayer` in `deserializeLayer` (lo spread non sovrascrive con `undefined`).
 
@@ -124,56 +130,14 @@ Richiesta dell'utente: più effetti creativi ispirati ai software di visual mapp
 
 **Verifica**: compilati tutti e 71 i fragment shader in un contesto WebGL reale — 0 errori GLSL. Misurata la luminanza media delle anteprime per scovare shader "morti": 8 erano troppo scuri o saturi (Warp Stars a 0.4/255, Tunnel Rush 1.2, Neon Wireframe 1.8, Kaleido Fractal 209.9) e sono stati corretti nelle formule e nei default; ora il range è 10–153. Provino visivo dei 30 controllato a schermo. Lint e `npm run build` puliti, nessun errore in console.
 
-## 2026-07-28 — Fix: sul layer si vedeva solo il primo modulo del visual generativo
+## 2026-07-28 — Limite di larghezza dei pannelli ridimensionabili + toggle overlay di mapping
 
-Segnalazione dell'utente: aggiungendo più moduli a un visual, il layer continuava a mostrare solo il primo, mentre l'anteprima nel pannello li mostrava tutti.
+Due richieste dell'utente: un pannello laterale trascinato al massimo finiva fuori dallo schermo, e la cornice viola del corner-pin impediva di valutare l'effetto applicato.
 
-**Causa**: in `ShaderPlane.tsx` la `key` del `<shaderMaterial>` era `` `${shader.name}|${blendMode}` ``. Un visual rigenerato **mantiene il nome** ma cambia sorgente, quindi la key non cambiava: React riusava il materiale e Three continuava a eseguire il **programma GLSL già compilato** (assegnare `fragmentShader` a un materiale esistente non lo ricompila senza `needsUpdate`). Il layer restava così alla versione registrata la prima volta. L'anteprima non ne soffriva perché usava `key={shader.fragmentShader}`, che cambia a ogni ricomposizione.
-
-- **`src/engine/isfParser.ts`**: `ParsedShader` ha ora un campo `id` (`crypto.randomUUID()` a ogni parse) — è l'identità della *compilazione*, non del visual. Vive solo in memoria: i visual salvati persistono la `source`, non il ParsedShader, quindi nulla cambia per la persistenza.
-- **`src/engine/ShaderPlane.tsx`**: key del materiale basata su `shader.id`.
-- **`src/engine/effectThumbnail.ts`**: `shader.id` nella chiave di cache, che aveva lo stesso difetto — restituiva la miniatura della versione precedente per un visual rigenerato con lo stesso nome. Spostata la ricerca dello shader prima del calcolo della chiave.
-- **`src/components/Generative/GenerativePreview.tsx`**: key da `shader.id` invece dell'intera sorgente (stesso effetto, molto più leggero).
-- Verificato nel browser: un visual con tre moduli (Flow Field + Point Grid + Worley Cells) ora appare sul layer identico all'anteprima. Type-check e `npm run build` puliti, nessun errore in console.
-
-## 2026-07-28 — Fix larghezza pannello Generative Lab + toggle overlay di mapping
-
-Due richieste dell'utente: a larghezza minima il lato destro del Generative Lab finiva tagliato fuori dallo schermo, e la cornice viola del corner-pin impediva di valutare l'effetto applicato.
-
-- **Causa del taglio**: il `Viewport` di Radix ScrollArea avvolge i figli in un div con `display: table; min-width: 100%`, che **non si restringe** sotto la larghezza naturale del contenuto. Col pannello stretto il contenuto sforava e l'`overflow-hidden` dell'`<aside>` lo tagliava invece di adattarlo. Fix in `GenerativeLabPanel.tsx`: `[&>div>div]:block!` sullo ScrollArea (sintassi important di Tailwind v4 — il postfisso `!`, non il prefisso), più `min-w-0`/`truncate` sui controlli che potevano sforare (input nome e i 4 pulsanti azione).
+- **Trappola Radix ScrollArea** (emersa qui, vale per ogni pannello stretto): il `Viewport` avvolge i figli in un div con `display: table; min-width: 100%`, che **non si restringe** sotto la larghezza naturale del contenuto — il contenuto sfora e l'`overflow-hidden` dell'`<aside>` lo taglia invece di adattarlo. Si risolve con `[&>div>div]:block!` sullo ScrollArea (sintassi important di Tailwind v4 — il postfisso `!`, non il prefisso), più `min-w-0`/`truncate` sui controlli che possono sforare.
 - **`src/hooks/use-resizable-width.ts`**: il massimo è ora limitato a due terzi del viewport (`window.innerWidth * 0.66`), così su finestre strette il pannello non può essere trascinato fuori dallo schermo.
 - **Toggle overlay**: nuovo `overlaysVisible` + `toggleOverlays` in `uiStore`, pulsante occhio (Eye/EyeOff, ambra quando spento) nella toolbar flottante `ViewportZoomControls`, e `ControlPage` che condiziona il rendering di `MaskOverlay`/`CornerPinOverlay`. È puramente visivo e locale alla finestra Control: l'Output non ha mai disegnato quegli overlay, quindi la proiezione non è toccata.
 - Verificato nel browser: a 280px tutto il contenuto sta dentro il pannello; il drag della maniglia allarga/restringe e persiste; il trascinamento estremo si ferma al limite senza uscire dallo schermo; l'occhio nasconde e ripristina cornice e maniglie. Type-check, lint e `npm run build` puliti.
-
-## 2026-07-28 — Generative Lab: applicazione in tempo reale + fix salvataggi
-
-Segnalazione dell'utente: i salvataggi non funzionavano, le modifiche dal pannello Shader non venivano applicate bene, e non voleva premere "Al layer attivo" a ogni modifica.
-
-**Causa comune dei primi due problemi**: il layer memorizza i parametri per *nome di shader* (`layer.params[shaderName]`). Rigenerando un visual con lo stesso nome, quei valori vecchi **mascheravano i nuovi `@default`** della sorgente ricomposta, quindi le modifiche sembravano non arrivare mai. Il salvataggio invece "non funzionava" perché il draft non sopravviveva al reload: `editingId` andava perso e ogni Salva creava un duplicato (`Visual generativo 2`, `3`, …) invece di aggiornare.
-
-- **`src/store/layersStore.ts`**: nuova azione `adoptShaderDefaults(shaderName)` che assegna lo shader **azzerando** `params`/`colorParams` per quel nome. Passa da `editEffect`, quindi si propaga anche ai layer sincronizzati.
-- **`src/store/generativeStore.ts`**: aggiunto `liveApply` (default **true**) e persistenza del draft in `localStorage` (`easyvj-generative-draft`) via `subscribe`, così ricaricando l'app si riprende con lo stesso `editingId` e il Salva successivo aggiorna il record.
-- **`src/components/Generative/useLiveApply.ts`** (nuovo): sottoscrive il draft e, a ogni cambio dello shader, lo registra in libreria + `adoptShaderDefaults` + `publishGenerativeShader`. Scelte non ovvie: (a) **non applica al mount**, solo su modifica reale o riattivazione dell'interruttore, così aprire il pannello non sovrascrive a sorpresa l'effetto del layer selezionato; (b) digitando il nome si crea uno shader per ogni carattere, quindi i nomi precedenti orfani vengono rimossi dalla libreria — ma **solo se non corrispondono a un visual salvato** (`setSavedVisualNames`, aggiornata dal pannello), altrimenti si cancellerebbero visual veri.
-- **`src/lib/sync.ts`**: `publishGenerativeShader` riusa un `BroadcastChannel` singleton invece di aprirne uno per messaggio — in live viene chiamato a ogni movimento di slider. Serve perché l'Output non conosce un visual **non ancora salvato**: senza, il layer sparirebbe dalla proiezione.
-- **`src/components/ui/switch.tsx`** (nuovo, pattern shadcn su Radix) e pannello: interruttore "Applica in tempo reale", "Al layer attivo" disabilitato quando il live è attivo (con tooltip esplicativo), conferma "Salvato" temporanea sul pulsante Salva.
-- Verificato nel browser: slider mosso → canvas aggiornato all'istante; aggiunta di un modulo → comparsa immediata anche nella finestra `/output` senza salvare; due Salva consecutivi aggiornano lo stesso record; dopo il reload il draft mantiene nome ed `editingId`. Type-check, lint e `npm run build` puliti.
-
-## 2026-07-28 — Generative Lab: editor di visual generativi (moduli + GLSL live)
-
-Nuova feature richiesta dall'utente: una sezione dedicata a creare e gestire visual generativi al momento, in stile Refik Anadol, usabili a tutto schermo o mappati su un asset/layer. Scelte concordate in brainstorming: editor ibrido (moduli no-code **+** editor GLSL live) in una sidebar a **destra**; si resta sul motore shader 2D attuale (il particellare 3D GPU-instanced è rimandato, vedi `TODO.md`); niente audio-reactive per ora; il risultato è un `Layer` normale.
-
-**Perché si integra senza riscritture**: un visual generativo è semplicemente una sorgente GLSL nella stessa convenzione ISF-like già usata da `src/shaders/*.glsl`, quindi passa da `parseShader()` invariato ed eredita gratis palette, maschere, blend mode, corner-pin, playlist e sync. Nessuna modifica al parser né al wrapper GLSL.
-
-- **`src/engine/generativeModules.ts`** (nuovo): catalogo di 6 moduli (Flow Field, FBM Domain Warp, Worley Cells, Wave Interference, Point Grid, Color Cycle) + `composeModuleSource()`. Decisioni non ovvie: (a) gli uniform NON sono dichiarati nei template GLSL ma emessi dalla composizione a partire dai `controls`, così i **valori correnti finiscono nei `@default`** e il parser resta l'unica fonte di verità; (b) ogni identificatore è **prefissato con l'instanceId** (`flowField1_speed`, `flowField1_noise`) per evitare collisioni tra istanze/moduli con helper omonimi, e perché nel pannello Shader gli slider risultano leggibili e raggruppati per modulo; (c) il **primo modulo dello stack assegna sempre** (`acc = c * w`) invece di applicare il blend, altrimenti un `multiply` su `acc = 0` restituirebbe nero; (d) blend di default `screen` per i moduli aggiunti, così si sommano invece di coprirsi.
-- **`src/store/generativeStore.ts`** (nuovo): draft in editing con modalità `modules` (sorgente ricomposta dallo stack) o `code` (il GLSL scritto a mano è la verità e i moduli si congelano). `setSource` ha un guard sull'uguaglianza per evitare che l'editor, ri-sincronizzandosi, passi da solo in modalità codice. `randomize` muta i params in modalità moduli e riscrive i `@default` via regex in modalità codice.
-- **`src/components/Generative/`** (nuovo): `GenerativeLabPanel` (contenitore + azioni), `ModuleStackEditor` (stack riordinabile con slider/colori/blend), `CodeEditorTab` (CodeMirror con `lineWrapping`), `GenerativePreview` (mini Canvas R3F), `GenerativeLibrary` (visual salvati con thumbnail).
-- **`src/store/effectsStore.ts`**: aggiunte `registerShaders` (upsert per nome) e `unregisterShader` per la libreria a runtime.
-- **`src/lib/persistence.ts`**: nuovo store IDB `generativeVisuals` (DB **v4**), CRUD e hook `useLoadGenerativeVisuals` (montato in Control e Output). `uniqueVisualName` deduplica i nomi perché **il nome dello shader è la sua identità** nella libreria e in `layer.shaderName`.
-- **`src/lib/sync.ts`**: nuovo messaggio broadcast `{ type: 'shader' }` per registrare un visual appena salvato anche in una finestra Output già aperta.
-- **`src/hooks/use-resizable-width.ts`**: opzione `edge: 'left' | 'right'` (default invariato) perché a destra il delta del drag va invertito.
-- **Trappole di layout risolte** (il pannello si allargava oltre la sua larghezza): l'`<aside>` ha bisogno di `min-w-0 overflow-hidden` (i flex item hanno `min-width: auto`), il Canvas R3F della preview va ancorato in `absolute inset-0` o detta lui l'altezza ignorando l'`aspect-video`, e CodeMirror va messo in `lineWrapping` per non spingere la larghezza con le righe lunghe.
-- **Dipendenze**: `@uiw/react-codemirror` + `@codemirror/lang-cpp` (highlight C-like, la migliore approssimazione per GLSL su CodeMirror 6).
-- Verificato nel browser: preview live, creazione layer generativo, comparsa nel dropdown Effetto con slider auto-generati, persistenza dopo reload, rendering in `/output` e aggiornamento live via broadcast. Type-check, lint e `npm run build` puliti; nessun errore in console (resta il warning noto THREE.Clock).
 
 ## 2026-07-25 — Link live preview nel README
 

@@ -41,7 +41,7 @@ Spuntare gli step completati; aggiungere nuovi step quando emergono. Tenere alli
 - [x] 10 shader "SD" (`src/shaders/sd*.glsl`): source-driven di seconda generazione che, oltre alla luminanza, usano il **gradiente** dell'immagine (la pendenza locale) per orientare i pattern lungo le curve dell'oggetto, warpare le trame sui fianchi e illuminare la superficie apparente. 11-12 controlli ciascuno, incluso il raggio di campionamento del rilievo e l'angolo della luce. Libreria a 97 effetti
 - [x] Shader "Morph Pulse Beacon" (`src/shaders/morphPulseBeacon.glsl`): campo radiale pulsante con interferenza, tradotto dal formato uniform del runtime MAPSHROOM (`tex`/`fparams`/`ftime`...) alla convenzione ISF-like del progetto, poi reso source-driven come la famiglia Morph — la luminanza dell'asset deforma il raggio del campo (`morphDepth`), così il pattern segue i rilievi della statua invece di sovrapporsi come un piano piatto
 - [ ] Valutare se includere `FxControls` in `EffectSnapshot` (ora sono per-layer, quindi preset e clip della playlist non li catturano — scelta voluta: non si azzerano a ogni transizione)
-- [ ] Import shader GLSL da parte dell'utente (era nell'editor GLSL live del Generative Lab, rimosso — da reintrodurre altrove se richiesto)
+- [ ] Import shader GLSL da parte dell'utente
 - [x] Color picker UI per gli uniform vec3 dei singoli shader (sezione "Colori effetto" nel pannello Shader e nell'editor clip; per-layer in colorParams, incluso in preset/playlist/crossfade/thumbnail)
 - [x] 10 shader "Liquid" sulla scia di 3D Surface Morph Spirals (file liquid*.glsl, source-driven con morph da luminanza e uniform colore)
 - [x] Generatore casuale di palette (bottone "Palette casuale" nel pannello Palette: 5 colori HSL armonici scuro→acceso, attiva la palette)
@@ -54,7 +54,7 @@ Spuntare gli step completati; aggiungere nuovi step quando emergono. Tenere alli
 
 ## Fase 2 — Multi-layer (Resolume-like)
 
-Modello: scena = pila di Layer indipendenti; ogni layer ha contenuto (img/gif/video/generativo) + effetto + mapping proprio + maschere + mixing (opacità, blend).
+Modello: scena = pila di Layer indipendenti; ogni layer ha contenuto (img/gif/video) + effetto + mapping proprio + maschere + mixing (opacità, blend).
 
 ### Fase A — Scaffold multi-layer + mixing ✅
 - [x] `layersStore` (array di Layer + activeLayerId) come sorgente di verità; svuotati project/effects/palette store del loro stato per-layer
@@ -91,13 +91,6 @@ Modello: scena = pila di Layer indipendenti; ogni layer ha contenuto (img/gif/vi
 - [ ] Warp proiettivo vero (omografia nello shader o mesh suddivisa) — il warp attuale a 2 triangoli può creare una piega diagonale con deformazioni estreme
 - [ ] Rimozione sfondo automatica (client-side ML o servizio esterno — decisione rimandata, per ora si caricano PNG già scontornati)
 
-## Fase 2.5 — Generative Lab (rimosso)
-
-Pannello destro per creare visual generativi (moduli + editor GLSL live), implementato tra il
-2026-07-28 e il 2026-07-29 (vedi MEMORY.md per il dettaglio). **Rimosso interamente il 2026-08-13
-su richiesta esplicita dell'utente** ("non mi piace"): codice, store, voce in toolbar e store IDB
-`generativeVisuals` eliminati. Nessun rimpiazzo pianificato.
-
 ## Fase 3 — Live performance
 
 - [ ] Audio reactive: Web Audio API (microfono + FFT → uniform negli shader)
@@ -112,3 +105,4 @@ su richiesta esplicita dell'utente** ("non mi piace"): codice, store, voce in to
 - [ ] Recuperare la versione integrale dello shader Symmetrical Halo Swirl (l'originale fornito era troncato a metà loop; completato in modo minimale)
 - [ ] Deprecation warning THREE.Clock (da @react-three/fiber, non bloccante — attendere fix upstream)
 - [ ] Valutare test automatici (vitest) per parser ISF e persistence
+- [ ] Rimuovere da `package.json` le dipendenze non più importate da `src/`: `@uiw/react-codemirror`, `@codemirror/lang-cpp`

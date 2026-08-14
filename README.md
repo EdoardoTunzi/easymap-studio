@@ -14,7 +14,7 @@ L'intera UI/UX è quindi costruita attorno a un principio fondamentale: **ridurr
 
 Progetto solista, sviluppato in modo iterativo con un ciclo di lavoro rigoroso (ogni modifica documentata, verificata visivamente nel browser prima di essere considerata completa).
 
-> Stato: in sviluppo attivo. Fase 1 (MVP), Fase 2 (multi-layer) e Fase 2.5 (Generative Lab) sostanzialmente complete; Fase 3 (audio-reactive, MIDI, DMX) da avviare.
+> Stato: in sviluppo attivo. Fase 1 (MVP) e Fase 2 (multi-layer) sostanzialmente complete; Fase 3 (audio-reactive, MIDI, DMX) da avviare.
 
 ---
 
@@ -24,11 +24,10 @@ Progetto solista, sviluppato in modo iterativo con un ciclo di lavoro rigoroso (
 2. Allinei i 4 angoli dell'immagine alla superficie reale tramite corner-pin, direttamente da finestra di controllo.
 3. Scegli tra **97 shader GLSL** generativi/psichedelici, ognuno con parametri regolabili via slider e colori personalizzabili.
 4. Regoli l'effetto con i **controlli globali** (velocità, rotazione, kaleidoscopio, mirror, pixelate, colore): funzionano su qualsiasi shader, senza doverne conoscere i parametri.
-5. Oppure ne **crei di nuovi** nel Generative Lab, combinando moduli generativi o scrivendo GLSL direttamente nell'app.
-6. Componi più layer indipendenti (immagine/video/GIF), ciascuno con la propria maschera, il proprio effetto, opacità e blend mode.
-7. Costruisci una **playlist di effetti** con transizioni a crossfade, per sequenze automatizzate durante il live.
-8. Apri la finestra **Output** (su un secondo monitor/proiettore) che riceve lo stato in tempo reale via `BroadcastChannel`, con una modalità **Live** per decidere manualmente quando "mandare in onda" le modifiche.
-9. Il progetto si salva da solo in locale (IndexedDB) e funziona anche offline (PWA), utile a bordo palco senza rete.
+5. Componi più layer indipendenti (immagine/video/GIF), ciascuno con la propria maschera, il proprio effetto, opacità e blend mode.
+6. Costruisci una **playlist di effetti** con transizioni a crossfade, per sequenze automatizzate durante il live.
+7. Apri la finestra **Output** (su un secondo monitor/proiettore) che riceve lo stato in tempo reale via `BroadcastChannel`, con una modalità **Live** per decidere manualmente quando "mandare in onda" le modifiche.
+8. Il progetto si salva da solo in locale (IndexedDB) e funziona anche offline (PWA), utile a bordo palco senza rete.
 
 ---
 
@@ -56,16 +55,6 @@ Tutto quello che puoi fare dall'editor, pannello per pannello.
 - **Controlli globali dell'effetto**, validi per **qualsiasi** shader (anche quelli che espongono pochi parametri propri): velocità, rotazione, pan X/Y, kaleidoscopio, mirror X/Y, pixelate, luminosità, contrasto, saturazione, posterize, negativo — con reset immediato.
 - Opzione **"Nessun effetto"** per mostrare il contenuto grezzo del layer.
 - **Palette colori** con 7 preset fluorescenti pronti, editor a 5 colori personalizzabile e **generatore di palette casuali** con numero di colori a scelta (2–5) e schemi di armonia (analoga, complementare, triadica, split-complementare, monocromatica). Essendo una gradient map, ricolora ogni effetto della libreria; disponibile sia dal pannello Palette sia direttamente da quello Shader.
-
-### Generative Lab — crea i tuoi visual
-
-Un editor dedicato (pannello destro ridimensionabile) per costruire effetti nuovi senza uscire dall'app:
-
-- **Modalità moduli (no-code)**: impili generatori — Flow Field, FBM Domain Warp, Worley Cells, Wave Interference, Point Grid, Color Cycle — riordinabili, ognuno con i suoi slider, colore, peso e blend mode.
-- **Modalità codice**: l'editor GLSL con evidenziazione sintattica mostra la sorgente generata e ti lascia modificarla a mano, con ritorno ai moduli in un click.
-- **Applicazione in tempo reale** (attiva per impostazione predefinita): ogni modifica si riflette subito sul layer attivo e sulla finestra Output, senza premere nulla. Un interruttore la disattiva se preferisci lavorare in anteprima e applicare a mano.
-- **"Genera variante"** per esplorare varianti casuali entro i range dei parametri.
-- **Libreria personale** dei visual salvati (con anteprima, duplica, rinomina, elimina), persistita in locale: compaiono nel menu Effetto come tutti gli altri, quindi ereditano palette, maschere, blend mode e playlist.
 
 ### Assets
 
@@ -102,12 +91,6 @@ Un editor dedicato (pannello destro ridimensionabile) per costruire effetti nuov
 - **Maschera automatica per canale alpha**, con **luma key** opzionale (rilevata automaticamente all'upload) per le immagini con sfondo nero opaco anziché trasparente.
 - Palette colori con 7 preset fluorescenti, editor a 5 colori, generatore di **palette casuali** a numero di stop variabile con cinque schemi di armonia, e colori assegnabili ai singoli parametri `vec3` di ogni shader.
 
-### Generative Lab
-
-- Editor ibrido **moduli + GLSL**: uno stack di generatori viene composto in un'unica sorgente GLSL che passa dallo stesso parser ISF degli shader statici, quindi il risultato è un effetto a tutti gli effetti — palette, maschere, blend mode, sincronizzazione tra layer e playlist funzionano senza codice dedicato.
-- Identificatori GLSL prefissati per istanza (`flowField1_speed`) per evitare collisioni tra moduli ripetuti, e valori correnti emessi come `@default` della sorgente: il parser resta l'unica fonte di verità.
-- **Applicazione in tempo reale** al layer attivo e all'Output, con propagazione dello shader alle finestre già aperte via `BroadcastChannel`; draft e libreria persistiti in locale.
-
 ### Multi-layer (stile Resolume/MadMapper)
 
 - Scena come pila di layer indipendenti: ognuno con proprio media, effetto, corner-pin, maschere, opacità e blend mode (Normal/Add/Screen/Multiply), compositati via `CustomBlending` con alpha premoltiplicato.
@@ -136,7 +119,6 @@ Un editor dedicato (pannello destro ridimensionabile) per costruire effetti nuov
 | Stato globale          | Zustand (store separati per scena, effetti, palette, playlist, UI)      |
 | Persistenza            | IndexedDB (`idb`), autosave con debounce                                |
 | UI                     | Tailwind CSS v4, shadcn/ui (Radix), lucide-react                        |
-| Editor GLSL in-app     | CodeMirror 6 (`@uiw/react-codemirror`)                                  |
 | Sync multi-finestra    | `BroadcastChannel` API con handshake `hello`                            |
 | Media                  | `THREE.VideoTexture`, `gifuct-js` per GIF animate                       |
 | Offline                | `vite-plugin-pwa`                                                       |
@@ -150,7 +132,7 @@ Un editor dedicato (pannello destro ridimensionabile) per costruire effetti nuov
 - **`layersStore`** è la sorgente di verità unica della scena: un array ordinato di layer, ciascuno unità completa e autonoma (media, shader, parametri, corner-pin, maschere, mixing).
 - **Corner-pin**: i 4 angoli vivono in coordinate mondo, coerenti con la geometria del piano renderizzato; l'overlay di editing converte schermo↔mondo usando lo stesso frustum della camera ortografica.
 - **Maschera automatica**: il wrapper GLSL generato dal parser ISF moltiplica sempre l'alpha finale per l'alpha (o luma) della texture sorgente — ogni effetto resta confinato dentro i bordi dell'immagine, qualunque sia lo shader.
-- **Shader "ISF-like"**: uniform `float`/`vec3` con commenti `@min @max @default` letti a build-time (`import.meta.glob`) → slider e color picker generati automaticamente in UI. Gli effetti creati nel Generative Lab seguono la stessa convenzione e vengono registrati a runtime nella medesima libreria, quindi sono indistinguibili dagli altri per il resto dell'app.
+- **Shader "ISF-like"**: uniform `float`/`vec3` con commenti `@min @max @default` letti a build-time (`import.meta.glob`) → slider e color picker generati automaticamente in UI.
 - **Controlli globali nel wrapper**: essendo applicati attorno a `processColor`, ogni nuovo shader li eredita automaticamente — l'autore dell'effetto non deve prevederli.
 
 ---
@@ -178,8 +160,7 @@ Apri `/control` per l'editor e `/output` (idealmente su un secondo monitor) per 
 Il progetto segue una roadmap tracciata in dettaglio in `TODO.md`. Macro-fasi:
 
 - ✅ **Fase 1 — MVP core**: upload, corner-pin, libreria shader, palette colori, preset, persistenza, layout UI.
-- ✅ **Fase 2 — Multi-layer**: layer indipendenti, maschere, media dinamici (video/GIF), modalità Live, playlist con transizioni.
-- ✅ **Fase 2.5 — Generative Lab**: editor di visual generativi (moduli combinabili + GLSL live), controlli globali per qualsiasi effetto, libreria estesa a 87 shader.
+- ✅ **Fase 2 — Multi-layer**: layer indipendenti, maschere, media dinamici (video/GIF), modalità Live, playlist con transizioni, controlli globali validi per qualsiasi effetto.
 - ⏳ **Fase 3 — Live performance**: audio-reactive (Web Audio API + FFT), BPM sync, controller MIDI, bridge OSC/DMX, multi-output.
 - 🔭 **Oltre**: motore particellare 3D GPU-instanced (point cloud reali con profondità e camera) e feedback buffer per le scie accumulate — i due passi che avvicinerebbero davvero l'estetica delle _data sculpture_.
 
