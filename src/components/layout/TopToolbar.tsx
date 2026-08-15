@@ -67,10 +67,13 @@ export function TopToolbar() {
             onClick={pushToOutput}
             disabled={!dirty}
             className="relative gap-1.5 text-xs"
-            title="Invia lo stato corrente alla finestra Output"
+            title="Invia lo stato corrente alla finestra Output (Spazio)"
           >
             <MonitorUp className="size-3.5" />
             Esegui in output
+            <kbd className="ml-0.5 rounded border border-current/30 px-1 text-[10px] leading-4 opacity-70">
+              Spazio
+            </kbd>
             {dirty && <span className="absolute -right-1 -top-1 size-2 rounded-full bg-amber-400" />}
           </Button>
         )}

@@ -1,4 +1,4 @@
-import { Link2, CheckSquare, Square, Dices } from 'lucide-react'
+import { Link2, CheckSquare, Square, Dices, ChevronLeft, ChevronRight } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Slider } from '@/components/ui/slider'
 import { Separator } from '@/components/ui/separator'
@@ -11,6 +11,7 @@ import {
 } from '@/components/ui/select'
 import { cn } from '@/lib/utils'
 import { useEffectsStore } from '@/store/effectsStore'
+import { ALT_LABEL } from '@/hooks/use-effect-hotkeys'
 import { useLayersStore } from '@/store/layersStore'
 import { rgbToHex, hexToRgb, randomPaletteColors } from '@/store/paletteStore'
 
@@ -20,6 +21,8 @@ export function EffectsPanel() {
   const activeLayerId = useLayersStore((s) => s.activeLayerId)
   const activeLayer = layers.find((l) => l.id === activeLayerId)
   const setActiveShader = useLayersStore((s) => s.setActiveShader)
+  const cycleActiveShader = useLayersStore((s) => s.cycleActiveShader)
+  const randomizeActiveParams = useLayersStore((s) => s.randomizeActiveParams)
   const setSize = useLayersStore((s) => s.setActiveSize)
   const setParam = useLayersStore((s) => s.setActiveParam)
   const setColorParam = useLayersStore((s) => s.setActiveColorParam)
@@ -44,18 +47,46 @@ export function EffectsPanel() {
         <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
           Effetto
         </span>
-        <Select value={activeShaderName} onValueChange={setActiveShader}>
-          <SelectTrigger className="w-full">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {shaders.map((s) => (
-              <SelectItem key={s.name} value={s.name}>
-                {s.name}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+        {/* Frecce affiancate alla select: stessa azione delle scorciatoie ⌥A/⌥S, che il tooltip
+            fa scoprire senza doverle documentare altrove. */}
+        {/* overflow-hidden + trigger con base 0: il Viewport di Radix ScrollArea è `display: table`
+            e si dimensiona sul max-content, quindi senza questi la riga sborderebbe dal pannello
+            con i nomi di effetto lunghi (il testo del trigger è nowrap, e le frecce si sommano). */}
+        <div className="flex items-center gap-1.5 overflow-hidden">
+          <Button
+            variant="outline"
+            size="icon"
+            className="shrink-0"
+            onClick={() => cycleActiveShader(-1)}
+            title={`Effetto precedente (${ALT_LABEL}A)`}
+            aria-label="Effetto precedente"
+          >
+            <ChevronLeft />
+          </Button>
+          <Select value={activeShaderName} onValueChange={setActiveShader}>
+            {/* i nomi lunghi finiscono in ellissi invece di essere tagliati di netto */}
+            <SelectTrigger className="w-0 min-w-0 flex-1 *:data-[slot=select-value]:block *:data-[slot=select-value]:truncate">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {shaders.map((s) => (
+                <SelectItem key={s.name} value={s.name}>
+                  {s.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Button
+            variant="outline"
+            size="icon"
+            className="shrink-0"
+            onClick={() => cycleActiveShader(1)}
+            title={`Effetto successivo (${ALT_LABEL}S)`}
+            aria-label="Effetto successivo"
+          >
+            <ChevronRight />
+          </Button>
+        </div>
         {layers.length > 1 && (
           <div className="flex flex-col gap-2">
             <Button
@@ -185,8 +216,25 @@ export function EffectsPanel() {
         </div>
       )}
 
-      {shader && (
+      {shader && shader.controls.length > 0 && (
         <div className="flex flex-col gap-4">
+          {/* Il random pesca dentro il range dichiarato da ogni uniform (@min/@max): è il modo
+              più rapido di far emergere look che a mano non si proverebbero. */}
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+              Controlli effetto
+            </span>
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-7 gap-1.5 px-2 text-xs"
+              onClick={randomizeActiveParams}
+              title="Valori casuali per tutti i controlli di questo effetto"
+            >
+              <Dices className="size-3.5 shrink-0" />
+              Random
+            </Button>
+          </div>
           {shader.controls.map((control) => {
             const value = params[shader.name]?.[control.name] ?? control.default
             return (
