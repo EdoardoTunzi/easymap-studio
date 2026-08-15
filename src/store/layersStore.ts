@@ -7,7 +7,12 @@ import {
   DEFAULT_CORNERS,
   DEFAULT_TRANSFORM,
 } from './projectStore'
-import { DEFAULT_SIZE, DEFAULT_SHADER_NAME } from './effectsStore'
+import {
+  DEFAULT_SIZE,
+  DEFAULT_SHADER_NAME,
+  NONE_SHADER_NAME,
+  useEffectsStore,
+} from './effectsStore'
 import {
   rotateCorners,
   scaleCorners,
@@ -302,6 +307,10 @@ interface LayersState {
   setActiveMedia: (media: MediaAsset | null) => void
   setActiveLumaKey: (lumaKey: number) => void
   setActiveShader: (shaderName: string) => void
+  /** Passa all'effetto successivo (dir 1) o precedente (dir -1) della libreria, a ciclo. */
+  cycleActiveShader: (dir: 1 | -1) => void
+  /** Estrae valori casuali per tutti gli uniform float dello shader attivo. */
+  randomizeActiveParams: () => void
   setActiveSize: (size: number) => void
   /** Aggiorna i controlli globali dell'effetto sul layer attivo (+ layer sincronizzati). */
   setActiveFx: (patch: Partial<FxControls>) => void
@@ -516,6 +525,42 @@ export const useLayersStore = create<LayersState>((set, get) => {
     setActiveLumaKey: (lumaKey) => patchActive(() => ({ lumaKey })),
     // shader / size / param sono EFFETTO → passano da editEffect (propagazione col link)
     setActiveShader: (shaderName) => editEffect(() => ({ shaderName })),
+
+    // Scorrimento rapido della libreria (frecce del pannello e scorciatoie ⌥A/⌥S). Passa da
+    // editEffect come la select, quindi propaga ai layer sincronizzati allo stesso modo.
+    cycleActiveShader: (dir) =>
+      editEffect((l) => {
+        // "Nessun effetto" resta fuori dal giro: è il blackout, non una tappa dello scorrimento
+        const names = useEffectsStore
+          .getState()
+          .shaders.map((s) => s.name)
+          .filter((n) => n !== NONE_SHADER_NAME)
+        if (names.length === 0) return {}
+        const current = names.indexOf(l.shaderName)
+        // da "Nessun effetto" (indice -1) si entra dal primo o dall'ultimo, secondo la direzione
+        const next =
+          current === -1
+            ? dir === 1
+              ? 0
+              : names.length - 1
+            : (current + dir + names.length) % names.length
+        return { shaderName: names[next] }
+      }),
+
+    randomizeActiveParams: () =>
+      editEffect((l) => {
+        const shader = useEffectsStore.getState().shaders.find((s) => s.name === l.shaderName)
+        if (!shader || shader.controls.length === 0) return {}
+        const random = Object.fromEntries(
+          shader.controls.map((c) => {
+            // stesso passo dello slider: evita valori con dieci decimali, illeggibili nel readout
+            const step = (c.max - c.min) / 200 || 0.01
+            const value = c.min + Math.round((Math.random() * (c.max - c.min)) / step) * step
+            return [c.name, value]
+          }),
+        )
+        return { params: { ...l.params, [l.shaderName]: random } }
+      }),
 
     setActiveSize: (size) => editEffect(() => ({ size })),
 

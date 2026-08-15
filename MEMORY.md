@@ -2,6 +2,51 @@
 
 Ogni modifica al progetto va registrata qui con data, descrizione e motivazione. Le voci più recenti in alto dentro ogni giornata.
 
+## 2026-08-15 — README aggiornato con le novità della sessione
+
+Richiesta dell'utente: includere nel README le funzioni aggiunte oggi (scorciatoie da tastiera e pulsante Random).
+
+- **Nuova sezione "Scorciatoie da tastiera"** dentro "Funzionalità disponibili", con la tabella completa: non solo ⌥A/⌥S e Spazio, ma anche i tasti che esistevano già e non erano documentati da nessuna parte (frecce del nudge con Shift ×5, Spazio+drag e rotellina per pan/zoom della vista, Alt+click sui pulsanti larghezza/altezza, ⌘/Ctrl+B per la sidebar). Verificati uno per uno nel codice prima di scriverli.
+- **"Effetti e palette colori"**: aggiunte le voci sul cambio effetto rapido (frecce + scorciatoie, ciclico e con "Nessun effetto" escluso) e sul Random dei controlli.
+- **"Output e modalità Live"** e **"Controllo del palco"**: menzionato l'invio con la barra spaziatrice, con la nota che fuori da Live il tasto resta al pan — il criterio con cui le scorciatoie sono state tenute separate.
+- **"Cosa fa, in pratica"**: integrato il punto 3 sugli shader, senza aggiungere un punto nuovo alla lista.
+
+## 2026-08-15 — Barra spaziatrice = "Esegui in output"
+
+Richiesta dell'utente: un tasto rapido (Spazio) per inviare le modifiche alla finestra Output in modalità Live.
+
+**Conflitto risolto**: lo Spazio è già il modificatore del pan della vista (Spazio+drag in `useViewportPanZoom`). Per questo la scorciatoia è attiva **solo quando Live è attivo e ci sono modifiche in sospeso** (`live && dirty`), cioè esattamente quando il pulsante della toolbar è cliccabile. Fuori da Live l'handler esce subito senza `preventDefault`, quindi il pan resta identico a prima e non c'è nessun override invisibile.
+
+- **`src/hooks/use-output-hotkeys.ts`** (nuovo): listener su `window` montato in `ControlPage`, chiama `pushToOutput()` dell'`outputStore` — la stessa azione del pulsante, quindi passa per `useBroadcastPublisher` e ottiene gratis la dissolvenza impostata nella barra playlist.
+- **`preventDefault` in Live**: senza, con il focus su un pulsante (situazione normale dopo averlo cliccato) lo Spazio ri-attiverebbe quel pulsante *insieme* all'invio. Durante una performance il tasto deve fare una cosa sola. Restano esclusi i campi di testo, dove lo Spazio scrive.
+- **`TopToolbar.tsx`**: aggiunto il badge `Spazio` dentro il pulsante "Esegui in output" e la scorciatoia nel `title`.
+- **Limite noto**: in Live, tenendo premuto lo Spazio per pannare la vista parte anche un invio (uno solo: `e.repeat` è bloccato). Il pan col click centrale non è toccato. Se dovesse dare fastidio, l'alternativa è riservare il pan al solo click centrale mentre Live è attivo.
+- **Verificato nel browser** con Control e Output aperti in due schede: in Live il cambio effetto lascia l'Output fermo e accende il pulsante; lo Spazio manda la scena (Output aggiornato con dissolvenza) e riporta il pulsante a spento; col focus nel campo "Nome preset" lo Spazio scrive e l'invio resta in sospeso; fuori da Live non fa nulla. Nessun errore in console, type-check pulito.
+
+## 2026-08-15 — Sezione "Controlli effetto" con pulsante Random, e fix dell'overflow della riga effetto
+
+Richiesta dell'utente: un pulsante che randomizzi le impostazioni dello shader scelto, preceduto da un titolo di sezione ("CONTROLLI EFFETTO") con il pulsante di fianco, sotto la sezione "Colori effetto".
+
+- **`src/store/layersStore.ts`**: nuova azione `randomizeActiveParams()`. Pesca un valore per ogni uniform float dentro il range dichiarato dallo shader (`@min`/`@max` del parser ISF) e lo **quantizza sullo stesso passo dello slider** (`(max-min)/200`), altrimenti il readout mostrerebbe valori con dieci decimali. Passa da `editEffect`, quindi si propaga ai layer sincronizzati come ogni altra modifica d'effetto.
+- **Non tocca gli uniform colore** (`colorControls`): i colori hanno già i loro randomizer nella sezione "Colori casuali" e nel pannello Palette; mescolarli qui renderebbe il pulsante meno prevedibile.
+- **`EffectsPanel.tsx`**: intestazione "Controlli effetto" + pulsante Random sulla stessa riga, prima degli slider degli uniform. Il blocco ora è condizionato a `shader.controls.length > 0`, così l'intestazione non compare sugli shader senza parametri.
+- **Fix di una regressione introdotta con la riga ◀ select ▶**: con i nomi di effetto lunghi il pannello sbordava (contenuto 313px in un viewport da 287). Causa: il **Viewport di Radix ScrollArea è `display: table`**, quindi si dimensiona sul *max-content* dei figli — e il testo `nowrap` del trigger più i 76px delle due frecce superavano la larghezza della sidebar. Misurato in pagina che nascondendo la riga il contenuto tornava a 287. Soluzione **locale** (niente modifiche al componente ScrollArea condiviso, che avrebbero toccato tutta la sidebar): `overflow-hidden` sulla riga e trigger con base 0 (`w-0 flex-1`). Aggiunto anche il troncamento con ellissi sul valore del trigger (`*:data-[slot=select-value]:block/truncate`), che con `line-clamp-1` da solo non si otteneva.
+- **Verificato nel browser**: Random cambia tutti gli slider entro i rispettivi range e il visual si aggiorna; nessun errore in console; con l'effetto dal nome più lungo della libreria il contenuto del pannello misura esattamente la larghezza del viewport. Type-check pulito. **Nota**: i parametri del layer sono rimasti sui valori random dell'ultimo test e l'autosave li ha memorizzati; si riportano a piacere a mano o con un altro Random.
+
+## 2026-08-15 — Cambio rapido dell'effetto: frecce nel pannello + scorciatoie ⌥A/⌥S
+
+Richiesta dell'utente: selezionare un effetto più in fretta che aprendo la select, con tasti dedicati e frecce di navigazione.
+
+**Perché non le frecce direzionali**: Su/Giù sono già il nudge del corner-pin (`useNudgeKeys` in `MappingControls.tsx`), che è il gesto centrale dell'allineamento; e Cmd+A/Cmd+S sono occupati dal browser (seleziona tutto / salva pagina). Scelto **Option/Alt + A/S**, libero sia lato browser sia lato app (l'unica altra combo con modificatore è Cmd/Ctrl+B della sidebar).
+
+- **`src/store/layersStore.ts`**: nuova azione `cycleActiveShader(dir: 1 | -1)`. Passa da `editEffect` come `setActiveShader`, quindi eredita gratis la propagazione ai layer sincronizzati. Esclude `NONE_SHADER_NAME` dallo scorrimento (è il blackout, non una tappa) e cicla a loop; partendo da "Nessun effetto" entra dal primo o dall'ultimo secondo la direzione.
+- **`src/hooks/use-effect-hotkeys.ts`** (nuovo): listener su `window`, montato in `ControlPage`. Esporta anche `ALT_LABEL` (⌥ su macOS, Alt+ altrove) usato dai tooltip.
+- **Trappola macOS**: con Option premuto la tastiera produce caratteri diversi (⌥A → "å", ⌥S → "ß"), quindi `e.key` non serve a nulla: si confronta **`e.code`** (`KeyA`/`KeyS`), stabile su ogni layout e su Windows/Linux con Alt.
+- **Guardia più stretta del nudge**: esclusi solo i campi di testo (`INPUT`/`TEXTAREA`/contenteditable), dove ⌥S scriverebbe un carattere. Gli slider **non** sono esclusi, a differenza del nudge: lì la guardia serve perché le frecce muovono lo slider, mentre ⌥A/⌥S non sono usati da nessun altro controllo. Bloccato `e.repeat`: tenendo premuto si salterebbero decine di effetti, ognuno con la propria ricompilazione dello shader.
+- **`src/components/EffectsLibrary/EffectsPanel.tsx`**: pulsanti ◀ ▶ **in linea** con la select (non sotto: non aggiunge altezza al pannello e la relazione con la lista resta leggibile). Il `title` mostra la scorciatoia, così si impara guardando la UI.
+- **Ambito volutamente limitato alla finestra Control**: se il focus del SO è sulla finestra Output i tasti arrivano lì e non alla Control. Estendere richiederebbe di registrare l'hotkey anche in Output e rimandare il comando via BroadcastChannel — non fatto perché il flusso normale è pilotare dalla Control.
+- **Verificato nel browser**: ⌥S/⌥A avanti e indietro, wrap in entrambe le direzioni saltando "Nessun effetto", click sulle frecce, hotkey attivo con focus su un pulsante e su uno slider e inerte nel campo "Nome preset". Type-check pulito, console col solo warning noto THREE.Clock.
+
 ## 2026-08-14 — Purga dai file markdown di una feature non più esistente
 
 Richiesta dell'utente: eliminare da tutti i `.md` ogni traccia di una sezione dell'app rimossa il 2026-08-13. Chiesto prima di procedere fin dove spingersi, dato che `MEMORY.md` è un registro storico e non una descrizione del prodotto: scelta esplicita dell'utente la **purga totale**, log compreso.

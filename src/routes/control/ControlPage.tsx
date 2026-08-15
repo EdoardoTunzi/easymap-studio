@@ -25,6 +25,8 @@ import {
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Separator } from '@/components/ui/separator'
 import { useResizableWidth } from '@/hooks/use-resizable-width'
+import { useEffectHotkeys } from '@/hooks/use-effect-hotkeys'
+import { useOutputHotkeys } from '@/hooks/use-output-hotkeys'
 import { useUiStore } from '@/store/uiStore'
 import { useLayersStore } from '@/store/layersStore'
 import { useBroadcastPublisher } from '@/lib/sync'
@@ -63,6 +65,8 @@ function PanelContent() {
 export function ControlPage() {
   useBroadcastPublisher()
   useAutosave()
+  useEffectHotkeys()
+  useOutputHotkeys()
   const activePanel = useUiStore((s) => s.activePanel)
   const overlaysVisible = useUiStore((s) => s.overlaysVisible)
   const gridVisible = useUiStore((s) => s.gridVisible)

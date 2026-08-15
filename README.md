@@ -22,7 +22,7 @@ Progetto solista, sviluppato in modo iterativo con un ciclo di lavoro rigoroso (
 
 1. Carichi una foto con sfondo trasparente (o nero, con rilevamento automatico) di ciò su cui vuoi proiettare.
 2. Allinei i 4 angoli dell'immagine alla superficie reale tramite corner-pin, direttamente da finestra di controllo.
-3. Scegli tra **97 shader GLSL** generativi/psichedelici, ognuno con parametri regolabili via slider e colori personalizzabili.
+3. Scegli tra **97 shader GLSL** generativi/psichedelici, ognuno con parametri regolabili via slider e colori personalizzabili — scorribili al volo con le frecce o da tastiera, e randomizzabili con un pulsante.
 4. Regoli l'effetto con i **controlli globali** (velocità, rotazione, kaleidoscopio, mirror, pixelate, colore): funzionano su qualsiasi shader, senza doverne conoscere i parametri.
 5. Componi più layer indipendenti (immagine/video/GIF), ciascuno con la propria maschera, il proprio effetto, opacità e blend mode.
 6. Costruisci una **playlist di effetti** con transizioni a crossfade, per sequenze automatizzate durante il live.
@@ -52,6 +52,8 @@ Tutto quello che puoi fare dall'editor, pannello per pannello.
   - **Psy** (30 effetti) — pensati per stage psytrance e techno: strobo, tunnel, laser, griglie esagonali, digital rain, wireframe synthwave, glitch, barre spettro, geometria sacra, frattali;
   - **Morph** (20 effetti) — _source-driven_: usano la luminanza del tuo asset come mappa di profondità (`morphDepth`), così il pattern non ci si appoggia sopra ma lo **modella**, seguendone i rilievi.
   - **SD** (10 effetti) — source-driven di seconda generazione: oltre alla luminanza leggono la **pendenza locale** dell'immagine (il gradiente), cioè la direzione in cui la superficie sale. Così creste, trame e onde si orientano lungo le curve reali dell'oggetto e ne ricevono anche l'illuminazione. Ognuno espone 11-12 controlli, tra cui il raggio di campionamento del rilievo e l'angolo della luce.
+- **Cambio effetto rapido**: frecce ◀ ▶ accanto alla lista e scorciatoie **⌥A / ⌥S** (Alt su Windows/Linux) per scorrere la libreria senza aprire il menu a tendina — lo scorrimento è ciclico e salta "Nessun effetto", così durante un live si passa da un visual all'altro con un tasto.
+- **Random dei controlli**: un pulsante estrae valori casuali per tutti i parametri dell'effetto attivo, dentro i range dichiarati dallo shader. È il modo più veloce di far emergere look che a mano non si proverebbero, senza dover capire cosa fa ogni slider.
 - **Controlli globali dell'effetto**, validi per **qualsiasi** shader (anche quelli che espongono pochi parametri propri): velocità, rotazione, pan X/Y, kaleidoscopio, mirror X/Y, pixelate, luminosità, contrasto, saturazione, posterize, negativo — con reset immediato.
 - Opzione **"Nessun effetto"** per mostrare il contenuto grezzo del layer.
 - **Palette colori** con 7 preset fluorescenti pronti, editor a 5 colori personalizzabile e **generatore di palette casuali** con numero di colori a scelta (2–5) e schemi di armonia (analoga, complementare, triadica, split-complementare, monocromatica). Essendo una gradient map, ricolora ogni effetto della libreria; disponibile sia dal pannello Palette sia direttamente da quello Shader.
@@ -64,7 +66,23 @@ Tutto quello che puoi fare dall'editor, pannello per pannello.
 ### Output e modalità Live
 
 - Finestra **Output** dedicata (da trascinare su un secondo monitor/proiettore), sincronizzata in tempo reale con l'editor via `BroadcastChannel`.
-- Modalità **Live**: le modifiche restano "in prova" nell'editor di controllo e vengono inviate all'Output solo quando premi esplicitamente "Esegui in output" — utile per sperimentare senza disturbare la proiezione dal vivo.
+- Modalità **Live**: le modifiche restano "in prova" nell'editor di controllo e vengono inviate all'Output solo quando premi esplicitamente "Esegui in output" — utile per sperimentare senza disturbare la proiezione dal vivo. Il pulsante segnala con un pallino quando ci sono modifiche in sospeso, e l'invio si comanda anche con la **barra spaziatrice**.
+
+### Scorciatoie da tastiera
+
+Pensate per il palco: le operazioni che si ripetono di continuo durante una performance non devono passare dal mouse.
+
+| Tasto                    | Azione                                                                          |
+| ------------------------ | ------------------------------------------------------------------------------- |
+| `⌥A` / `⌥S`              | Effetto precedente / successivo nella libreria (Alt su Windows e Linux)          |
+| `Spazio`                 | "Esegui in output": manda all'Output le modifiche in sospeso (solo in Live)      |
+| `↑ ↓ ← →`                | Spostamento fine dell'angolo selezionato, o dell'intera proiezione; `Shift` = ×5 |
+| `Spazio` + trascina      | Pan della vista di anteprima (anche col tasto centrale del mouse)                |
+| Rotellina                | Zoom della vista di anteprima                                                    |
+| `Alt` + click            | Sui pulsanti larghezza/altezza della toolbar di mapping: restringe invece di allargare |
+| `⌘B` / `Ctrl+B`          | Mostra/nasconde il pannello laterale                                            |
+
+Fuori dalla modalità Live la barra spaziatrice resta interamente al pan della vista; nei campi di testo nessuna scorciatoia ruba i tasti.
 
 ### Playlist
 
@@ -105,7 +123,8 @@ Tutto quello che puoi fare dall'editor, pannello per pannello.
 ### Controllo del palco
 
 - Corner-pin a 4 maniglie con pan/zoom di vista indipendente dall'output (per correggere il mapping anche quando l'asset è ingrandito oltre i bordi del canvas).
-- Modalità **Live**: le modifiche restano "in prova" nell'editor finché non vengono inviate esplicitamente all'Output, per non disturbare la proiezione mentre si sperimenta.
+- Modalità **Live**: le modifiche restano "in prova" nell'editor finché non vengono inviate esplicitamente all'Output (pulsante o barra spaziatrice), per non disturbare la proiezione mentre si sperimenta.
+- **Scorciatoie da tastiera** per i gesti che si ripetono durante una performance — cambio effetto (`⌥A`/`⌥S`), invio all'Output (`Spazio`), nudge del corner-pin (frecce) — progettate per non sovrapporsi tra loro: ogni tasto è attivo solo nel contesto in cui non ne serve un altro (per esempio `Spazio` comanda l'invio solo in Live, altrove resta il modificatore del pan).
 - Persistenza automatica del progetto (autosave + salvataggi con nome) e libreria di preset effetto riutilizzabili tra progetti diversi.
 
 ---
