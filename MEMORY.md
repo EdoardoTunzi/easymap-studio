@@ -2,6 +2,13 @@
 
 Ogni modifica al progetto va registrata qui con data, descrizione e motivazione. Le voci più recenti in alto dentro ogni giornata.
 
+## 2026-08-16 — Fix bug: nome file troppo lungo rompeva la sidebar destra
+
+Richiesta dell'utente: nella sidebar destra, sezione Asset, un nome file troppo lungo faceva uscire la colonna dai bordi del browser nascondendo il contenuto.
+
+- `src/components/ControlPanel/MediaUploader.tsx`: aggiunto `truncateName()` con limite `MAX_NAME_LENGTH = 28` caratteri che tronca il nome del media mostrato nel bottone (con `…` finale), invece di affidarsi solo alla classe CSS `truncate` che in quel layout a flex non bastava a contenere la larghezza. Aggiunto anche `title={media?.name}` sullo span per vedere il nome completo al passaggio del mouse.
+- Verificato caricando un file con nome molto lungo via dev server + screenshot: la sidebar ora resta dentro i bordi.
+
 ## 2026-08-15 — README aggiornato con le novità della sessione
 
 Richiesta dell'utente: includere nel README le funzioni aggiunte oggi (scorciatoie da tastiera e pulsante Random).
