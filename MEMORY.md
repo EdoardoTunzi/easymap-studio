@@ -2,6 +2,26 @@
 
 Ogni modifica al progetto va registrata qui con data, descrizione e motivazione. Le voci più recenti in alto dentro ogni giornata.
 
+## 2026-08-16 — README: sezione "Novità della versione 4"
+
+Richiesta dell'utente: documentare il loop palette nel README come novità della versione 4.
+
+- Nuova sezione **"Novità della versione 4"** subito dopo il blocco di stato, con il loop palette in prima voce. Le altre voci sono le novità già in `main` dal merge di v3 in poi (`git log 45ca819..HEAD`): cambio effetto rapido + Random dei controlli, barra spaziatrice per l'invio in Live, rifiniture UI (pannello Move, troncamento dei nomi file lunghi). Il progetto non ha tag né versione in `package.json`: "v4" è il ciclo di lavoro sul branch omonimo.
+- **"Effetti e palette colori"**: voce dedicata al loop, marcata _(novità v4)_ — intervallo regolabile in corsa, dissolvenza, il fatto che prosegua cambiando pannello e che rispetti la modalità Live.
+- **"Motore di rendering shader"**: il perché tecnico dell'interpolazione in HSL invece che in RGB, e il motore rAF che smette di scrivere a dissolvenza conclusa.
+
+## 2026-08-16 — Loop delle palette casuali (Colori casuali, pannello Shader)
+
+Richiesta dell'utente: accanto a "Genera" un tasto che attivi una generazione automatica di palette casuali a intervalli regolari. Scelte concordate: intervallo regolabile (default 5s), dissolvenza morbida fra una palette e l'altra, e nessuna eccezione alla modalità Live.
+
+- `src/store/paletteStore.ts`: aggiunte `rgbToHsl()` (privata) e `lerpPaletteColors(from, to, t)`. L'interpolazione è **in HSL, non in RGB**: in RGB due tinte opposte si incontrano passando per un grigio slavato a metà transizione, mentre ruotando la tinta sul percorso più corto la palette resta satura per tutto il fade (verificato: saturazione media 0.886 → 0.863 → 0.846 fra inizio, metà e fine).
+- `src/store/uiStore.ts`: `paletteLoop` (on/off) e `paletteLoopInterval` (0.5–60s). Lo stato di esecuzione non è persistito — come il play della playlist, riaprendo l'app si riparte da fermi — mentre l'intervallo è una preferenza e va in localStorage (`easyvj-palette-loop-interval`).
+- `src/hooks/use-palette-loop.ts` (nuovo): motore rAF. Ogni step genera una palette casuale col `count` corrente e ci dissolve dentro partendo **dai colori che ci sono in quel momento**, non dal target precedente: così un intervento manuale (Genera, 2/3/4/5, color picker) non viene scavalcato con uno stacco. A dissolvenza conclusa smette di riscrivere la palette (`settled`), per non tenere sync e autosave attivi a ogni frame. Fade di 1s, accorciato a `interval * 0.8` sotto i ~1.2s di intervallo.
+- Montato in `ControlPage`, non nel pannello: la sidebar sinistra smonta i pannelli al cambio tab e il loop si sarebbe spento passando su Palette o Progetti.
+- Nessun trattamento speciale per il Live: passando da `setPaletteColors` come il pulsante Genera, in Live l'Output resta fermo e i colori lo raggiungono con "Esegui in output", come ogni altra modifica.
+- `EffectsPanel`: seconda riga nel blocco "Colori casuali" con il toggle Loop (`variant=default` quando attivo, icona `Repeat` in pulse) e il campo secondi.
+- Verificato nel browser: intervalli rispettati (cambi a 1.41s / 3.42s / 5.44s / 7.45s con intervallo 2s), dissolvenza con una decina di stati intermedi seguita dalla palette piena, loop che prosegue nel tab Palette, e colori fermi a loop spento. **Nota per i test futuri**: con la finestra Chrome in background `requestAnimationFrame` viene throttlato a ~1–2 fps e ogni fade sembra uno stacco secco — serve `osascript -e 'tell application "Google Chrome" to activate'` e `select_page({bringToFront: true})` prima di misurare le animazioni.
+
 ## 2026-08-16 — Fix bug: nome file troppo lungo rompeva la sidebar destra
 
 Richiesta dell'utente: nella sidebar destra, sezione Asset, un nome file troppo lungo faceva uscire la colonna dai bordi del browser nascondendo il contenuto.

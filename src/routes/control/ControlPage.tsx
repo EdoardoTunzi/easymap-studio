@@ -27,6 +27,7 @@ import { Separator } from '@/components/ui/separator'
 import { useResizableWidth } from '@/hooks/use-resizable-width'
 import { useEffectHotkeys } from '@/hooks/use-effect-hotkeys'
 import { useOutputHotkeys } from '@/hooks/use-output-hotkeys'
+import { usePaletteLoop } from '@/hooks/use-palette-loop'
 import { useUiStore } from '@/store/uiStore'
 import { useLayersStore } from '@/store/layersStore'
 import { useBroadcastPublisher } from '@/lib/sync'
@@ -67,6 +68,8 @@ export function ControlPage() {
   useAutosave()
   useEffectHotkeys()
   useOutputHotkeys()
+  // il motore del loop palette sta qui e non nel pannello: i pannelli si smontano al cambio tab
+  usePaletteLoop()
   const activePanel = useUiStore((s) => s.activePanel)
   const overlaysVisible = useUiStore((s) => s.overlaysVisible)
   const gridVisible = useUiStore((s) => s.gridVisible)

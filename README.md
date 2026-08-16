@@ -18,6 +18,14 @@ Progetto solista, sviluppato in modo iterativo con un ciclo di lavoro rigoroso (
 
 ---
 
+## Novità della versione 4
+
+- **Loop delle palette casuali** — accanto a "Genera" c'è ora un interruttore **Loop**: la palette si rigenera da sola a intervalli regolari (**0,5–60 secondi**, preimpostati a 5) e **si dissolve** da una all'altra invece di cambiare di scatto. Basta accenderlo per avere un colore che evolve per conto suo mentre ci si occupa di mapping, layer o playlist. Se durante il loop tocchi "Genera", il numero di colori o un color picker, la dissolvenza successiva riparte da quello che c'è sullo schermo, senza stacchi.
+- **Cambio effetto rapido e Random dei controlli** — frecce accanto alla lista degli effetti e scorciatoie `⌥A` / `⌥S` per scorrere la libreria senza aprire il menu, più un pulsante che estrae valori casuali per tutti i parametri dell'effetto attivo.
+- **Barra spaziatrice per "Esegui in output"** in modalità Live, così l'invio al proiettore non passa dal mouse.
+
+---
+
 ## Cosa fa, in pratica
 
 1. Carichi una foto con sfondo trasparente (o nero, con rilevamento automatico) di ciò su cui vuoi proiettare.
@@ -57,6 +65,7 @@ Tutto quello che puoi fare dall'editor, pannello per pannello.
 - **Controlli globali dell'effetto**, validi per **qualsiasi** shader (anche quelli che espongono pochi parametri propri): velocità, rotazione, pan X/Y, kaleidoscopio, mirror X/Y, pixelate, luminosità, contrasto, saturazione, posterize, negativo — con reset immediato.
 - Opzione **"Nessun effetto"** per mostrare il contenuto grezzo del layer.
 - **Palette colori** con 7 preset fluorescenti pronti, editor a 5 colori personalizzabile e **generatore di palette casuali** con numero di colori a scelta (2–5) e schemi di armonia (analoga, complementare, triadica, split-complementare, monocromatica). Essendo una gradient map, ricolora ogni effetto della libreria; disponibile sia dal pannello Palette sia direttamente da quello Shader.
+- **Loop delle palette casuali** _(novità v4)_: l'interruttore **Loop** fa rigenerare la palette da sola a ogni intervallo — regolabile da 0,5 a 60 secondi anche mentre gira, per andare a tempo di musica — con una **dissolvenza morbida** al posto del cambio secco. Il loop resta attivo anche spostandosi su un altro pannello, e in modalità Live segue la regola di tutto il resto: i colori raggiungono il proiettore solo quando premi "Esegui in output".
 
 ### Assets
 
@@ -72,15 +81,15 @@ Tutto quello che puoi fare dall'editor, pannello per pannello.
 
 Pensate per il palco: le operazioni che si ripetono di continuo durante una performance non devono passare dal mouse.
 
-| Tasto                    | Azione                                                                          |
-| ------------------------ | ------------------------------------------------------------------------------- |
-| `⌥A` / `⌥S`              | Effetto precedente / successivo nella libreria (Alt su Windows e Linux)          |
-| `Spazio`                 | "Esegui in output": manda all'Output le modifiche in sospeso (solo in Live)      |
-| `↑ ↓ ← →`                | Spostamento fine dell'angolo selezionato, o dell'intera proiezione; `Shift` = ×5 |
-| `Spazio` + trascina      | Pan della vista di anteprima (anche col tasto centrale del mouse)                |
-| Rotellina                | Zoom della vista di anteprima                                                    |
-| `Alt` + click            | Sui pulsanti larghezza/altezza della toolbar di mapping: restringe invece di allargare |
-| `⌘B` / `Ctrl+B`          | Mostra/nasconde il pannello laterale                                            |
+| Tasto               | Azione                                                                                 |
+| ------------------- | -------------------------------------------------------------------------------------- |
+| `⌥A` / `⌥S`         | Effetto precedente / successivo nella libreria (Alt su Windows e Linux)                |
+| `Spazio`            | "Esegui in output": manda all'Output le modifiche in sospeso (solo in Live)            |
+| `↑ ↓ ← →`           | Spostamento fine dell'angolo selezionato, o dell'intera proiezione; `Shift` = ×5       |
+| `Spazio` + trascina | Pan della vista di anteprima (anche col tasto centrale del mouse)                      |
+| Rotellina           | Zoom della vista di anteprima                                                          |
+| `Alt` + click       | Sui pulsanti larghezza/altezza della toolbar di mapping: restringe invece di allargare |
+| `⌘B` / `Ctrl+B`     | Mostra/nasconde il pannello laterale                                                   |
 
 Fuori dalla modalità Live la barra spaziatrice resta interamente al pan della vista; nei campi di testo nessuna scorciatoia ruba i tasti.
 
@@ -108,6 +117,7 @@ Fuori dalla modalità Live la barra spaziatrice resta interamente al pan della v
 - **Controlli globali nel wrapper GLSL**: trasformazioni della uv (`easyvj_fxUv`: mirror, kaleidoscopio, rotazione, pan, pixelate) e correzioni di colore (`easyvj_fxColor`: luminosità, contrasto, saturazione, posterize, negativo) applicate rispettivamente prima e dopo `processColor`. Valgono per ogni shader senza modificarne il codice — con quasi novanta effetti in libreria, aggiungere uniform uno per uno non sarebbe scalabile.
 - **Maschera automatica per canale alpha**, con **luma key** opzionale (rilevata automaticamente all'upload) per le immagini con sfondo nero opaco anziché trasparente.
 - Palette colori con 7 preset fluorescenti, editor a 5 colori, generatore di **palette casuali** a numero di stop variabile con cinque schemi di armonia, e colori assegnabili ai singoli parametri `vec3` di ogni shader.
+- **Loop delle palette** con dissolvenza calcolata **in HSL anziché in RGB**: interpolando i canali RGB, due tinte opposte si incontrano a metà strada su un grigio slavato, mentre ruotando la tinta sul percorso più corto la palette resta satura per tutta la transizione. Il motore vive in un `requestAnimationFrame` montato sulla pagina di controllo e smette di riscrivere la palette a dissolvenza conclusa, per non tenere occupati sync e autosave a ogni frame.
 
 ### Multi-layer (stile Resolume/MadMapper)
 
