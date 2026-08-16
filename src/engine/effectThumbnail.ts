@@ -64,6 +64,9 @@ export function effectThumbnail(effect: EffectSnapshot): string | null {
     const uniforms = buildUniforms(shader)
     uniforms.uTime.value = THUMB_TIME
     ;(uniforms.uResolution.value as THREE.Vector2).set(THUMB_W, THUMB_H)
+    // il "quad" della miniatura è il riquadro stesso: gli shader che disegnano forme
+    // (vedi uQuadAspect nel wrapper) devono vederne le proporzioni reali
+    uniforms.uQuadAspect.value = THUMB_W / THUMB_H
     uniforms.uScale.value = effect.size
     uniforms.uPaletteOn.value = p.enabled ? 1 : 0
     uniforms.uPaletteCount.value = p.count

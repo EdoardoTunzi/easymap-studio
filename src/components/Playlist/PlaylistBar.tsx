@@ -21,13 +21,7 @@ import { Input } from '@/components/ui/input'
 import { Slider } from '@/components/ui/slider'
 import { Separator } from '@/components/ui/separator'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
+import { ShaderPicker } from '@/components/EffectsLibrary/ShaderPicker'
 import { cn } from '@/lib/utils'
 import { useEffectsStore, defaultParamsFor, defaultColorsFor } from '@/store/effectsStore'
 import { useLayersStore, type EffectSnapshot } from '@/store/layersStore'
@@ -220,18 +214,10 @@ function ClipEditor({ clip }: { clip: PlaylistClip }) {
         <span className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
           Effetto
         </span>
-        <Select value={clip.shaderName} onValueChange={handleShaderChange}>
-          <SelectTrigger className="h-8 w-full">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {shaders.map((s) => (
-              <SelectItem key={s.name} value={s.name}>
-                {s.name}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+        {/* stessa lista scrollabile del pannello Shader: la tendina Radix, ancorata all'elemento
+            selezionato, era impraticabile con un centinaio di effetti. Più bassa perché qui vive
+            dentro l'editor della clip, che ha già poco spazio verticale. */}
+        <ShaderPicker value={clip.shaderName} onChange={handleShaderChange} className="h-40" />
       </div>
 
       {/* colori dell'effetto (uniform vec3 dello shader) */}

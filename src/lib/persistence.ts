@@ -9,6 +9,13 @@ import type { MediaAsset, MediaType } from '../store/projectStore'
 
 const AUTOSAVE_ID = '__autosave__'
 const AUTOSAVE_DEBOUNCE_MS = 600
+/**
+ * Intervallo minimo fra due autosave. Lo snapshot include i blob dei media (l'asset dimostrativo
+ * da solo pesa 7 MB) e una scrittura misura ~50 ms di main thread: con un'animazione continua
+ * (loop delle palette, playlist in riproduzione) partiva a ogni pausa e si vedeva come scatto
+ * sul canvas. Il tetto la rende periodica invece che reattiva a ogni raffica di modifiche.
+ */
+const AUTOSAVE_MIN_INTERVAL_MS = 5000
 
 /** Media come salvato: il blob (persistente) al posto del blob URL (transiente). */
 interface StoredMedia {
@@ -243,13 +250,27 @@ export function useAutosave() {
     let timer: ReturnType<typeof setTimeout> | null = null
     let restoring = true
 
+    let lastWrite = 0
+
+    const flush = async () => {
+      timer = null
+      const db = await getDb()
+      await db.put('projects', snapshot(AUTOSAVE_ID, 'Autosave'))
+      lastWrite = performance.now()
+    }
+
+    /**
+     * Pianifica il salvataggio. A differenza di un debounce puro, un salvataggio già pianificato
+     * NON viene rimandato dalle modifiche successive: durante una raffica continua (un fade di
+     * palette scrive decine di volte al secondo) il debounce si sarebbe riarmato all'infinito,
+     * per poi scattare tutto insieme a ogni pausa. Così la scena finisce su disco entro
+     * `AUTOSAVE_DEBOUNCE_MS` da quando è cambiata, ma mai più spesso del tetto minimo.
+     */
     const persist = () => {
-      if (restoring) return
-      if (timer) clearTimeout(timer)
-      timer = setTimeout(async () => {
-        const db = await getDb()
-        await db.put('projects', snapshot(AUTOSAVE_ID, 'Autosave'))
-      }, AUTOSAVE_DEBOUNCE_MS)
+      if (restoring || timer) return
+      const sinceLast = performance.now() - lastWrite
+      const wait = Math.max(AUTOSAVE_DEBOUNCE_MS, AUTOSAVE_MIN_INTERVAL_MS - sinceLast)
+      timer = setTimeout(flush, wait)
     }
 
     const unsub = useLayersStore.subscribe(persist)

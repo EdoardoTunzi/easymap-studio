@@ -354,6 +354,12 @@ interface LayersState {
    * non lascia visibili gli stop della palette precedente.
    */
   setPaletteColors: (colors: RGB[], count?: number) => void
+  /**
+   * Come `setPaletteColors` ma su un layer indicato, che può non essere quello attivo: serve al
+   * loop delle palette, che gira per-layer e non deve seguire la selezione. La propagazione ai
+   * layer spuntati avviene solo se il layer indicato è quello attivo, come per ogni altro edit.
+   */
+  setLayerPaletteColors: (layerId: string, colors: RGB[], count?: number) => void
   applyPalettePreset: (name: string) => void
 
   // maschere del layer attivo
@@ -659,6 +665,34 @@ export const useLayersStore = create<LayersState>((set, get) => {
           enabled: true,
         },
       })),
+
+    setLayerPaletteColors: (layerId, colors, count) =>
+      set((state) => {
+        const source = state.layers.find((l) => l.id === layerId)
+        if (!source) return state
+        const updated: Layer = {
+          ...source,
+          palette: {
+            ...source.palette,
+            colors: colors.map((c) => [...c] as RGB),
+            count:
+              count == null
+                ? source.palette.count
+                : Math.max(2, Math.min(PALETTE_STOPS, Math.round(count))),
+            activePreset: CUSTOM_PRESET,
+            enabled: true,
+          },
+        }
+        // i layer spuntati seguono solo il layer attivo: un loop che gira su un layer di sfondo
+        // non deve trascinarsi dietro la selezione di sincronizzazione
+        const targets =
+          layerId === state.activeLayerId ? new Set(state.syncTargetIds) : new Set<string>()
+        return {
+          layers: state.layers.map((l) =>
+            l.id === layerId ? updated : targets.has(l.id) ? withEffectOf(l, updated) : l,
+          ),
+        }
+      }),
     applyPalettePreset: (name) =>
       editEffect((l) => ({
         palette: { ...l.palette, colors: clonePresetColors(name), activePreset: name, enabled: true },

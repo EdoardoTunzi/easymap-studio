@@ -3,13 +3,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Slider } from '@/components/ui/slider'
 import { Separator } from '@/components/ui/separator'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
+import { ShaderPicker } from './ShaderPicker'
 import { cn } from '@/lib/utils'
 import { useEffectsStore } from '@/store/effectsStore'
 import { ALT_LABEL } from '@/hooks/use-effect-hotkeys'
@@ -37,14 +31,20 @@ export function EffectsPanel() {
   const syncTargetIds = useLayersStore((s) => s.syncTargetIds)
   const toggleSyncTarget = useLayersStore((s) => s.toggleSyncTarget)
   const setSyncAll = useLayersStore((s) => s.setSyncAll)
-  const paletteLoop = useUiStore((s) => s.paletteLoop)
-  const togglePaletteLoop = useUiStore((s) => s.togglePaletteLoop)
-  const paletteLoopInterval = useUiStore((s) => s.paletteLoopInterval)
-  const setPaletteLoopInterval = useUiStore((s) => s.setPaletteLoopInterval)
+  const paletteLoopLayerIds = useUiStore((s) => s.paletteLoopLayerIds)
+  const togglePaletteLoopFor = useUiStore((s) => s.togglePaletteLoopFor)
+  const paletteLoopIntervals = useUiStore((s) => s.paletteLoopIntervals)
+  const defaultLoopInterval = useUiStore((s) => s.paletteLoopInterval)
+  const setPaletteLoopIntervalFor = useUiStore((s) => s.setPaletteLoopIntervalFor)
 
   // "tutti sincronizzati" se ogni layer diverso dall'attivo è spuntato
   const others = layers.filter((l) => l.id !== activeLayerId)
   const allSynced = others.length > 0 && others.every((l) => syncTargetIds.includes(l.id))
+
+  // il loop delle palette è una proprietà del singolo layer: pulsante e intervallo riflettono e
+  // modificano soltanto quello selezionato (i layer non ancora accesi partono dall'ultimo tempo usato)
+  const paletteLoop = paletteLoopLayerIds.includes(activeLayerId)
+  const paletteLoopInterval = paletteLoopIntervals[activeLayerId] ?? defaultLoopInterval
 
   const activeShaderName = activeLayer?.shaderName ?? ''
   const size = activeLayer?.size ?? 1
@@ -73,19 +73,14 @@ export function EffectsPanel() {
           >
             <ChevronLeft />
           </Button>
-          <Select value={activeShaderName} onValueChange={setActiveShader}>
-            {/* i nomi lunghi finiscono in ellissi invece di essere tagliati di netto */}
-            <SelectTrigger className="w-0 min-w-0 flex-1 *:data-[slot=select-value]:block *:data-[slot=select-value]:truncate">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {shaders.map((s) => (
-                <SelectItem key={s.name} value={s.name}>
-                  {s.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          {/* Effetto corrente sempre leggibile anche quando la lista è filtrata o scorsa altrove.
+              I nomi lunghi finiscono in ellissi invece di essere tagliati di netto. */}
+          <div
+            className="flex h-9 w-0 min-w-0 flex-1 items-center rounded-md border border-border px-3 text-sm"
+            title={activeShaderName}
+          >
+            <span className="truncate">{activeShaderName}</span>
+          </div>
           <Button
             variant="outline"
             size="icon"
@@ -97,6 +92,7 @@ export function EffectsPanel() {
             <ChevronRight />
           </Button>
         </div>
+        <ShaderPicker value={activeShaderName} onChange={setActiveShader} />
         {layers.length > 1 && (
           <div className="flex flex-col gap-2">
             <Button
@@ -194,17 +190,18 @@ export function EffectsPanel() {
           ))}
         </div>
         {/* Loop: "Genera" che si ripete da solo, con dissolvenza fra una palette e l'altra.
-            L'intervallo è modificabile in corsa, così si può andare a tempo di musica. */}
+            Vale per QUESTO layer (ogni layer ha il suo), l'intervallo è invece comune ed è
+            modificabile in corsa, così si può andare a tempo di musica. */}
         <div className="flex items-center gap-1.5">
           <Button
             variant={paletteLoop ? 'default' : 'outline'}
             size="sm"
             className="h-7 flex-1 gap-1.5 px-2 text-xs"
-            onClick={togglePaletteLoop}
+            onClick={() => activeLayerId && togglePaletteLoopFor(activeLayerId)}
             title={
               paletteLoop
-                ? 'Loop attivo: la palette cambia da sola a ogni intervallo'
-                : 'Genera una nuova palette a ogni intervallo, con dissolvenza'
+                ? `Loop attivo su ${activeLayer?.name ?? 'questo layer'}: la palette cambia da sola a ogni intervallo. Gli altri layer non ne sono toccati`
+                : `Cambia da sola la palette di ${activeLayer?.name ?? 'questo layer'} a ogni intervallo, con dissolvenza`
             }
           >
             <Repeat className={cn('size-3.5 shrink-0', paletteLoop && 'animate-pulse')} />
@@ -216,9 +213,12 @@ export function EffectsPanel() {
             max={MAX_PALETTE_LOOP_INTERVAL}
             step={0.5}
             value={paletteLoopInterval}
-            onChange={(e) => setPaletteLoopInterval(Number(e.target.value))}
+            onChange={(e) =>
+              activeLayerId && setPaletteLoopIntervalFor(activeLayerId, Number(e.target.value))
+            }
             className="h-7 w-14 shrink-0 px-2 text-xs tabular-nums"
-            aria-label="Intervallo del loop palette (secondi)"
+            aria-label={`Intervallo del loop palette di ${activeLayer?.name ?? 'questo layer'} (secondi)`}
+            title={`Ogni quanti secondi cambia la palette di ${activeLayer?.name ?? 'questo layer'}. Ogni layer ha il suo tempo`}
           />
           <span className="shrink-0 text-xs text-muted-foreground">s</span>
         </div>

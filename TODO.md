@@ -46,6 +46,8 @@ Spuntare gli step completati; aggiungere nuovi step quando emergono. Tenere alli
 - [x] Barra spaziatrice = "Esegui in output" (`use-output-hotkeys.ts`): invia la scena alla finestra Output. Attiva solo in Live e solo con modifiche in sospeso, così fuori da Live lo Spazio resta al pan della vista; badge `Spazio` sul pulsante della toolbar
 - [ ] Estendere ⌥A/⌥S alla finestra Output (serve registrare l'hotkey anche lì e rimandare il comando via BroadcastChannel): utile solo se capita di pilotare col focus sulla finestra proiettata
 - [ ] Valutare se includere `FxControls` in `EffectSnapshot` (ora sono per-layer, quindi preset e clip della playlist non li catturano — scelta voluta: non si azzerano a ogni transizione)
+- [x] Shader "Female Eyes" (`src/shaders/eyesFeminine.glsl`): due occhi femminili con battito di palpebre irregolare (a volte doppio) e sguardo a saccadi destra/sinistra, pensato come **layer sovrapposto** — fuori dagli occhi l'alpha è 0, quindi i layer sotto restano visibili. Introdotto per questo l'uniform globale `uQuadAspect` nel wrapper (aspect del quad dai corner-pin): senza, le forme si deformano col mapping e l'iride diventa ovale
+- [ ] Altri effetti "figurativi" sulla scia di Female Eyes (bocca, mani, simboli) se l'idea del layer-decalcomania regge sul palco
 - [ ] Import shader GLSL da parte dell'utente
 - [x] Color picker UI per gli uniform vec3 dei singoli shader (sezione "Colori effetto" nel pannello Shader e nell'editor clip; per-layer in colorParams, incluso in preset/playlist/crossfade/thumbnail)
 - [x] 10 shader "Liquid" sulla scia di 3D Surface Morph Spirals (file liquid*.glsl, source-driven con morph da luminanza e uniform colore)
@@ -108,6 +110,12 @@ Modello: scena = pila di Layer indipendenti; ogni layer ha contenuto (img/gif/vi
 
 - [x] Fix `npm run build`: alzato `workbox.maximumFileSizeToCacheInBytes` a 10 MB in `vite.config.ts` per precachare `default-stage.png` (7.1 MB), sopra il limite di default 2 MB di vite-plugin-pwa
 - [x] Fix sidebar destra (Asset): nome file troppo lungo mandava la colonna fuori dai bordi del browser — troncamento a 28 caratteri con tooltip sul nome completo (`MediaUploader.tsx`)
+- [x] Fix bug: il loop delle palette seguiva la selezione (era un flag globale che scriveva sul layer attivo) — ora è per-layer (`paletteLoopLayerIds` + `setLayerPaletteColors`), con cicli indipendenti e indicatore nella lista layer
+- [x] Intervallo del loop palette diverso per ogni layer (`paletteLoopIntervals`): il tempo si materializza sul layer all'accensione e viene letto live dal motore, così cambiarlo in corsa non fa ripartire la dissolvenza. Il valore globale resta come tempo di partenza dei loop successivi
+- [x] Fix bug: la tendina degli effetti non si lasciava scorrere (Radix `item-aligned` riportava la vista sull'item selezionato, con ~100 shader). Sostituita da `ShaderPicker`: ricerca + lista scrollabile sempre aperta, nel pannello Shader e nell'editor clip della playlist
+- [x] Scatti durante il loop delle palette: la dissolvenza scriveva nello store a ogni frame (~120/s) e l'autosave, debounce puro, scattava a ogni pausa riscrivendo anche i blob dei media (~53 ms a salvataggio). Ora il fade aggiorna a ~30 Hz e l'autosave ha un tetto di 5s fra due scritture
+- [ ] Blob dei media in uno store IndexedDB separato (schema v5 + migrazione): il progetto salverebbe solo un riferimento e l'autosave scenderebbe da ~7 MB a pochi KB (da ~53 ms a ~1 ms). È la causa di fondo dei long task durante le animazioni continue
+- [ ] Misurare le performance sempre su `npm run build` + `vite preview`: in dev con DevTools connesso React emette `performance.measure` per ogni componente e il profilo è dominato da quello (misurato: 120 fps e 0 long task in produzione contro 66 fps e 19 long task in dev, stessa scena)
 - [ ] Recuperare la versione integrale dello shader Symmetrical Halo Swirl (l'originale fornito era troncato a metà loop; completato in modo minimale)
 - [ ] Deprecation warning THREE.Clock (da @react-three/fiber, non bloccante — attendere fix upstream)
 - [ ] Valutare test automatici (vitest) per parser ISF e persistence
