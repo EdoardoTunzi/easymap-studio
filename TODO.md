@@ -110,6 +110,7 @@ Modello: scena = pila di Layer indipendenti; ogni layer ha contenuto (img/gif/vi
 
 - [x] Fix `npm run build`: alzato `workbox.maximumFileSizeToCacheInBytes` a 10 MB in `vite.config.ts` per precachare `default-stage.png` (7.1 MB), sopra il limite di default 2 MB di vite-plugin-pwa
 - [x] Fix sidebar destra (Asset): nome file troppo lungo mandava la colonna fuori dai bordi del browser — troncamento a 28 caratteri con tooltip sul nome completo (`MediaUploader.tsx`)
+- [x] Fix bug: la tendina degli effetti non si lasciava scorrere (Radix `item-aligned` riportava la vista sull'item selezionato, con ~100 shader). Sostituita da `ShaderPicker`: ricerca + lista scrollabile sempre aperta, nel pannello Shader e nell'editor clip della playlist
 - [x] Scatti durante il loop delle palette: la dissolvenza scriveva nello store a ogni frame (~120/s) e l'autosave, debounce puro, scattava a ogni pausa riscrivendo anche i blob dei media (~53 ms a salvataggio). Ora il fade aggiorna a ~30 Hz e l'autosave ha un tetto di 5s fra due scritture
 - [ ] Blob dei media in uno store IndexedDB separato (schema v5 + migrazione): il progetto salverebbe solo un riferimento e l'autosave scenderebbe da ~7 MB a pochi KB (da ~53 ms a ~1 ms). È la causa di fondo dei long task durante le animazioni continue
 - [ ] Misurare le performance sempre su `npm run build` + `vite preview`: in dev con DevTools connesso React emette `performance.measure` per ogni componente e il profilo è dominato da quello (misurato: 120 fps e 0 long task in produzione contro 66 fps e 19 long task in dev, stessa scena)

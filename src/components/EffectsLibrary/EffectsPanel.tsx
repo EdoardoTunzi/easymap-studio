@@ -3,13 +3,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Slider } from '@/components/ui/slider'
 import { Separator } from '@/components/ui/separator'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
+import { ShaderPicker } from './ShaderPicker'
 import { cn } from '@/lib/utils'
 import { useEffectsStore } from '@/store/effectsStore'
 import { ALT_LABEL } from '@/hooks/use-effect-hotkeys'
@@ -73,19 +67,14 @@ export function EffectsPanel() {
           >
             <ChevronLeft />
           </Button>
-          <Select value={activeShaderName} onValueChange={setActiveShader}>
-            {/* i nomi lunghi finiscono in ellissi invece di essere tagliati di netto */}
-            <SelectTrigger className="w-0 min-w-0 flex-1 *:data-[slot=select-value]:block *:data-[slot=select-value]:truncate">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {shaders.map((s) => (
-                <SelectItem key={s.name} value={s.name}>
-                  {s.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          {/* Effetto corrente sempre leggibile anche quando la lista è filtrata o scorsa altrove.
+              I nomi lunghi finiscono in ellissi invece di essere tagliati di netto. */}
+          <div
+            className="flex h-9 w-0 min-w-0 flex-1 items-center rounded-md border border-border px-3 text-sm"
+            title={activeShaderName}
+          >
+            <span className="truncate">{activeShaderName}</span>
+          </div>
           <Button
             variant="outline"
             size="icon"
@@ -97,6 +86,7 @@ export function EffectsPanel() {
             <ChevronRight />
           </Button>
         </div>
+        <ShaderPicker value={activeShaderName} onChange={setActiveShader} />
         {layers.length > 1 && (
           <div className="flex flex-col gap-2">
             <Button

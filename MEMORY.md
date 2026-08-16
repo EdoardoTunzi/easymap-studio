@@ -2,6 +2,17 @@
 
 Ogni modifica al progetto va registrata qui con data, descrizione e motivazione. Le voci più recenti in alto dentro ogni giornata.
 
+## 2026-08-16 — Fix bug: la tendina degli effetti era inservibile → lista scrollabile con ricerca
+
+Segnalazione dell'utente: la select a tendina degli effetti nella sidebar spesso non si lasciava scorrere, o tornava subito sull'effetto selezionato, rendendo impossibile leggere e scegliere gli altri. Proposta sua: spostare gli effetti in una sezione con scroll.
+
+- **Causa**: `components/ui/select.tsx` usa `position="item-aligned"` (default di Radix), cioè il menu si ancora all'elemento selezionato e ne mantiene la posizione sotto il cursore. Con ~100 shader il contenuto eccede l'altezza disponibile e Radix riporta la vista sull'item corrente: il "rimbalzo" descritto. Non è un problema di CSS del progetto ma della modalità di posizionamento.
+- `src/components/EffectsLibrary/ShaderPicker.tsx` (nuovo): campo di ricerca + lista sempre aperta, scrollabile, con l'effetto attivo evidenziato. Nessun ancoraggio da rispettare, quindi lo scroll è libero. **L'unico scroll automatico** scatta quando l'effetto cambia da fuori (frecce ◀ ▶, ⌥A/⌥S, playlist) e usa `block: 'nearest'`: non muove niente se l'elemento è già visibile — è proprio la differenza col comportamento di prima. `overscroll-contain` evita che, arrivati in fondo, lo scroll prosegua trascinando la sidebar.
+- `EffectsPanel`: al posto della select resta il nome dell'effetto corrente in sola lettura fra le due frecce (serve perché con la lista filtrata o scorsa altrove l'attivo può non essere in vista), poi ricerca + lista alta 224px.
+- `PlaylistBar`: stessa sostituzione nell'editor della clip, che aveva identico problema; lista più bassa (160px) per lo spazio ridotto del popover.
+- La ricerca filtra per sottostringa (es. "liquid" → 14 risultati, inclusi i nomi che la contengono in mezzo come *Halo Liquid Symmetry*) e non tocca lo scorrimento con ⌥A/⌥S, che continua a girare su tutta la libreria.
+- Verificato nel browser: lo scroll resta dove lo si mette (0 e metà lista, nessun ritorno automatico), la ricerca filtra, il click seleziona, la freccia "successivo" riporta in vista l'attivo, e l'editor clip mostra la lista senza rompere il layout. La `Select` resta in uso dove ha poche voci (blend mode del layer).
+
 ## 2026-08-16 — Indagine su scatti e crash della tab + throttle di palette loop e autosave
 
 Segnalazione dell'utente: dopo un po' di utilizzo la tab del browser è crashata e l'effetto andava a scatti, con il sospetto che fosse colpa delle modifiche al motore. **Non lo era**, e vale la pena tenere i numeri.
