@@ -2,6 +2,28 @@
 
 Ogni modifica al progetto va registrata qui con data, descrizione e motivazione. Le voci più recenti in alto dentro ogni giornata.
 
+## 2026-08-16 — Indagine su scatti e crash della tab + throttle di palette loop e autosave
+
+Segnalazione dell'utente: dopo un po' di utilizzo la tab del browser è crashata e l'effetto andava a scatti, con il sospetto che fosse colpa delle modifiche al motore. **Non lo era**, e vale la pena tenere i numeri.
+
+- **Misure sul nuovo shader**: `Female Eyes` costa **0,12 ms** per frame fullscreen 1080p, sotto la media della libreria (Liquid Marble 0,23, Metallic 3D Fluid 0,21, SD Nebula Drift 0,22). `quadAspect()`, chiamato per ogni passaggio di ogni frame, costa **0,019 ms di CPU al secondo**. Nessun leak: l'heap fa il dente di sega e il GC recupera tutto.
+- **Dove andava davvero il tempo (in dev)**: profilo CPU del trace → 10,3 s su 15 spesi in `performance.measure` e `createTask`, cioè la strumentazione che React emette in dev quando un profiler/DevTools è connesso. In **build di produzione** la stessa scena (2 layer, occhi + palette loop a 1,5s) gira a **120 fps costanti con ZERO long task**, heap stabile fra 15 e 38 MB su 50s di osservazione — contro 66 fps e 19 long task in dev. Lezione per le prossime misure: **le performance vanno misurate su `vite preview`, non sul dev server con CDP attaccato**, altrimenti si insegue un fantasma.
+- Restano comunque due sprechi reali, corretti perché pesano anche in produzione (e molto su macchine più lente del portatile di sviluppo):
+  - `use-palette-loop.ts`: la dissolvenza scriveva la palette nello store **a ogni frame** (120/s a 120 Hz), e ogni scrittura fa ri-renderizzare l'interfaccia, pubblica lo stato sul canale di sync e risveglia l'autosave. Ora c'è un passo minimo di 33 ms (~30 aggiornamenti al secondo, misurati 12/s reali durante il fade): l'occhio non vede differenza perché i colori restano interpolati **sul tempo**, non sul numero di passi. L'ultimo passo si applica sempre, altrimenti il throttle lascerebbe la palette su un valore intermedio.
+  - `persistence.ts`: l'autosave era un debounce puro che si ri-armava a ogni modifica, quindi durante un'animazione continua scattava a ogni pausa. Ogni scrittura costa **~53 ms misurati**, perché lo snapshot include i blob dei media (l'asset dimostrativo pesa 7,08 MB): un long task che salta 3-6 frame. Ora un salvataggio già pianificato non viene più rimandato dalle modifiche successive, e c'è un tetto di `AUTOSAVE_MIN_INTERVAL_MS` (5s) fra due scritture. Verificato che l'autosave continua ad aggiornarsi dopo una modifica.
+- **Fix rimandato** (scelta dell'utente: prima l'intervento senza rischi): spostare i blob dei media in uno store IndexedDB separato, così il progetto ne salva solo il riferimento e l'autosave scende da 7 MB a pochi KB. Richiede schema v5 con migrazione. Vedi TODO.
+
+## 2026-08-16 — Nuovo effetto "Female Eyes" + uniform globale `uQuadAspect`
+
+Richiesta dell'utente: un effetto con due occhi femminili che si aprono e chiudono a loop e guardano a destra e sinistra, da usare come layer sopra altri layer.
+
+- `src/shaders/eyesFeminine.glsl` (nuovo, NAME: *Female Eyes*): occhi a mandorla con eyeliner alato, ciglia lunghe, iride a fibre radiali, pupilla che respira e riflessi speculari. `feOpen()` gestisce il battito di palpebre — l'istante di chiusura dentro il ciclo è pseudo-casuale (`feHash`) e ogni tanto il battito è doppio, così non risulta metronomico; `feGaze()` sposta lo sguardo su direzioni discrete (sinistra/centro/destra) con una saccade rapida a inizio ciclo e poi fissazione, come un occhio vero.
+- **Trasparenza**: `processColor` restituisce alpha 0 fuori dagli occhi (il wrapper la moltiplica per la maschera del media), quindi il layer si sovrappone davvero agli altri invece di coprirli. Verificato con un secondo layer sopra un effetto psichedelico.
+- I due occhi sono disegnati una volta sola in coordinate locali specchiate (`q.x *= side`, `q.x > 0` = coda esterna): ciglia, coda dell'eyeliner e sguardo restano coerenti su entrambi. Lo sguardo va rispecchiato anch'esso (`side * gaze`), altrimenti gli occhi guardano in direzioni opposte.
+- `src/engine/isfParser.ts` + `ShaderPlane.tsx`: nuovo uniform globale del wrapper **`uQuadAspect`** (rapporto larghezza/altezza del quad, calcolato dai corner-pin con `quadAspect()`), disponibile a qualsiasi shader. Serviva perché le coordinate uv seguono la deformazione del layer: senza correzione gli occhi si schiacciavano su un mapping largo, e l'aspect del canvas (`uResolution`) non bastava — il quad può avere proporzioni molto diverse dal canvas. Con la correzione l'iride resta circolare e `eyeSize` è in frazioni di **altezza** del layer.
+- `src/engine/effectThumbnail.ts`: la miniatura passa l'aspect del proprio riquadro a `uQuadAspect` (in `buildUniforms` il default è 1).
+- Iterato sull'estetica con un harness WebGL usa-e-getta (fondo a scacchi per controllare la trasparenza, tempo pilotabile) invece che dentro l'app: nel preview dell'editor gli occhi sono troppo piccoli per giudicare ciglia, eyeliner e iride. Difetti corretti così: occhi troppo piatti, iride ovalizzata (era calcolata in coordinate già scalate da `eyeHeight`), eyeliner che sbavava oltre l'angolo interno come trattino sospeso (la curva della palpebra vale solo per `|q.x| < 1`), coda alata staccata dal corpo della linea.
+
 ## 2026-08-16 — README: sezione "Novità della versione 4"
 
 Richiesta dell'utente: documentare il loop palette nel README come novità della versione 4.

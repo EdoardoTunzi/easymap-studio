@@ -23,6 +23,22 @@ const BLEND_FACTORS: Record<BlendMode, { src: THREE.BlendingSrcFactor; dst: THRE
 
 const MASK_SLOTS = 8
 
+/**
+ * Rapporto larghezza/altezza del quad warpato (media dei lati opposti). Le coordinate mondo sono
+ * isotropiche (half-height 1, half-width = aspect del canvas), quindi le lunghezze dei lati sono
+ * confrontabili direttamente. Serve agli shader che disegnano forme da non deformare.
+ */
+function dist(a: { x: number; y: number }, b: { x: number; y: number }): number {
+  return Math.hypot(a.x - b.x, a.y - b.y)
+}
+
+function quadAspect(corners: Layer['corners']): number {
+  const [tl, tr, bl, br] = corners
+  const width = (dist(tl, tr) + dist(bl, br)) / 2
+  const height = (dist(tl, bl) + dist(tr, br)) / 2
+  return height > 1e-5 ? width / height : 1
+}
+
 export function buildUniforms(shader: ParsedShader | undefined): Record<string, { value: unknown }> {
   const base: Record<string, { value: unknown }> = {
     uTexture: { value: FALLBACK_TEXTURE },
@@ -44,6 +60,7 @@ export function buildUniforms(shader: ParsedShader | undefined): Record<string, 
     uMaskInvert: { value: new Array(MASK_SLOTS).fill(0) },
     uMaskTex: { value: FALLBACK_TEXTURE },
     uMaskTexOn: { value: 0 },
+    uQuadAspect: { value: 1 },
     // controlli globali del layer: default neutri (nessuna alterazione)
     uFxSpeed: { value: 1 },
     uFxRotation: { value: 0 },
@@ -156,6 +173,7 @@ function EffectPass({ layerId, variant, source, renderOrder, geometry, controlle
     u.uTime.value = state.clock.elapsedTime
     ;(u.uResolution.value as THREE.Vector2).set(state.size.width, state.size.height)
     u.uScale.value = fx.size
+    u.uQuadAspect.value = quadAspect(l.corners)
     u.uLumaKey.value = l.lumaKey
     // il peso della scena scala l'opacità: è così che le due scene si dissolvono l'una nell'altra
     u.uOpacity.value = fx.opacity * sceneWeight(storeState, source)

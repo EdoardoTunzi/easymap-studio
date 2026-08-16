@@ -7,6 +7,15 @@ import { PALETTE_STOPS, randomPaletteColors, lerpPaletteColors } from '@/store/p
 const FADE_SECONDS = 1
 
 /**
+ * Passo minimo fra due scritture della palette durante la dissolvenza (~30 aggiornamenti al
+ * secondo). Ogni scrittura nello store fa ri-renderizzare l'interfaccia, pubblica lo stato
+ * all'Output e risveglia l'autosave: a 120 fps significava farlo 120 volte al secondo, con
+ * scatti visibili sul canvas. A 30 Hz la dissolvenza resta continua all'occhio ma costa un
+ * quarto: i colori sono comunque interpolati sul tempo reale, non sul numero di passi.
+ */
+const MIN_STEP_MS = 33
+
+/**
  * Motore del loop delle palette casuali (pulsante "Loop" nella sezione Colori casuali).
  * Ogni `paletteLoopInterval` secondi genera una palette casuale e ci dissolve dentro partendo dai
  * colori correnti, così un intervento manuale (Genera, numero di colori, color picker) non viene
@@ -35,6 +44,7 @@ export function usePaletteLoop() {
     let to = randomPaletteColors(getActiveLayer()?.palette.count ?? PALETTE_STOPS)
     let stepStart = performance.now()
     let settled = false
+    let lastApply = 0
     let raf = 0
 
     const tick = (now: number) => {
@@ -44,7 +54,12 @@ export function usePaletteLoop() {
       // il tempo, senza far ripartire sync e autosave a ogni frame
       if (!settled) {
         const t = fade > 0 ? Math.min(elapsed / fade, 1) : 1
-        setPaletteColors(lerpPaletteColors(from, to, t * t * (3 - 2 * t)))
+        // l'ultimo passo si applica sempre, altrimenti il throttle lascerebbe la palette
+        // ferma a un valore intermedio invece che sul colore di arrivo
+        if (t >= 1 || now - lastApply >= MIN_STEP_MS) {
+          setPaletteColors(lerpPaletteColors(from, to, t * t * (3 - 2 * t)))
+          lastApply = now
+        }
         settled = t >= 1
       }
 

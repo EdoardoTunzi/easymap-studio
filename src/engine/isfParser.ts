@@ -71,6 +71,9 @@ uniform float uMaskType[8];          // 0 = rettangolo, 1 = ellisse
 uniform float uMaskInvert[8];        // 1 = ritaglia fuori invece che dentro
 uniform sampler2D uMaskTex;          // maschera da immagine (stencil)
 uniform float uMaskTexOn;            // 1 = usa la maschera-immagine
+// Rapporto larghezza/altezza del QUAD del layer (dai corner-pin, non del canvas): serve agli
+// shader che disegnano forme riconoscibili (cerchi, occhi…) e non devono deformarsi col mapping.
+uniform float uQuadAspect;
 // --- Controlli globali del layer (validi per QUALSIASI shader) ---
 uniform float uFxSpeed;              // moltiplicatore del tempo
 uniform float uFxRotation;           // rotazione del pattern (rad)
