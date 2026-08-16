@@ -2,6 +2,21 @@
 
 Ogni modifica al progetto va registrata qui con data, descrizione e motivazione. Le voci più recenti in alto dentro ogni giornata.
 
+## 2026-08-16 — Fix bug: il loop delle palette seguiva la selezione → ora è per-layer
+
+Segnalazione dell'utente: attivando il loop palette su un layer e poi passando a un altro layer, il loop veniva applicato anche a quest'ultimo.
+
+- **Causa**: `paletteLoop` era un booleano *globale* in `uiStore` e il motore scriveva sempre sul **layer attivo** (`getActiveLayer()`). Non era quindi un loop "del layer" ma un loop "della selezione": cambiando layer, il motore si portava dietro il pennello.
+- `uiStore`: `paletteLoop: boolean` → `paletteLoopLayerIds: string[]` con `togglePaletteLoopFor(layerId)`. Aggiunto `prunePaletteLoopLayers(existingIds)`, chiamato quando cambia la lista dei layer, così un layer eliminato non resta acceso nell'elenco. L'intervallo resta **comune a tutti i cicli**: è una preferenza persistita, e nessuno ha chiesto tempi diversi per layer (se servirà, va spostato nella stessa mappa).
+- `layersStore`: nuova azione `setLayerPaletteColors(layerId, colors, count?)`, che scrive sulla palette di un layer indicato invece che sull'attivo. La propagazione ai layer spuntati (`syncTargetIds`) avviene **solo se il layer indicato è quello attivo**: un loop che gira su un layer di sfondo non deve trascinarsi dietro la selezione di sincronizzazione. `setPaletteColors` resta com'era per tutto il resto dell'interfaccia.
+- `use-palette-loop.ts`: il motore ora tiene una `Map<layerId, LoopState>` e fa girare **cicli indipendenti** (ognuno con i suoi `from`/`to`/`stepStart`) dentro un solo rAF. Resta il throttle a ~30 Hz per ciclo introdotto col fix di performance.
+- `EffectsPanel`: il pulsante Loop riflette e commuta **solo il layer selezionato**, e il tooltip lo dice per nome ("Loop attivo su Layer 1… Gli altri layer non ne sono toccati").
+- `LayerList`: icona `Repeat` pulsante accanto al blend mode sui layer in loop — con il loop per-layer serviva un modo di vedere dove sta girando senza selezionarli uno per uno.
+- Verificato nel browser osservando i payload di sync: con il loop attivo solo sul Layer 1 e la selezione sul Layer 2, in 9 secondi il Layer 1 ha assunto **133 palette distinte e il Layer 2 esattamente 1** (prima del fix il layer selezionato veniva ricolorato). Con entrambi accesi: 115 e 116 palette, cicli indipendenti.
+- **Seguito (stessa sessione): anche l'intervallo è per-layer**, su richiesta dell'utente — prima tutti i cicli ereditavano lo stesso tempo. `paletteLoopIntervals: Record<layerId, number>` in `uiStore`; `paletteLoopInterval` resta ma cambia significato: è il **tempo di partenza** dei loop accesi da qui in avanti (ultimo impostato, persistito in localStorage). La voce del layer viene materializzata all'accensione copiandoci il default: senza, i layer sprovvisti di voce propria avrebbero continuato a condividere il default, e cambiare il tempo a uno lo avrebbe cambiato agli altri — cioè lo stesso bug in forma attenuata. Spegnendo il loop la voce si conserva, così riaccendendolo il layer ritrova il suo tempo.
+- Il motore legge l'intervallo **a ogni giro** (`intervalOf`) invece di catturarlo all'avvio: cambiare il tempo mentre il loop gira non fa più ripartire la dissolvenza, e l'effetto React dipende ormai solo dall'elenco dei layer. Anche `fade` è calcolato per ciclo, perché dipende dall'intervallo di quel layer.
+- Verificato con due layer a 1s e 6s: in 12 secondi **287 palette distinte contro 60** (rapporto ~4,8×, coerente con i due intervalli), e tornando sul primo layer il campo mostra ancora il suo 1s.
+
 ## 2026-08-16 — Fix bug: la tendina degli effetti era inservibile → lista scrollabile con ricerca
 
 Segnalazione dell'utente: la select a tendina degli effetti nella sidebar spesso non si lasciava scorrere, o tornava subito sull'effetto selezionato, rendendo impossibile leggere e scegliere gli altri. Proposta sua: spostare gli effetti in una sezione con scroll.

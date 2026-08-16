@@ -1,8 +1,9 @@
 import { useRef, useState } from 'react'
-import { Eye, EyeOff, Plus, Copy, Trash2, GripVertical, Lock } from 'lucide-react'
+import { Eye, EyeOff, Plus, Copy, Trash2, GripVertical, Lock, Repeat } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import { useLayersStore } from '@/store/layersStore'
+import { useUiStore } from '@/store/uiStore'
 
 /**
  * Lista dei layer: è la selezione che comanda tutto il resto della colonna destra, quindi resta
@@ -18,6 +19,7 @@ export function LayerList() {
   const duplicateLayer = useLayersStore((s) => s.duplicateLayer)
   const reorderLayers = useLayersStore((s) => s.reorderLayers)
   const setLayerVisible = useLayersStore((s) => s.setLayerVisible)
+  const paletteLoopLayerIds = useUiStore((s) => s.paletteLoopLayerIds)
 
   const dragIndex = useRef<number | null>(null)
   const [dragOver, setDragOver] = useState<number | null>(null)
@@ -96,6 +98,13 @@ export function LayerList() {
               {/* il lucchetto del mapping è uno stato che va visto senza dover selezionare il layer */}
               {layer.locked && (
                 <Lock className="size-3 shrink-0 text-amber-400" aria-label="Mapping bloccato" />
+              )}
+              {/* il loop delle palette gira per-layer: da qui si vede su quali senza selezionarli */}
+              {paletteLoopLayerIds.includes(layer.id) && (
+                <Repeat
+                  className="size-3 shrink-0 animate-pulse text-primary"
+                  aria-label="Loop palette attivo"
+                />
               )}
               <span className="shrink-0 text-[10px] uppercase text-muted-foreground">
                 {layer.shaderName ? layer.blendMode : ''}

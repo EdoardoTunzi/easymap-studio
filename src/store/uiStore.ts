@@ -108,15 +108,33 @@ interface UiState {
   snapEnabled: boolean
   toggleSnap: () => void
   /**
-   * Loop delle palette casuali: quando è attivo il motore (`use-palette-loop`) rigenera la
-   * palette del layer attivo a intervalli regolari, dissolvendo da una all'altra. Vive qui e non
-   * nel progetto perché è uno stato di esecuzione, come il play della playlist: riaprendo l'app
-   * si riparte da fermi. L'intervallo invece è una preferenza e sopravvive alla sessione.
+   * Layer su cui gira il loop delle palette casuali: il motore (`use-palette-loop`) ne rigenera
+   * la palette a intervalli regolari, dissolvendo da una all'altra.
+   *
+   * È un elenco di id e non un booleano globale perché il loop appartiene al singolo layer:
+   * quando era globale il motore scriveva sempre sul layer *attivo*, così passando a un altro
+   * layer il loop lo seguiva e gli ricoloriva la palette senza che fosse stato chiesto.
+   *
+   * Vive qui e non nel progetto perché è uno stato di esecuzione, come il play della playlist:
+   * riaprendo l'app si riparte da fermi. L'intervallo invece è una preferenza (condivisa da
+   * tutti i layer) e sopravvive alla sessione.
    */
-  paletteLoop: boolean
-  togglePaletteLoop: () => void
+  paletteLoopLayerIds: string[]
+  togglePaletteLoopFor: (layerId: string) => void
+  /** Toglie dal loop i layer che non esistono più (eliminati o sostituiti dal caricamento). */
+  prunePaletteLoopLayers: (existingIds: string[]) => void
+  /**
+   * Intervallo del loop per layer, in secondi: ogni layer va al suo tempo, così si possono
+   * tenere un fondale che cambia lentamente e un elemento che pulsa veloce.
+   *
+   * La voce viene materializzata quando si accende il loop su un layer, copiandoci il default:
+   * senza questo, i layer sprovvisti di voce propria condividerebbero il default e cambiare il
+   * tempo a uno lo cambierebbe anche agli altri.
+   */
+  paletteLoopIntervals: Record<string, number>
+  setPaletteLoopIntervalFor: (layerId: string, seconds: number) => void
+  /** Tempo di partenza per i loop accesi da qui in avanti: è l'ultimo impostato, e si ricorda. */
   paletteLoopInterval: number
-  setPaletteLoopInterval: (seconds: number) => void
   view: ViewTransform
   setViewZoom: (zoom: number) => void
   zoomViewBy: (factor: number) => void
@@ -150,19 +168,53 @@ export const useUiStore = create<UiState>((set) => ({
   toggleGrid: () => set((s) => ({ gridVisible: !s.gridVisible })),
   snapEnabled: false,
   toggleSnap: () => set((s) => ({ snapEnabled: !s.snapEnabled })),
-  paletteLoop: false,
-  togglePaletteLoop: () => set((s) => ({ paletteLoop: !s.paletteLoop })),
-  paletteLoopInterval: loadPaletteLoopInterval(),
-  setPaletteLoopInterval: (seconds) => {
+  paletteLoopLayerIds: [],
+  togglePaletteLoopFor: (layerId) =>
+    set((s) => {
+      const on = s.paletteLoopLayerIds.includes(layerId)
+      return {
+        paletteLoopLayerIds: on
+          ? s.paletteLoopLayerIds.filter((id) => id !== layerId)
+          : [...s.paletteLoopLayerIds, layerId],
+        // accendendolo il layer prende il tempo di partenza come valore PROPRIO, che da qui in
+        // poi si cambia solo da lui; spegnendolo lo si conserva, così riaccendendolo lo ritrova
+        paletteLoopIntervals:
+          on || s.paletteLoopIntervals[layerId] != null
+            ? s.paletteLoopIntervals
+            : { ...s.paletteLoopIntervals, [layerId]: s.paletteLoopInterval },
+      }
+    }),
+  prunePaletteLoopLayers: (existingIds) =>
+    set((s) => {
+      const paletteLoopLayerIds = s.paletteLoopLayerIds.filter((id) => existingIds.includes(id))
+      const keptIntervals = Object.entries(s.paletteLoopIntervals).filter(([id]) =>
+        existingIds.includes(id),
+      )
+      const intervalsChanged = keptIntervals.length !== Object.keys(s.paletteLoopIntervals).length
+      const layersChanged = paletteLoopLayerIds.length !== s.paletteLoopLayerIds.length
+      // stesso contenuto = stesso stato: evita un aggiornamento inutile a ogni cambio di scena
+      if (!layersChanged && !intervalsChanged) return s
+      return {
+        paletteLoopLayerIds,
+        paletteLoopIntervals: Object.fromEntries(keptIntervals),
+      }
+    }),
+  paletteLoopIntervals: {},
+  setPaletteLoopIntervalFor: (layerId, seconds) => {
     if (!Number.isFinite(seconds)) return
-    const paletteLoopInterval = clamp(seconds, MIN_PALETTE_LOOP_INTERVAL, MAX_PALETTE_LOOP_INTERVAL)
+    const value = clamp(seconds, MIN_PALETTE_LOOP_INTERVAL, MAX_PALETTE_LOOP_INTERVAL)
     try {
-      window.localStorage.setItem(PALETTE_LOOP_STORAGE_KEY, String(paletteLoopInterval))
+      // ricordato come tempo di partenza dei prossimi loop, non come tempo di tutti
+      window.localStorage.setItem(PALETTE_LOOP_STORAGE_KEY, String(value))
     } catch {
       // storage pieno o disabilitato: lo stato resta valido per la sessione corrente
     }
-    set({ paletteLoopInterval })
+    set((s) => ({
+      paletteLoopIntervals: { ...s.paletteLoopIntervals, [layerId]: value },
+      paletteLoopInterval: value,
+    }))
   },
+  paletteLoopInterval: loadPaletteLoopInterval(),
   view: DEFAULT_VIEW,
   setViewZoom: (zoom) =>
     set((s) => ({ view: { ...s.view, zoom: clamp(zoom, MIN_VIEW_ZOOM, MAX_VIEW_ZOOM) } })),
