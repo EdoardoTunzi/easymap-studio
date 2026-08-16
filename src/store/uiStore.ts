@@ -28,6 +28,19 @@ function loadSections(): Record<LayerSection, boolean> {
   }
 }
 
+const PALETTE_LOOP_STORAGE_KEY = 'easyvj-palette-loop-interval'
+
+export const MIN_PALETTE_LOOP_INTERVAL = 0.5
+export const MAX_PALETTE_LOOP_INTERVAL = 60
+export const DEFAULT_PALETTE_LOOP_INTERVAL = 5
+
+function loadPaletteLoopInterval(): number {
+  if (typeof window === 'undefined') return DEFAULT_PALETTE_LOOP_INTERVAL
+  const raw = Number(window.localStorage.getItem(PALETTE_LOOP_STORAGE_KEY))
+  if (!Number.isFinite(raw) || raw <= 0) return DEFAULT_PALETTE_LOOP_INTERVAL
+  return Math.min(MAX_PALETTE_LOOP_INTERVAL, Math.max(MIN_PALETTE_LOOP_INTERVAL, raw))
+}
+
 /**
  * Zoom/pan della vista di anteprima nella finestra Control. Puramente visivo: sposta solo il
  * frustum della camera locale a questa finestra, non tocca corners/transform dei layer, quindi
@@ -94,6 +107,16 @@ interface UiState {
   /** Aggancio dei corner alla griglia durante il trascinamento. */
   snapEnabled: boolean
   toggleSnap: () => void
+  /**
+   * Loop delle palette casuali: quando è attivo il motore (`use-palette-loop`) rigenera la
+   * palette del layer attivo a intervalli regolari, dissolvendo da una all'altra. Vive qui e non
+   * nel progetto perché è uno stato di esecuzione, come il play della playlist: riaprendo l'app
+   * si riparte da fermi. L'intervallo invece è una preferenza e sopravvive alla sessione.
+   */
+  paletteLoop: boolean
+  togglePaletteLoop: () => void
+  paletteLoopInterval: number
+  setPaletteLoopInterval: (seconds: number) => void
   view: ViewTransform
   setViewZoom: (zoom: number) => void
   zoomViewBy: (factor: number) => void
@@ -127,6 +150,19 @@ export const useUiStore = create<UiState>((set) => ({
   toggleGrid: () => set((s) => ({ gridVisible: !s.gridVisible })),
   snapEnabled: false,
   toggleSnap: () => set((s) => ({ snapEnabled: !s.snapEnabled })),
+  paletteLoop: false,
+  togglePaletteLoop: () => set((s) => ({ paletteLoop: !s.paletteLoop })),
+  paletteLoopInterval: loadPaletteLoopInterval(),
+  setPaletteLoopInterval: (seconds) => {
+    if (!Number.isFinite(seconds)) return
+    const paletteLoopInterval = clamp(seconds, MIN_PALETTE_LOOP_INTERVAL, MAX_PALETTE_LOOP_INTERVAL)
+    try {
+      window.localStorage.setItem(PALETTE_LOOP_STORAGE_KEY, String(paletteLoopInterval))
+    } catch {
+      // storage pieno o disabilitato: lo stato resta valido per la sessione corrente
+    }
+    set({ paletteLoopInterval })
+  },
   view: DEFAULT_VIEW,
   setViewZoom: (zoom) =>
     set((s) => ({ view: { ...s.view, zoom: clamp(zoom, MIN_VIEW_ZOOM, MAX_VIEW_ZOOM) } })),

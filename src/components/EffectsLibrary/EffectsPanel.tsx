@@ -1,5 +1,6 @@
-import { Link2, CheckSquare, Square, Dices, ChevronLeft, ChevronRight } from 'lucide-react'
+import { Link2, CheckSquare, Square, Dices, ChevronLeft, ChevronRight, Repeat } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
 import { Slider } from '@/components/ui/slider'
 import { Separator } from '@/components/ui/separator'
 import {
@@ -13,6 +14,11 @@ import { cn } from '@/lib/utils'
 import { useEffectsStore } from '@/store/effectsStore'
 import { ALT_LABEL } from '@/hooks/use-effect-hotkeys'
 import { useLayersStore } from '@/store/layersStore'
+import {
+  useUiStore,
+  MIN_PALETTE_LOOP_INTERVAL,
+  MAX_PALETTE_LOOP_INTERVAL,
+} from '@/store/uiStore'
 import { rgbToHex, hexToRgb, randomPaletteColors } from '@/store/paletteStore'
 
 export function EffectsPanel() {
@@ -31,6 +37,10 @@ export function EffectsPanel() {
   const syncTargetIds = useLayersStore((s) => s.syncTargetIds)
   const toggleSyncTarget = useLayersStore((s) => s.toggleSyncTarget)
   const setSyncAll = useLayersStore((s) => s.setSyncAll)
+  const paletteLoop = useUiStore((s) => s.paletteLoop)
+  const togglePaletteLoop = useUiStore((s) => s.togglePaletteLoop)
+  const paletteLoopInterval = useUiStore((s) => s.paletteLoopInterval)
+  const setPaletteLoopInterval = useUiStore((s) => s.setPaletteLoopInterval)
 
   // "tutti sincronizzati" se ogni layer diverso dall'attivo è spuntato
   const others = layers.filter((l) => l.id !== activeLayerId)
@@ -182,6 +192,35 @@ export function EffectsPanel() {
               {n}
             </Button>
           ))}
+        </div>
+        {/* Loop: "Genera" che si ripete da solo, con dissolvenza fra una palette e l'altra.
+            L'intervallo è modificabile in corsa, così si può andare a tempo di musica. */}
+        <div className="flex items-center gap-1.5">
+          <Button
+            variant={paletteLoop ? 'default' : 'outline'}
+            size="sm"
+            className="h-7 flex-1 gap-1.5 px-2 text-xs"
+            onClick={togglePaletteLoop}
+            title={
+              paletteLoop
+                ? 'Loop attivo: la palette cambia da sola a ogni intervallo'
+                : 'Genera una nuova palette a ogni intervallo, con dissolvenza'
+            }
+          >
+            <Repeat className={cn('size-3.5 shrink-0', paletteLoop && 'animate-pulse')} />
+            <span className="truncate">Loop</span>
+          </Button>
+          <Input
+            type="number"
+            min={MIN_PALETTE_LOOP_INTERVAL}
+            max={MAX_PALETTE_LOOP_INTERVAL}
+            step={0.5}
+            value={paletteLoopInterval}
+            onChange={(e) => setPaletteLoopInterval(Number(e.target.value))}
+            className="h-7 w-14 shrink-0 px-2 text-xs tabular-nums"
+            aria-label="Intervallo del loop palette (secondi)"
+          />
+          <span className="shrink-0 text-xs text-muted-foreground">s</span>
         </div>
       </div>
 

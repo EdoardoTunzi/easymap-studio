@@ -94,6 +94,36 @@ function hslToRgb(h: number, s: number, l: number): RGB {
   return [f(0), f(8), f(4)]
 }
 
+function rgbToHsl([r, g, b]: RGB): [number, number, number] {
+  const max = Math.max(r, g, b)
+  const min = Math.min(r, g, b)
+  const l = (max + min) / 2
+  const d = max - min
+  if (d === 0) return [0, 0, l] // grigio: la tinta non è definita
+  const s = d / (1 - Math.abs(2 * l - 1))
+  const h = max === r ? ((g - b) / d) % 6 : max === g ? (b - r) / d + 2 : (r - g) / d + 4
+  return [(h * 60 + 360) % 360, s, l]
+}
+
+/**
+ * Dissolvenza fra due palette (t = 0 → `from`, 1 → `to`), usata dal loop casuale.
+ * L'interpolazione avviene in HSL e non in RGB: in RGB due tinte opposte si attraversano
+ * passando per un grigio slavato, mentre qui la tinta ruota sul percorso più corto e la palette
+ * resta satura per tutta la transizione.
+ */
+export function lerpPaletteColors(from: RGB[], to: RGB[], t: number): RGB[] {
+  const k = Math.max(0, Math.min(1, t))
+  const fallback: RGB = [0, 0, 0]
+  return Array.from({ length: PALETTE_STOPS }, (_, i) => {
+    const [h1, s1, l1] = rgbToHsl(from[i] ?? from[from.length - 1] ?? fallback)
+    const [h2, s2, l2] = rgbToHsl(to[i] ?? to[to.length - 1] ?? fallback)
+    let dh = h2 - h1
+    if (dh > 180) dh -= 360
+    if (dh < -180) dh += 360
+    return hslToRgb((((h1 + dh * k) % 360) + 360) % 360, s1 + (s2 - s1) * k, l1 + (l2 - l1) * k)
+  })
+}
+
 /** Schemi di armonia usati dal generatore casuale, in gradi di tinta rispetto alla base. */
 const HARMONIES: number[][] = [
   [0, 30, 60, 90, 120], // analoga: tinte vicine, molto coesa

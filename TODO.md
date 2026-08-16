@@ -37,6 +37,7 @@ Spuntare gli step completati; aggiungere nuovi step quando emergono. Tenere alli
 - [x] 30 shader psytrance/techno (`src/shaders/psy*.glsl`): libreria da 41 a 71 effetti, tutti verificati in compilazione WebGL
 - [x] 20 shader "Morph" source-driven (`src/shaders/morph*.glsl`) sulla scia di 3D Surface Morph Spirals: la luminanza dell'asset fa da mappa di quota (`lum * morphDepth`) e deforma la geometria dell'effetto. Libreria a 91 effetti; provino verificato renderizzandoli con l'asset reale, non con la texture di fallback
 - [x] Palette casuale con numero di colori selezionabile (2–5) e schemi di armonia (analoga/complementare/triadica/split/monocromatica), disponibile sia nel pannello Palette sia in quello Shader
+- [x] Loop delle palette casuali: toggle "Loop" + intervallo regolabile (0.5–60s, default 5) nel blocco "Colori casuali"; motore rAF in `use-palette-loop.ts` montato sulla ControlPage, dissolvenza in HSL fra una palette e l'altra (`lerpPaletteColors`). Rispetta la modalità Live come ogni altra modifica
 - [x] Shader "Emboss Light Pro" (`src/shaders/embossLightPro.glsl`): rilievo dai gradienti dell'immagine con una sorgente di luce animata che si muove in cerchio, colore della luce personalizzabile. Fornito già pronto dall'utente, aggiunto senza modifiche funzionali
 - [x] 10 shader "SD" (`src/shaders/sd*.glsl`): source-driven di seconda generazione che, oltre alla luminanza, usano il **gradiente** dell'immagine (la pendenza locale) per orientare i pattern lungo le curve dell'oggetto, warpare le trame sui fianchi e illuminare la superficie apparente. 11-12 controlli ciascuno, incluso il raggio di campionamento del rilievo e l'angolo della luce. Libreria a 97 effetti
 - [x] Shader "Morph Pulse Beacon" (`src/shaders/morphPulseBeacon.glsl`): campo radiale pulsante con interferenza, tradotto dal formato uniform del runtime MAPSHROOM (`tex`/`fparams`/`ftime`...) alla convenzione ISF-like del progetto, poi reso source-driven come la famiglia Morph — la luminanza dell'asset deforma il raggio del campo (`morphDepth`), così il pattern segue i rilievi della statua invece di sovrapporsi come un piano piatto
@@ -106,6 +107,7 @@ Modello: scena = pila di Layer indipendenti; ogni layer ha contenuto (img/gif/vi
 ## Manutenzione / debito tecnico
 
 - [x] Fix `npm run build`: alzato `workbox.maximumFileSizeToCacheInBytes` a 10 MB in `vite.config.ts` per precachare `default-stage.png` (7.1 MB), sopra il limite di default 2 MB di vite-plugin-pwa
+- [x] Fix sidebar destra (Asset): nome file troppo lungo mandava la colonna fuori dai bordi del browser — troncamento a 28 caratteri con tooltip sul nome completo (`MediaUploader.tsx`)
 - [ ] Recuperare la versione integrale dello shader Symmetrical Halo Swirl (l'originale fornito era troncato a metà loop; completato in modo minimale)
 - [ ] Deprecation warning THREE.Clock (da @react-three/fiber, non bloccante — attendere fix upstream)
 - [ ] Valutare test automatici (vitest) per parser ISF e persistence
