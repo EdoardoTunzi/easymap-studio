@@ -2,6 +2,21 @@
 
 Ogni modifica al progetto va registrata qui con data, descrizione e motivazione. Le voci più recenti in alto dentro ogni giornata.
 
+## 2026-08-17 — Nuovo shader "SD Edge Pulse": bordi illuminati che seguono la forma, con respiro
+
+Richiesta dell'utente: un effetto che accende i bordi delle forme dello stage e pulsa. Idea iniziale sua: un secondo layer con lo stesso stage a cui applicare l'effetto. Il ritaglio non lo richiede (il wrapper confina già ogni effetto nell'alpha), ma il layer duplicato in blend Add/Screen resta il modo giusto per dosare il glow separatamente dal corpo — quindi lo shader è progettato per funzionare in entrambi i modi (slider `sourceAmount`).
+
+- **Perché nessuno dei 98 shader lo faceva già**: gli "SD" sono guidati dal gradiente della **luminanza** (`sdSlope` campiona `.rgb`), quindi vedono i dettagli interni ma non il profilo della sagoma. Mancava chi leggesse la forma.
+- `src/shaders/sdEdgePulse.glsl`: due sorgenti di contorno dosabili separatamente — **sagoma** (profilo della forma) e **dettagli** (gradiente di luminanza interno), con colori e fase del respiro indipendenti.
+- Il profilo è stimato con `sdRim`: 16 campioni sul disco distribuiti con l'angolo aureo (`r = sqrt(i)` per densità uniforme), pesati verso il centro. È un surrogato a raggio limitato di un distance field: dà una banda che sfuma verso l'interno invece di un contorno di 1 px. Oltre ~20 texel di `edgeWidth` degenera in un riempimento morbido delle forme sottili — è il limite strutturale che motiva l'SDF precalcolato (vedi TODO).
+- **Campiona `vUv`, non la uv trasformata**: `varying vec2 vUv` è dichiarata dal wrapper prima di `${raw}`, quindi è accessibile dagli shader. Serve perché il contorno deve restare incollato alla sagoma: Size, pan e kaleido non lo devono far scivolare via dalla forma.
+- **`shapeKey`** (soglia sulla luminanza, default 0.05): senza, l'effetto era invisibile sull'asset di default. `public/default-stage.png` è **RGB senza canale alpha** (colorType 2, verificato leggendo l'IHDR): lo sfondo è nero opaco, l'alpha vale 1 ovunque e non esiste alcun profilo da illuminare. `sdShape` combina alpha e soglia, usando il più permissivo fra `shapeKey` e il Luma key globale del layer (`uLumaKey`) per non contraddire la maschera. Effetto collaterale utile: sugli asset a fondo nero anche le forme *interne* separate dal nero prendono il loro contorno.
+- Il pixel centrale moltiplica sia la banda sia i dettagli (`inside`): senza, su un'immagine a fondo nero con alpha piena — che il wrapper non scarta — si sarebbe acceso anche il vuoto attorno all'oggetto.
+- Alpha di uscita = quanto il pixel è acceso (`sqrt` della componente massima), non 1: dove non c'è bordo il layer resta trasparente, quindi si sovrappone allo stage in Add/Screen senza coprirlo con un rettangolo nero. `sourceAmount` alza il pavimento fino a mostrare l'immagine piena.
+- Niente uniform `speed` come negli altri shader: il ritmo è `pulseRate` e la velocità globale del layer (`uFxSpeed`) scala già il tempo a monte — uno slider in più sarebbe stato inerte.
+- Verificato nel browser su profilo pulito: con `detailAmount` a 0 il contorno della sagoma si accende su tutte le forme; con il respiro al massimo la luminosità media dell'area di stage passa da **10.8 a 38.1** su sei frame consecutivi (misurata decodificando i PNG), nessun errore di compilazione GLSL in console.
+- Richieste dall'utente in fase di brainstorming e ancora aperte: onde che si propagano dal bordo verso l'interno e cometa lungo il perimetro — entrambe hanno bisogno dell'SDF (o dei contorni vettoriali), vedi TODO.
+
 ## 2026-08-17 — Fix bug: in modalità Live il loop delle palette non arrivava alla finestra Output
 
 Segnalazione dell'utente: con il loop colori attivo su un effetto e la scena mandata in Live all'Output, il proiettore riproduceva l'effetto ma restava su un colore fisso mentre l'anteprima ciclava.

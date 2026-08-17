@@ -93,6 +93,9 @@ Modello: scena = pila di Layer indipendenti; ogni layer ha contenuto (img/gif/vi
 - [x] Playlist/sequenze di effetti con transizioni: barra timeline in basso (clip da libreria/preset, editor al click con anteprima, durata trascinabile, play/pause, loop, transizione smooth con crossfade a durata regolabile o secca; agisce su layer attivo + spunte sync; persistita nel progetto)
 - [x] Barra playlist: scroll orizzontale (rotellina + scrollbar visibile + auto-scroll all'aggiunta), thumbnail statica dell'effetto in ogni card (renderer offscreen con cache), altezza ridimensionabile dal bordo superiore (96–192px, persistita)
 - [ ] Libreria di playlist salvabili con nome, riusabili tra progetti (per ora la playlist vive solo dentro il progetto)
+- [x] Shader "SD Edge Pulse": bordi illuminati che seguono la sagoma dello stage (profilo da alpha o da soglia di luminanza) + contorni interni, con respiro pulsante e slider `sourceAmount` per usarlo su un layer solo o su un layer duplicato in Add/Screen
+- [ ] **SDF precalcolato dall'alpha** (distance transform all'upload dell'immagine, texture ausiliaria negli uniform): sblocca il neon morbido a distanza arbitraria e le **onde che si propagano dal bordo verso l'interno**, che il campionamento a raggio limitato di `sdEdgePulse` non può rendere (oltre ~20 texel degenera in un riempimento). Tocca engine, store e persistenza
+- [ ] Contorni vettoriali (marching squares → polilinee con coordinata di lunghezza d'arco): abilita la **cometa che corre lungo il perimetro** a velocità costante, non ottenibile né con il gradiente né con l'SDF
 - [ ] Editor maschera manuale di rifinitura (per bordi imperfetti)
 - [ ] Opzione "tratta il nero come trasparente" (luminance key) per immagini senza canale alpha
 - [ ] Warp proiettivo vero (omografia nello shader o mesh suddivisa) — il warp attuale a 2 triangoli può creare una piega diagonale con deformazioni estreme
