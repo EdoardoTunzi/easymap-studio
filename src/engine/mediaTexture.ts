@@ -23,24 +23,79 @@ const FALLBACK = (() => {
 
 export const FALLBACK_TEXTURE = FALLBACK
 
+interface ImageEntry {
+  /** Quanti controller la stanno usando. */
+  refs: number
+  /** FALLBACK finché la decodifica non è finita. */
+  texture: THREE.Texture
+  /** Rilascio ritardato in corso (nessun riferimento attivo, ma la texture è ancora viva). */
+  release: ReturnType<typeof setTimeout> | null
+}
+
+/**
+ * Texture delle immagini condivise per URL.
+ *
+ * Serve al crossfade degli invii all'Output: `beginSceneCrossfade` monta la scena uscente come
+ * *nuovi* componenti (`out-<id>`), che senza cache ricreerebbero il controller da zero e
+ * mostrerebbero la FALLBACK per tutta la decodifica del blob — cioè un lampo scuro proprio sulla
+ * scena che in quel momento è a piena opacità. Con la cache la scena uscente riparte
+ * dall'immagine già decodificata e la dissolvenza è pulita.
+ *
+ * Vale anche fuori dal crossfade: due layer con lo stesso asset (il duplicato in Add/Screen per i
+ * bordi illuminati, per dirne una) ora decodificano e occupano memoria GPU una volta sola.
+ *
+ * Solo immagini statiche: video e GIF hanno uno stato di riproduzione per istanza (playhead,
+ * frame corrente), condividerli legherebbe fra loro layer che devono restare indipendenti.
+ */
+const imageCache = new Map<string, ImageEntry>()
+
+/** Attesa prima di liberare una texture senza più riferimenti. */
+const IMAGE_RELEASE_MS = 10000
+
 function createImageController(media: MediaAsset): MediaTextureController {
-  let texture: THREE.Texture = FALLBACK
-  let disposed = false
-  const loader = new THREE.TextureLoader()
-  loader.load(media.url, (tex) => {
-    if (disposed) {
-      tex.dispose()
-      return
+  const url = media.url
+  let entry = imageCache.get(url)
+  if (entry) {
+    // un rilascio in attesa va annullato: la texture torna in uso
+    if (entry.release != null) {
+      clearTimeout(entry.release)
+      entry.release = null
     }
-    tex.colorSpace = THREE.SRGBColorSpace
-    texture = tex
-  })
+  } else {
+    entry = { refs: 0, texture: FALLBACK, release: null }
+    imageCache.set(url, entry)
+    new THREE.TextureLoader().load(url, (tex) => {
+      tex.colorSpace = THREE.SRGBColorSpace
+      const current = imageCache.get(url)
+      if (!current) {
+        tex.dispose() // già liberata mentre decodificava
+        return
+      }
+      current.texture = tex
+    })
+  }
+  entry.refs++
+  let released = false
   return {
-    getTexture: () => texture,
+    // letta dalla mappa, non dalla chiusura: chi monta prima della fine della decodifica
+    // deve vedere la texture non appena arriva
+    getTexture: () => imageCache.get(url)?.texture ?? FALLBACK,
     tick: () => {},
     dispose: () => {
-      disposed = true
-      if (texture !== FALLBACK) texture.dispose()
+      if (released) return
+      released = true
+      const current = imageCache.get(url)
+      if (!current) return
+      current.refs--
+      if (current.refs > 0 || current.release != null) return
+      // rilascio ritardato: un cambio di scena smonta i vecchi componenti prima di montare i
+      // nuovi, quindi senza attesa la stessa immagine verrebbe buttata e ricaricata subito dopo
+      current.release = setTimeout(() => {
+        const e = imageCache.get(url)
+        if (!e || e.refs > 0) return
+        imageCache.delete(url)
+        if (e.texture !== FALLBACK) e.texture.dispose()
+      }, IMAGE_RELEASE_MS)
     },
   }
 }

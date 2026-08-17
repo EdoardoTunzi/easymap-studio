@@ -2,6 +2,16 @@
 
 Ogni modifica al progetto va registrata qui con data, descrizione e motivazione. Le voci più recenti in alto dentro ogni giornata.
 
+## 2026-08-17 — Texture immagine condivise per URL (cache con refcount) + indagine sul lampo nero al push
+
+Segnalazione dell'utente: premendo Spazio in Live, la finestra Output diventa nera per una frazione di secondo prima di applicare la modifica.
+
+- **Cosa è stato corretto**: `createImageController` creava una texture nuova per ogni istanza, partendo dalla FALLBACK (un pixel 40,40,48 — praticamente nero) per tutta la decodifica. Il crossfade degli invii monta la scena uscente come componenti *nuovi* (`out-<id>` in `ShaderPlane`), quindi la scena che nel primo tratto della dissolvenza è a piena opacità è proprio quella appena costruita, ancora senza immagine. Ora le texture delle immagini sono condivise per URL con refcount (`imageCache`), con rilascio ritardato di 10s perché un cambio di scena smonta i vecchi componenti *prima* di montare i nuovi e senza attesa la stessa immagine verrebbe buttata e ricaricata subito. Beneficio anche fuori dal crossfade: due layer con lo stesso asset (il duplicato in Add/Screen per i bordi illuminati) decodificano e occupano memoria GPU una volta sola.
+- Restano esclusi video e GIF: hanno uno stato di riproduzione per istanza (playhead, frame corrente), condividerli legherebbe fra loro layer che devono restare indipendenti. **È però la pista più probabile per il lampo segnalato**: se lo stage è un video o una GIF, la scena uscente ricrea l'elemento `<video>` o ridecodifica la GIF da zero, e lì il nero dura quanto il buffering.
+- **Indagine non conclusiva**: il lampo *non* si riproduce nel mio ambiente. Misurato con screencast CDP a ~60 fps sulla finestra Output, confrontando la luminosità media dei frame prima e dopo lo Spazio, in sei scenari: modifica di un parametro, cambio di effetto, cambio dell'immagine, transizione smooth e secca, con e senza la cache. Il calo massimo osservato è 4–10% a metà dissolvenza — il dip fisiologico di un crossfade su fondo nero — mai un nero. La cache non cambia i numeri perché il browser riserve i blob già decodificati quasi istantaneamente; serve a garantire il caso in cui non lo faccia.
+- Da chiarire con l'utente per chiudere il caso: tipo di media sul layer (immagine/video/GIF), che modifica stava inviando, transizione smooth o secca, e se l'Output è a schermo intero su un secondo monitor. Nota metodologica: il primo test era mal costruito — cambiava effetto, quindi la salita di luminosità era semplicemente la dissolvenza fra due effetti di luminosità diversa, non un artefatto.
+- Falsa pista scartata: la transizione al push c'è già ed è attiva di default (`transitionMode: 'smooth'`, 1s in `playlistStore`), quindi il problema non era la mancanza del crossfade.
+
 ## 2026-08-17 — Nuovo shader "SD Edge Pulse": bordi illuminati che seguono la forma, con respiro
 
 Richiesta dell'utente: un effetto che accende i bordi delle forme dello stage e pulsa. Idea iniziale sua: un secondo layer con lo stesso stage a cui applicare l'effetto. Il ritaglio non lo richiede (il wrapper confina già ogni effetto nell'alpha), ma il layer duplicato in blend Add/Screen resta il modo giusto per dosare il glow separatamente dal corpo — quindi lo shader è progettato per funzionare in entrambi i modi (slider `sourceAmount`).
