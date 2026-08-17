@@ -2,6 +2,7 @@ import { useEffect } from 'react'
 import { useUiStore } from '@/store/uiStore'
 import { useLayersStore } from '@/store/layersStore'
 import { PALETTE_STOPS, randomPaletteColors, lerpPaletteColors, type RGB } from '@/store/paletteStore'
+import { applyPaletteTick } from '@/lib/sync'
 
 /** Durata della dissolvenza fra due palette. Con intervalli brevi si accorcia (vedi sotto). */
 const FADE_SECONDS = 1
@@ -38,9 +39,9 @@ interface LoopState {
  * Va montato nella pagina, non nel pannello: la sidebar sinistra smonta i pannelli al cambio tab
  * e il loop si spegnerebbe passando su Palette o Progetti.
  *
- * Non ha alcun trattamento speciale per la modalità Live: scrive nello store come il pulsante
- * Genera, quindi in Live l'Output resta fermo e i colori lo raggiungono solo con "Esegui in
- * output", esattamente come ogni altra modifica.
+ * Le scritture passano da `applyPaletteTick`, che oltre allo store aggiorna l'Output anche in
+ * modalità Live: il loop anima una scena già in onda, non è una modifica in preparazione, e
+ * congelarlo lasciava il proiettore su un colore fisso mentre l'anteprima ciclava.
  */
 export function usePaletteLoop() {
   const loopIds = useUiStore((s) => s.paletteLoopLayerIds)
@@ -57,8 +58,6 @@ export function usePaletteLoop() {
   useEffect(() => {
     const ids = loopKey ? loopKey.split(',') : []
     if (ids.length === 0) return
-
-    const { setLayerPaletteColors } = useLayersStore.getState()
 
     /**
      * Intervallo del layer, letto a ogni giro invece che catturato all'avvio: così cambiare il
@@ -109,7 +108,7 @@ export function usePaletteLoop() {
           // l'ultimo passo si applica sempre, altrimenti il throttle lascerebbe la palette
           // ferma a un valore intermedio invece che sul colore di arrivo
           if (t >= 1 || now - state.lastApply >= MIN_STEP_MS) {
-            setLayerPaletteColors(layerId, lerpPaletteColors(state.from, state.to, t * t * (3 - 2 * t)))
+            applyPaletteTick(layerId, lerpPaletteColors(state.from, state.to, t * t * (3 - 2 * t)))
             state.lastApply = now
           }
           state.settled = t >= 1

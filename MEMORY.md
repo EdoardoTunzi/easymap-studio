@@ -2,6 +2,19 @@
 
 Ogni modifica al progetto va registrata qui con data, descrizione e motivazione. Le voci più recenti in alto dentro ogni giornata.
 
+## 2026-08-17 — Fix bug: in modalità Live il loop delle palette non arrivava alla finestra Output
+
+Segnalazione dell'utente: con il loop colori attivo su un effetto e la scena mandata in Live all'Output, il proiettore riproduceva l'effetto ma restava su un colore fisso mentre l'anteprima ciclava.
+
+- **Causa**: il loop scrive nello store come qualsiasi altra modifica, e in Live il publisher (`sync.ts`) *non* pubblica: marca la scena "in sospeso" (`markDirty`) in attesa di "Esegui in output". Il ciclo dei colori è però l'animazione di una scena **già in onda**, non una modifica in preparazione: congelarlo è esattamente il contrario di quello che serve. Effetto collaterale: il badge delle modifiche non inviate restava acceso in permanenza, perché il loop "sporcava" lo stato ~30 volte al secondo.
+- `sync.ts`: nuovo messaggio `{ type: 'palette', entries }` e funzione esportata `applyPaletteTick(layerId, colors)`, che scrive nello store e propaga i soli colori all'Output **sempre, Live compreso**. Durante la scrittura alza il flag `paletteTickInFlight`, che fa saltare al publisher sia `publishNow` sia `markDirty`: il tick viaggia sul canale dedicato e non conta come modifica in sospeso.
+- Le `entries` sono calcolate confrontando le palette prima/dopo la scrittura, così la propagazione ai layer collegati (`syncTargetIds`) arriva all'Output senza duplicare qui la logica dello store.
+- Lato Output il tick si applica **solo ai layer presenti nella scena in onda**: se in Live si sta preparando un'altra scena, i colori di un layer che lì non esiste vengono ignorati e Live resta Live.
+- Fuori da Live il tick **sostituisce** l'invio dello stato completo: l'Output riceve i soli colori invece dell'intero elenco di layer 30 volte al secondo (meno lavoro di serializzazione per ogni fade).
+- Conseguenza da coprire: `lastPayload` (la risposta all'`hello` di una finestra Output appena aperta) non vede più passare i colori del loop. La risposta viene quindi ricostruita innestando le palette correnti nei layer omonimi, altrimenti una finestra aperta a metà ciclo ripartiva dai colori del push e restava indietro fino al ciclo successivo.
+- `use-palette-loop.ts`: il motore chiama `applyPaletteTick` al posto di `setLayerPaletteColors`.
+- Verificato con Control + Output reali (Chrome, due tab, Live attivo *prima* di accendere il loop): l'Output ha ricevuto **123 messaggi `palette` contro 2 `state`**, i suoi frame sono tutti diversi tra loro (palette giallo/blu → rosso/ciano sullo shader Female Eyes) e il pulsante "Esegui in output" è rimasto **disattivato**, cioè i tick non sporcano più la scena.
+
 ## 2026-08-16 — Fix bug: il loop delle palette seguiva la selezione → ora è per-layer
 
 Segnalazione dell'utente: attivando il loop palette su un layer e poi passando a un altro layer, il loop veniva applicato anche a quest'ultimo.

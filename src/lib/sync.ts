@@ -2,8 +2,15 @@ import { useEffect } from 'react'
 import { useLayersStore, type Layer } from '../store/layersStore'
 import { useOutputStore } from '../store/outputStore'
 import { usePlaylistStore } from '../store/playlistStore'
+import type { RGB } from '../store/paletteStore'
 
 const CHANNEL_NAME = 'easyvj-sync'
+
+/** Aggiornamento leggero della sola palette di uno o più layer (vedi applyPaletteTick). */
+interface PalettePayload {
+  type: 'palette'
+  entries: [string, RGB[]][]
+}
 
 interface Payload {
   type: 'state'
@@ -36,6 +43,54 @@ function stripBlobs(layers: Layer[]): Layer[] {
 }
 
 /**
+ * Canale del Controllo, condiviso con applyPaletteTick. null nella finestra Output (dove il
+ * publisher non è montato) e finché il Control non ha montato il publisher.
+ */
+let controlChannel: BroadcastChannel | null = null
+
+/**
+ * true mentre il loop delle palette scrive nello store: quel cambiamento viaggia sul canale
+ * dedicato 'palette', quindi il publisher non deve né ripubblicare l'intera scena né marcarla
+ * "in sospeso" in Live (il loop scrive ~30 volte al secondo).
+ */
+let paletteTickInFlight = false
+
+/**
+ * Scrive una palette generata dal loop e la propaga all'Output come aggiornamento isolato.
+ *
+ * Serve perché in modalità Live l'Output è congelato sull'ultima scena inviata: le scritture del
+ * loop restavano nel Control e il proiettore mostrava un colore fisso. Un tick di palette però
+ * non è una "modifica in preparazione" — è l'animazione della scena già in onda — quindi viaggia
+ * sempre, Live compreso, senza far scattare il badge delle modifiche non inviate.
+ *
+ * Fuori da Live sostituisce l'invio dello stato completo: l'Output riceve solo i colori invece
+ * dell'intero elenco di layer trenta volte al secondo.
+ *
+ * L'Output applica il tick solo ai layer che possiede davvero: se la scena in onda è un'altra
+ * (Live con modifiche non ancora inviate), i colori di un layer che lì non esiste sono ignorati.
+ */
+export function applyPaletteTick(layerId: string, colors: RGB[]) {
+  const before = useLayersStore.getState().layers
+  paletteTickInFlight = true
+  try {
+    useLayersStore.getState().setLayerPaletteColors(layerId, colors)
+  } finally {
+    paletteTickInFlight = false
+  }
+  if (!controlChannel) return
+
+  // il layer attivo trascina con sé i layer collegati (syncTargetIds): si inviano tutte le
+  // palette effettivamente cambiate, non solo quella del layer su cui gira il loop
+  const after = useLayersStore.getState().layers
+  const entries = after
+    .filter((l, i) => before[i]?.palette !== l.palette)
+    .map((l) => [l.id, l.palette.colors] as [string, RGB[]])
+  if (entries.length === 0) return
+  const payload: PalettePayload = { type: 'palette', entries }
+  controlChannel.postMessage(payload)
+}
+
+/**
  * Da chiamare nella finestra di Controllo: pubblica lo stato all'Output.
  * In modalità Live gli aggiornamenti automatici sono sospesi: l'Output resta all'ultimo stato
  * inviato (memorizzato in lastPayload) finché non si preme "Esegui in output" o si esce da Live.
@@ -43,6 +98,7 @@ function stripBlobs(layers: Layer[]): Layer[] {
 export function useBroadcastPublisher() {
   useEffect(() => {
     const channel = new BroadcastChannel(CHANNEL_NAME)
+    controlChannel = channel
 
     const buildPayload = (fadeDuration = 0): Payload => {
       const { layers, activeLayerId, testPattern } = useLayersStore.getState()
@@ -63,6 +119,7 @@ export function useBroadcastPublisher() {
 
     // ad ogni modifica dei layer: se Live, marca "in sospeso"; altrimenti invia subito
     const onLayersChange = () => {
+      if (paletteTickInFlight) return // già in viaggio sul canale 'palette'
       if (useOutputStore.getState().live) useOutputStore.getState().markDirty()
       else publishNow()
     }
@@ -84,9 +141,20 @@ export function useBroadcastPublisher() {
       }
     })
 
-    // una finestra Output appena aperta riceve l'ultimo stato inviato (in Live, quello committato)
+    // una finestra Output appena aperta riceve l'ultimo stato inviato (in Live, quello committato),
+    // con le palette aggiornate al momento: i tick del loop non passano da lastPayload, quindi
+    // altrimenti la nuova finestra ripartirebbe dai colori del push e resterebbe indietro fino al
+    // ciclo successivo
     channel.onmessage = (event) => {
-      if (event.data?.type === 'hello') channel.postMessage(lastPayload)
+      if (event.data?.type !== 'hello') return
+      const current = new Map(useLayersStore.getState().layers.map((l) => [l.id, l.palette]))
+      channel.postMessage({
+        ...lastPayload,
+        layers: lastPayload.layers.map((l) => {
+          const palette = current.get(l.id)
+          return palette ? { ...l, palette: { ...l.palette, colors: palette.colors } } : l
+        }),
+      })
     }
 
     publishNow()
@@ -94,6 +162,7 @@ export function useBroadcastPublisher() {
     return () => {
       unsubLayers()
       unsubOutput()
+      if (controlChannel === channel) controlChannel = null
       channel.close()
     }
   }, [])
@@ -119,6 +188,15 @@ export function useBroadcastSubscriber() {
     }
 
     channel.onmessage = (event) => {
+      // tick del loop palette: si applica solo ai layer presenti nella scena in onda, così in
+      // Live i colori di una scena ancora in preparazione non entrano dalla porta di servizio
+      if (event.data?.type === 'palette') {
+        const { layers, setLayerPaletteColors } = useLayersStore.getState()
+        for (const [layerId, colors] of (event.data as PalettePayload).entries) {
+          if (layers.some((l) => l.id === layerId)) setLayerPaletteColors(layerId, colors)
+        }
+        return
+      }
       if (event.data?.type !== 'state') return
       const { layers, activeLayerId, testPattern, fadeDuration } = event.data
       if (layers) {
