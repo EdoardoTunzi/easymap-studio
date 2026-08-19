@@ -4,6 +4,9 @@ import { Input } from '@/components/ui/input'
 import { Slider } from '@/components/ui/slider'
 import { Separator } from '@/components/ui/separator'
 import { ShaderPicker } from './ShaderPicker'
+import { AudioInputPanel } from './AudioInputPanel'
+import { OscilloscopePresets } from './OscilloscopePresets'
+import { OSCILLOSCOPE_SHADER } from '@/lib/oscilloscopePresets'
 import { cn } from '@/lib/utils'
 import { useEffectsStore } from '@/store/effectsStore'
 import { ALT_LABEL } from '@/hooks/use-effect-hotkeys'
@@ -93,6 +96,10 @@ export function EffectsPanel() {
           </Button>
         </div>
         <ShaderPicker value={activeShaderName} onChange={setActiveShader} />
+        {/* solo per gli effetti che leggono l'audio: altrove sarebbe un controllo inerte */}
+        {shader?.usesAudio && <AudioInputPanel />}
+        {/* forme pronte: scorciatoie ai parametri dell'oscilloscopio, non una funzione generale */}
+        {activeShaderName === OSCILLOSCOPE_SHADER && <OscilloscopePresets />}
         {layers.length > 1 && (
           <div className="flex flex-col gap-2">
             <Button

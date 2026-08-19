@@ -23,6 +23,12 @@ export interface ParsedShader {
   controls: UniformControl[]
   /** Uniform vec3 (tipicamente colori) con valore di default, senza slider. */
   colorControls: ColorControl[]
+  /**
+   * L'effetto legge l'ingresso audio (`easyvj_wave`/`easyvj_level`). Serve alla UI per proporre
+   * l'attivazione del microfono solo dove ha senso, e alla finestra Output per aprire l'ingresso
+   * da sé quando la scena ne contiene uno.
+   */
+  usesAudio: boolean
   vertexShader: string
   fragmentShader: string
 }
@@ -74,6 +80,10 @@ uniform float uMaskTexOn;            // 1 = usa la maschera-immagine
 // Rapporto larghezza/altezza del QUAD del layer (dai corner-pin, non del canvas): serve agli
 // shader che disegnano forme riconoscibili (cerchi, occhi…) e non devono deformarsi col mapping.
 uniform float uQuadAspect;
+// --- Ingresso audio (per gli shader audio-reattivi: si legge con easyvj_wave/easyvj_level) ---
+uniform sampler2D uAudio;            // forma d'onda nel dominio del tempo, 256x1; 0.5 = silenzio
+uniform float uAudioLevel;           // volume RMS 0..1
+uniform float uAudioOn;              // 1 = ingresso audio attivo
 // --- Controlli globali del layer (validi per QUALSIASI shader) ---
 uniform float uFxSpeed;              // moltiplicatore del tempo
 uniform float uFxRotation;           // rotazione del pattern (rad)
@@ -153,6 +163,26 @@ vec2 easyvj_fxUv(vec2 uv) {
     result = (floor(result * cells) + 0.5) / cells;
   }
   return result;
+}
+
+/**
+ * Campione della forma d'onda in [-1, 1] alla posizione x (0..1, ciclica).
+ *
+ * Senza ingresso audio attivo restituisce un'onda sintetica invece di una linea piatta: così un
+ * effetto audio-reattivo resta leggibile in anteprima, nella miniatura della playlist e a
+ * microfono spento, e si può regolarne i parametri prima di aprire l'ingresso.
+ */
+float easyvj_wave(float x, float t) {
+  if (uAudioOn > 0.5) return texture2D(uAudio, vec2(fract(x), 0.5)).r * 2.0 - 1.0;
+  return 0.50 * sin(x * 25.13 - t * 3.0)
+       + 0.28 * sin(x * 9.42 + t * 1.7)
+       + 0.16 * sin(x * 62.83 + t * 5.3);
+}
+
+/** Volume 0..1; a ingresso spento un respiro sintetico, per la stessa ragione di easyvj_wave. */
+float easyvj_level(float t) {
+  if (uAudioOn > 0.5) return uAudioLevel;
+  return 0.32 + 0.22 * sin(t * 2.2) + 0.08 * sin(t * 5.7);
 }
 
 // Correzioni di colore comuni, applicate DOPO processColor e prima della palette.
@@ -256,6 +286,7 @@ export function parseShader(raw: string): ParsedShader {
     raw,
     controls,
     colorControls,
+    usesAudio: /easyvj_wave|easyvj_level|uAudio/.test(raw),
     vertexShader: VERTEX_SHADER,
     fragmentShader: buildFragmentShader(raw),
   }

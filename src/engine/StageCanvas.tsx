@@ -1,10 +1,17 @@
 import { useEffect } from 'react'
-import { Canvas, useThree } from '@react-three/fiber'
+import { Canvas, useFrame, useThree } from '@react-three/fiber'
 import type * as THREE from 'three'
 import { ShaderPlane } from './ShaderPlane'
 import { AutoFit } from './AutoFit'
 import { TestPattern } from './TestPattern'
+import { tickAudio } from './audioInput'
 import { useUiStore, type ViewTransform } from '../store/uiStore'
+
+/** Legge un frame di forma d'onda per tutta la scena (no-op a ingresso audio spento). */
+function AudioSampler() {
+  useFrame((state) => tickAudio(state.clock.elapsedTime))
+  return null
+}
 
 /**
  * Mantiene il frustum ortografico -1..1 in verticale, corretto per aspect ratio in orizzontale.
@@ -52,6 +59,7 @@ export function StageCanvas({ autoFit = false, controlView = false }: StageCanva
       style={{ width: '100%', height: '100%', display: 'block', background: '#000' }}
     >
       <ResponsiveCamera view={controlView ? view : undefined} />
+      <AudioSampler />
       {autoFit && <AutoFit />}
       <ShaderPlane />
       {/* la griglia di calibrazione va anche sul proiettore: è lì che serve per allinearsi all'oggetto */}

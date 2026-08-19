@@ -5,6 +5,7 @@ import { useLayersStore, type BlendMode, type Layer } from '../store/layersStore
 import { useEffectsStore } from '../store/effectsStore'
 import type { ParsedShader } from './isfParser'
 import { createMediaTexture, FALLBACK_TEXTURE, type MediaTextureController } from './mediaTexture'
+import { getAudioLevel, getAudioTexture, isAudioActive } from './audioInput'
 
 const NOOP_CONTROLLER: MediaTextureController = {
   getTexture: () => FALLBACK_TEXTURE,
@@ -61,6 +62,11 @@ export function buildUniforms(shader: ParsedShader | undefined): Record<string, 
     uMaskTex: { value: FALLBACK_TEXTURE },
     uMaskTexOn: { value: 0 },
     uQuadAspect: { value: 1 },
+    // ingresso audio: la texture esiste sempre (a silenzio) così gli shader audio-reattivi
+    // compilano e renderizzano anche senza microfono aperto
+    uAudio: { value: getAudioTexture() },
+    uAudioLevel: { value: 0 },
+    uAudioOn: { value: 0 },
     // controlli globali del layer: default neutri (nessuna alterazione)
     uFxSpeed: { value: 1 },
     uFxRotation: { value: 0 },
@@ -222,6 +228,10 @@ function EffectPass({ layerId, variant, source, renderOrder, geometry, controlle
     // maschera-immagine
     u.uMaskTexOn.value = l.maskImage ? 1 : 0
     u.uMaskTex.value = maskTexRef.current
+    // ingresso audio (il campionamento vero avviene una volta per frame, vedi AudioSampler)
+    u.uAudio.value = getAudioTexture()
+    u.uAudioLevel.value = getAudioLevel()
+    u.uAudioOn.value = isAudioActive() ? 1 : 0
     // texture del contenuto (riassegnata ogni frame: sopravvive al rimontaggio del materiale)
     u.uTexture.value = controllerRef.current.getTexture()
     for (const control of shader.controls) {

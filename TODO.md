@@ -107,7 +107,10 @@ Modello: scena = pila di Layer indipendenti; ogni layer ha contenuto (img/gif/vi
 - [ ] Mirror orizzontale dedicato per la camera (oggi si usa "Specchia in orizzontale" della toolbar di mapping, che però tocca i corner e non funziona a mapping bloccato)
 - [ ] Selezione di risoluzione/frame rate della camera (oggi si chiede sempre il massimo fino a 1080p)
 - [ ] Condivisione schermo (`getDisplayMedia`) come sorgente di layer: stesso percorso della camera, sorgente diversa
-- [ ] Audio reactive: Web Audio API (microfono + FFT → uniform negli shader)
+- [x] Ingresso audio minimale + primo shader audio-reattivo: `AnalyserNode` → forma d'onda in una texture 256×1 (`src/engine/audioInput.ts`), esposta a QUALSIASI shader dal wrapper con `easyvj_wave()`/`easyvj_level()` (onda sintetica di riserva a ingresso spento). Shader `Audio Oscilloscope` con 14 parametri + 2 colori; pannello di attivazione solo per gli effetti che leggono l'audio; la finestra Output apre l'ingresso da sé (`use-audio-autostart.ts`)
+- [x] Forme dell'oscilloscopio + preset rapidi: parametro `shape` (traccia / cerchio / rosa / poligono / piano XY) con morphing continuo, dove il suono increspa il contorno invece di scuotere una linea; sei preset a un click nel pannello dell'effetto e da tastiera con ⌥1…⌥6 (attivi solo quando il layer usa l'oscilloscopio)
+- [ ] Audio reactive esteso: FFT a bande (bassi/medi/alti) e beat detection come uniform, per rendere reattivi anche gli altri shader della libreria
+- [ ] Scelta del dispositivo di ingresso audio (oggi si usa quello predefinito di sistema; per il live serve poter puntare la scheda audio o un loopback invece del microfono)
 - [ ] BPM sync / tap tempo
 - [ ] MIDI controller (Web MIDI API) con mapping parametri
 - [ ] Bridge OSC/DMX (richiede servizio Node locale: il browser non parla UDP)

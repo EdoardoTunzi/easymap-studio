@@ -317,6 +317,12 @@ interface LayersState {
   /** Riporta i controlli globali ai valori neutri. */
   resetActiveFx: () => void
   setActiveParam: (uniformName: string, value: number) => void
+  /**
+   * Applica più uniform in un colpo solo (preset di forma dell'oscilloscopio). Farlo con N
+   * chiamate a `setActiveParam` significherebbe N notifiche dello store, quindi N invii della
+   * scena all'Output per un singolo click.
+   */
+  setActiveParams: (patch: Record<string, number>) => void
   /** Imposta un uniform colore (vec3) dello shader attivo. */
   setActiveColorParam: (uniformName: string, rgb: RGB) => void
   setActiveCorner: (index: 0 | 1 | 2 | 3, corner: Corner) => void
@@ -578,6 +584,14 @@ export const useLayersStore = create<LayersState>((set, get) => {
         params: {
           ...l.params,
           [l.shaderName]: { ...l.params[l.shaderName], [uniformName]: value },
+        },
+      })),
+
+    setActiveParams: (patch) =>
+      editEffect((l) => ({
+        params: {
+          ...l.params,
+          [l.shaderName]: { ...l.params[l.shaderName], ...patch },
         },
       })),
 
