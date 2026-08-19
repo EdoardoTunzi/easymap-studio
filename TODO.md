@@ -53,6 +53,8 @@ Spuntare gli step completati; aggiungere nuovi step quando emergono. Tenere alli
 - [x] 10 shader "Liquid" sulla scia di 3D Surface Morph Spirals (file liquid*.glsl, source-driven con morph da luminanza e uniform colore)
 - [x] Generatore casuale di palette (bottone "Palette casuale" nel pannello Palette: 5 colori HSL armonici scuro→acceso, attiva la palette)
 - [ ] Palette memorizzata per-shader (ora è per-layer) + salvataggio di palette custom dell'utente
+- [x] Famiglie di effetti (Psy/Morph/Halo/Liquid/SD/Audio/Altri) dedotte dal prefisso del file, con pulsanti di filtro e conteggi sopra la lista degli effetti (`src/lib/shaderCategories.ts` + `ShaderPicker`)
+- [x] Frecce ◀ ▶ e ⌥A/⌥S scorrono dentro la sola famiglia filtrata: il filtro è passato da stato locale del picker a `uiStore.shaderCategory`, che `cycleActiveShader` consulta
 - [ ] Anteprime/thumbnail degli shader nella libreria (come i preset nello screenshot MAPSHROOM) — il motore esiste già: `src/engine/effectThumbnail.ts` (usato dalle card della playlist)
 - [ ] Export/import progetto come file JSON (backup portabile tra macchine)
 - [ ] PWA: icone reali (pwa-192x192.png, pwa-512x512.png mancanti in public/) e test offline

@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import { parseShader, type ParsedShader } from '../engine/isfParser'
+import { shaderCategoryOf } from '../lib/shaderCategories'
 import type { RGB } from './paletteStore'
 
 // Carica automaticamente tutti gli shader .glsl della cartella: basta aggiungere un file.
@@ -18,9 +19,10 @@ vec4 processColor(sampler2D tex, vec2 uv, float time, vec2 resolution) {
   return vec4(texture2D(tex, uv).rgb, 1.0);
 }`
 
+// la famiglia si deduce dal percorso del file, che qui è ancora disponibile (dopo il parse no)
 const fileShaders: ParsedShader[] = Object.entries(shaderModules)
   .sort(([a], [b]) => a.localeCompare(b))
-  .map(([, src]) => parseShader(src))
+  .map(([path, src]) => parseShader(src, shaderCategoryOf(path, /easyvj_wave|easyvj_level|uAudio/.test(src))))
 
 // "Nessun effetto" in cima alla libreria, poi gli shader dei file in ordine alfabetico.
 const builtInShaders: ParsedShader[] = [parseShader(NONE_SHADER_SRC), ...fileShaders]

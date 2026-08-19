@@ -1,3 +1,5 @@
+import type { ShaderCategoryId } from '../lib/shaderCategories'
+
 export interface UniformControl {
   name: string
   min: number
@@ -29,6 +31,8 @@ export interface ParsedShader {
    * da sé quando la scena ne contiene uno.
    */
   usesAudio: boolean
+  /** Famiglia di appartenenza, per i filtri della libreria (vedi `shaderCategories.ts`). */
+  category: ShaderCategoryId
   vertexShader: string
   fragmentShader: string
 }
@@ -255,8 +259,11 @@ void main() {
 `
 }
 
-/** Estrae nome shader e controlli (@min/@max/@default) da una sorgente GLSL in stile ISF. */
-export function parseShader(raw: string): ParsedShader {
+/**
+ * Estrae nome shader e controlli (@min/@max/@default) da una sorgente GLSL in stile ISF.
+ * `category` arriva da chi carica il file (il percorso non è visibile da qui).
+ */
+export function parseShader(raw: string, category: ShaderCategoryId = 'other'): ParsedShader {
   const nameMatch = raw.match(NAME_RE)
   const name = nameMatch ? nameMatch[1].trim() : 'Untitled Shader'
 
@@ -280,13 +287,17 @@ export function parseShader(raw: string): ParsedShader {
     })
   }
 
+  const usesAudio = /easyvj_wave|easyvj_level|uAudio/.test(raw)
+
   return {
     id: crypto.randomUUID(),
     name,
     raw,
     controls,
     colorControls,
-    usesAudio: /easyvj_wave|easyvj_level|uAudio/.test(raw),
+    usesAudio,
+    // gli effetti audio-reattivi hanno una famiglia propria, qualunque sia il file
+    category: usesAudio ? 'audio' : category,
     vertexShader: VERTEX_SHADER,
     fragmentShader: buildFragmentShader(raw),
   }

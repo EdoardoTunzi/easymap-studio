@@ -7,6 +7,7 @@ import { ShaderPicker } from './ShaderPicker'
 import { AudioInputPanel } from './AudioInputPanel'
 import { OscilloscopePresets } from './OscilloscopePresets'
 import { OSCILLOSCOPE_SHADER } from '@/lib/oscilloscopePresets'
+import { SHADER_CATEGORIES } from '@/lib/shaderCategories'
 import { cn } from '@/lib/utils'
 import { useEffectsStore } from '@/store/effectsStore'
 import { ALT_LABEL } from '@/hooks/use-effect-hotkeys'
@@ -36,6 +37,7 @@ export function EffectsPanel() {
   const setSyncAll = useLayersStore((s) => s.setSyncAll)
   const paletteLoopLayerIds = useUiStore((s) => s.paletteLoopLayerIds)
   const togglePaletteLoopFor = useUiStore((s) => s.togglePaletteLoopFor)
+  const shaderCategory = useUiStore((s) => s.shaderCategory)
   const paletteLoopIntervals = useUiStore((s) => s.paletteLoopIntervals)
   const defaultLoopInterval = useUiStore((s) => s.paletteLoopInterval)
   const setPaletteLoopIntervalFor = useUiStore((s) => s.setPaletteLoopIntervalFor)
@@ -48,6 +50,13 @@ export function EffectsPanel() {
   // modificano soltanto quello selezionato (i layer non ancora accesi partono dall'ultimo tempo usato)
   const paletteLoop = paletteLoopLayerIds.includes(activeLayerId)
   const paletteLoopInterval = paletteLoopIntervals[activeLayerId] ?? defaultLoopInterval
+
+  // frecce e scorciatoie scorrono dentro la famiglia filtrata: il tooltip lo dice, così non
+  // sembra che manchino effetti quando un filtro è attivo
+  const categoryLabel =
+    shaderCategory === 'all'
+      ? ''
+      : ` fra i ${SHADER_CATEGORIES.find((c) => c.id === shaderCategory)?.label ?? ''}`
 
   const activeShaderName = activeLayer?.shaderName ?? ''
   const size = activeLayer?.size ?? 1
@@ -71,7 +80,7 @@ export function EffectsPanel() {
             size="icon"
             className="shrink-0"
             onClick={() => cycleActiveShader(-1)}
-            title={`Effetto precedente (${ALT_LABEL}A)`}
+            title={`Effetto precedente${categoryLabel} (${ALT_LABEL}A)`}
             aria-label="Effetto precedente"
           >
             <ChevronLeft />
@@ -89,7 +98,7 @@ export function EffectsPanel() {
             size="icon"
             className="shrink-0"
             onClick={() => cycleActiveShader(1)}
-            title={`Effetto successivo (${ALT_LABEL}S)`}
+            title={`Effetto successivo${categoryLabel} (${ALT_LABEL}S)`}
             aria-label="Effetto successivo"
           >
             <ChevronRight />

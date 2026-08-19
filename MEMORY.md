@@ -2,6 +2,20 @@
 
 Ogni modifica al progetto va registrata qui con data, descrizione e motivazione. Le voci più recenti in alto dentro ogni giornata.
 
+## 2026-08-19 — Famiglie di effetti e filtri rapidi nella libreria
+
+Richiesta dell'utente: con cento effetti la lista non è più scorribile — raggrupparli per famiglia (halo, sd, psy…) e filtrare la lista con dei pulsanti.
+
+- **La famiglia si deduce dal percorso del file** (`psyStrobeGrid.glsl` → Psy), non dal nome visualizzato: il prefisso è la convenzione con cui la libreria è cresciuta e resta stabile anche rinominando un effetto. Il percorso è disponibile solo in `effectsStore` (le chiavi di `import.meta.glob`), quindi `parseShader` riceve la categoria come parametro invece di indovinarla.
+- **Due eccezioni esplicite** (`shaderCategories.ts`): i due `symmetricalHaloSwirl` sono Halo e `3DSurfaceMorphSpirals` è il capostipite dei Morph, ma sono nati prima della convenzione sui prefissi. Lasciarli in "Altri" li renderebbe introvabili proprio a chi cerca quella famiglia.
+- **`usesAudio` vince sul prefisso**: un effetto audio-reattivo si cerca fra gli Audio, qualunque nome abbia il file.
+- Ripartizione risultante: Psy 30, Morph 22, Halo 12, Liquid 11, SD 11, Altri 14 (con "Nessun effetto"), Audio 1 — 101 voci.
+- **UI**: pulsanti con il conteggio sopra la lista, a capo automatico invece che in riga scorrevole — la sidebar è stretta e ridimensionabile, e pulsanti oltre il bordo sarebbero irraggiungibili. Ricerca e filtro si combinano in AND.
+- **Via d'uscita dal filtro**: se la ricerca non trova nulla nella famiglia scelta ma trova altrove, compare "N risultati in altre famiglie — mostra tutti". Senza, il modo più facile di credere che un effetto non esista è cercarlo mentre un filtro è attivo. Mostrato **solo mentre si cerca**: al primo tentativo appariva anche a ricerca vuota (visto in prova), ed era puro rumore — filtrare per famiglia è una scelta esplicita.
+- **Lo scorrimento segue il filtro** (chiesto dall'utente subito dopo): frecce ◀ ▶ e ⌥A/⌥S restano dentro la famiglia selezionata, con lo stesso giro ciclico di prima. Per farlo il filtro è passato da `useState` locale del picker a **`uiStore.shaderCategory`**: non governa più solo quali voci si vedono, ma anche comandi che vivono in altri componenti — con un filtro attivo, quella lista è "dove ci si trova". `layersStore` importa `uiStore` (nessun ciclo: `uiStore` dipende solo da zustand). Se l'effetto in uso sta fuori dalla famiglia filtrata, la freccia entra dal primo elemento — è il ramo che già gestiva l'ingresso da "Nessun effetto". I tooltip delle frecce nominano la famiglia, così non sembra che manchino effetti.
+- Il filtro arriva gratis anche nell'editor clip della playlist, che usa lo stesso `ShaderPicker`.
+- Verificato nel browser: conteggi corretti per famiglia, filtro Halo che mostra i soli Halo, ricerca "psy" dentro Halo che offre i 30 risultati fuori famiglia.
+
 ## 2026-08-19 — Forme dell'oscilloscopio + preset rapidi (⌥1…⌥6)
 
 Richiesta dell'utente: tasti preset, almeno quattro, per ottenere al volo forme belle — fiore, cerchio, triangolo — sempre reattive al suono e sempre "da oscilloscopio".

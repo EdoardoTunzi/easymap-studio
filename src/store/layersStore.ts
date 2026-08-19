@@ -19,6 +19,7 @@ import {
   flipCorners,
   straightenCorners,
 } from '../lib/mappingGeometry'
+import { useUiStore } from './uiStore'
 import {
   type Palette,
   type RGB,
@@ -543,10 +544,15 @@ export const useLayersStore = create<LayersState>((set, get) => {
     cycleActiveShader: (dir) =>
       editEffect((l) => {
         // "Nessun effetto" resta fuori dal giro: è il blackout, non una tappa dello scorrimento
-        const names = useEffectsStore
+        const all = useEffectsStore
           .getState()
-          .shaders.map((s) => s.name)
-          .filter((n) => n !== NONE_SHADER_NAME)
+          .shaders.filter((s) => s.name !== NONE_SHADER_NAME)
+        // con un filtro di famiglia attivo lo scorrimento resta dentro quella famiglia: le frecce
+        // devono muoversi in ciò che si sta guardando, non portare fuori dall'elenco filtrato
+        const category = useUiStore.getState().shaderCategory
+        const pool = category === 'all' ? all : all.filter((s) => s.category === category)
+        // famiglia vuota (non dovrebbe accadere: i pulsanti a zero non si mostrano) → tutta la libreria
+        const names = (pool.length > 0 ? pool : all).map((s) => s.name)
         if (names.length === 0) return {}
         const current = names.indexOf(l.shaderName)
         // da "Nessun effetto" (indice -1) si entra dal primo o dall'ultimo, secondo la direzione

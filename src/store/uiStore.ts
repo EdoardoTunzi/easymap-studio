@@ -1,4 +1,5 @@
 import { create } from 'zustand'
+import type { ShaderCategoryId } from '../lib/shaderCategories'
 
 /**
  * Sezioni della sidebar SINISTRA: riguardano il look e il progetto, non il singolo layer.
@@ -135,6 +136,15 @@ interface UiState {
   setPaletteLoopIntervalFor: (layerId: string, seconds: number) => void
   /** Tempo di partenza per i loop accesi da qui in avanti: è l'ultimo impostato, e si ricorda. */
   paletteLoopInterval: number
+  /**
+   * Famiglia di effetti selezionata nella libreria ('all' = nessun filtro).
+   *
+   * Sta qui e non dentro il picker perché non governa solo quali voci si vedono: anche le frecce
+   * ◀ ▶ e le scorciatoie ⌥A/⌥S scorrono dentro la famiglia filtrata, e quei comandi vivono
+   * altrove. Con un filtro attivo, un'unica lista è "dove ci si trova".
+   */
+  shaderCategory: ShaderCategoryId | 'all'
+  setShaderCategory: (category: ShaderCategoryId | 'all') => void
   view: ViewTransform
   setViewZoom: (zoom: number) => void
   zoomViewBy: (factor: number) => void
@@ -215,6 +225,8 @@ export const useUiStore = create<UiState>((set) => ({
     }))
   },
   paletteLoopInterval: loadPaletteLoopInterval(),
+  shaderCategory: 'all',
+  setShaderCategory: (shaderCategory) => set({ shaderCategory }),
   view: DEFAULT_VIEW,
   setViewZoom: (zoom) =>
     set((s) => ({ view: { ...s.view, zoom: clamp(zoom, MIN_VIEW_ZOOM, MAX_VIEW_ZOOM) } })),
