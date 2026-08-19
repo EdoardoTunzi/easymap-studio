@@ -2,6 +2,7 @@ import { useEffect } from 'react'
 import { useLayersStore, type Layer } from '../store/layersStore'
 import { useOutputStore } from '../store/outputStore'
 import { usePlaylistStore } from '../store/playlistStore'
+import { renderSettingsOf, useRenderStore, type RenderSettings } from '../store/renderStore'
 import type { RGB } from '../store/paletteStore'
 
 const CHANNEL_NAME = 'easyvj-sync'
@@ -10,6 +11,17 @@ const CHANNEL_NAME = 'easyvj-sync'
 interface PalettePayload {
   type: 'palette'
   entries: [string, RGB[]][]
+}
+
+/**
+ * Impostazioni di resa (supersampling, dither, grana…). Messaggio separato dallo stato perché
+ * viaggia **sempre**, modalità Live compresa: non è la scena, è il modo di disegnarla. Se passasse
+ * dal payload dello stato, alzare la qualità durante un set non avrebbe effetto sul proiettore
+ * fino al successivo "Esegui in output".
+ */
+interface RenderPayload {
+  type: 'render'
+  settings: RenderSettings
 }
 
 interface Payload {
@@ -125,6 +137,12 @@ export function useBroadcastPublisher() {
     }
     const unsubLayers = useLayersStore.subscribe(onLayersChange)
 
+    // impostazioni di resa: fuori dal ciclo Live, sempre in viaggio (vedi RenderPayload)
+    const unsubRender = useRenderStore.subscribe((s) => {
+      const payload: RenderPayload = { type: 'render', settings: renderSettingsOf(s) }
+      channel.postMessage(payload)
+    })
+
     // reagisce ai comandi Live (push manuale e uscita dalla modalità Live)
     let lastPush = useOutputStore.getState().pushId
     let lastLive = useOutputStore.getState().live
@@ -147,6 +165,12 @@ export function useBroadcastPublisher() {
     // ciclo successivo
     channel.onmessage = (event) => {
       if (event.data?.type !== 'hello') return
+      // le impostazioni di resa non passano da lastPayload: la finestra appena aperta le riceve qui
+      const renderPayload: RenderPayload = {
+        type: 'render',
+        settings: renderSettingsOf(useRenderStore.getState()),
+      }
+      channel.postMessage(renderPayload)
       const current = new Map(useLayersStore.getState().layers.map((l) => [l.id, l.palette]))
       channel.postMessage({
         ...lastPayload,
@@ -162,6 +186,7 @@ export function useBroadcastPublisher() {
     return () => {
       unsubLayers()
       unsubOutput()
+      unsubRender()
       if (controlChannel === channel) controlChannel = null
       channel.close()
     }
@@ -195,6 +220,11 @@ export function useBroadcastSubscriber() {
         for (const [layerId, colors] of (event.data as PalettePayload).entries) {
           if (layers.some((l) => l.id === layerId)) setLayerPaletteColors(layerId, colors)
         }
+        return
+      }
+      // impostazioni di resa: si applicano subito, anche mentre l'Output è congelato in Live
+      if (event.data?.type === 'render') {
+        useRenderStore.getState().applyRemote((event.data as RenderPayload).settings)
         return
       }
       if (event.data?.type !== 'state') return

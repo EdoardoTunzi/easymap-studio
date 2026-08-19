@@ -172,6 +172,15 @@ export interface Layer {
   media: MediaAsset | null
   /** Luma key (0 = off): ritaglia le zone scure di un media con sfondo nero opaco. */
   lumaKey: number
+  /**
+   * Nitidezza del bordo della sagoma (0 = come nel file, 1 = taglio netto).
+   *
+   * Il contorno di un PNG scontornato è una rampa di alpha larga pochi pixel; il corner-pin la
+   * ingrandisce fino a decine di pixel del proiettore, e sull'oggetto reale si legge come un alone
+   * sfocato. Alzarla restringe la rampa. Opzionale in lettura: i progetti salvati prima non ce
+   * l'hanno.
+   */
+  edgeSharp?: number
   /** Effetto shader applicato sopra il contenuto. */
   shaderName: string
   /** Size globale del pattern dello shader (uniform uScale). */
@@ -243,6 +252,7 @@ export function createLayer(partial?: Partial<Layer>): Layer {
     blendMode: 'normal',
     media: null,
     lumaKey: 0,
+    edgeSharp: 0,
     shaderName: DEFAULT_SHADER_NAME,
     size: DEFAULT_SIZE,
     fx: { ...DEFAULT_FX },
@@ -337,6 +347,8 @@ interface LayersState {
   // editing del layer attivo
   setActiveMedia: (media: MediaAsset | null) => void
   setActiveLumaKey: (lumaKey: number) => void
+  /** Nitidezza del contorno della sagoma sul layer attivo (0..1). */
+  setActiveEdgeSharp: (edgeSharp: number) => void
   setActiveShader: (shaderName: string) => void
   /** Passa all'effetto successivo (dir 1) o precedente (dir -1) della libreria, a ciclo. */
   cycleActiveShader: (dir: 1 | -1) => void
@@ -571,6 +583,7 @@ export const useLayersStore = create<LayersState>((set, get) => {
 
     setActiveMedia: (media) => patchActive(() => ({ media })),
     setActiveLumaKey: (lumaKey) => patchActive(() => ({ lumaKey })),
+    setActiveEdgeSharp: (edgeSharp) => patchActive(() => ({ edgeSharp })),
     // shader / size / param sono EFFETTO → passano da editEffect (propagazione col link)
     setActiveShader: (shaderName) => editEffect(() => ({ shaderName })),
 

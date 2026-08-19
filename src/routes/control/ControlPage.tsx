@@ -121,7 +121,7 @@ export function ControlPage() {
       <SidebarInset className="h-svh min-w-0 overflow-hidden">
         <TopToolbar />
         <main ref={stageRef} className="relative min-h-0 flex-1 overflow-hidden bg-black">
-          <StageCanvas autoFit controlView />
+          <StageCanvas autoFit controlView role="control" />
           {/* la griglia sta sotto le maniglie e segue lo stesso toggle degli altri riferimenti */}
           {overlaysVisible && gridVisible && <AlignmentGrid />}
           {overlaysVisible && (editingMask ? <MaskOverlay /> : <CornerPinOverlay />)}

@@ -4,7 +4,13 @@ import { useFrame } from '@react-three/fiber'
 import { useLayersStore, type BlendMode, type Layer } from '../store/layersStore'
 import { useEffectsStore } from '../store/effectsStore'
 import type { ParsedShader } from './isfParser'
-import { createMediaTexture, FALLBACK_TEXTURE, type MediaTextureController } from './mediaTexture'
+import {
+  createMediaTexture,
+  FALLBACK_TEXTURE,
+  SOURCE_COLOR_SPACE,
+  type MediaTextureController,
+} from './mediaTexture'
+import { releaseTexture, trackTexture } from './textureQuality'
 import { getAudioLevel, getAudioTexture, isAudioActive } from './audioInput'
 import { captureBackdrop, getBackdropSize, getBackdropTexture } from './backdrop'
 
@@ -69,6 +75,7 @@ export function buildUniforms(shader: ParsedShader | undefined): Record<string, 
     uResolution: { value: new THREE.Vector2(1, 1) },
     uScale: { value: 1 },
     uLumaKey: { value: 0 },
+    uEdgeSharp: { value: 0 },
     uOpacity: { value: 1 },
     uPalette: { value: Array.from({ length: 5 }, () => new THREE.Vector3(0, 0, 0)) },
     uPaletteCount: { value: 5 },
@@ -207,6 +214,8 @@ function EffectPass({ layerId, variant, source, renderOrder, geometry, controlle
     u.uScale.value = fx.size
     u.uQuadAspect.value = quadAspect(l.corners)
     u.uLumaKey.value = l.lumaKey
+    // ?? 0: i progetti salvati prima di questo controllo non hanno il campo
+    u.uEdgeSharp.value = l.edgeSharp ?? 0
     // il peso della scena scala l'opacità: è così che le due scene si dissolvono l'una nell'altra
     u.uOpacity.value = fx.opacity * sceneWeight(storeState, source)
     // controlli globali: proprietà del layer, valgono per qualunque shader
@@ -375,12 +384,23 @@ function LayerMesh({
     const loader = new THREE.TextureLoader()
     let disposed = false
     loader.load(maskImageUrl, (tex) => {
-      if (disposed) return
-      tex.colorSpace = THREE.SRGBColorSpace
-      maskTexRef.current = tex
+      if (disposed) {
+        tex.dispose()
+        return
+      }
+      // stesso ragionamento delle sorgenti (vedi SOURCE_COLOR_SPACE): qui conta la luminanza dello
+      // stencil, e linearizzarla chiudeva la maschera molto più di quanto mostrasse il file
+      tex.colorSpace = SOURCE_COLOR_SPACE
+      maskTexRef.current = trackTexture(tex)
     })
     return () => {
       disposed = true
+      const previous = maskTexRef.current
+      if (previous !== FALLBACK_TEXTURE) {
+        releaseTexture(previous)
+        previous.dispose()
+      }
+      maskTexRef.current = FALLBACK_TEXTURE
     }
   }, [maskImageUrl])
 

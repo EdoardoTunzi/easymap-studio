@@ -31,14 +31,35 @@ export function getBackdropSize(): THREE.Vector2 {
   return bufferSize
 }
 
-/** Fotografa il framebuffer corrente. Da chiamare prima di disegnare un layer a blend avanzato. */
+/**
+ * Fotografa il framebuffer corrente. Da chiamare prima di disegnare un layer a blend avanzato.
+ *
+ * Le dimensioni sono quelle del bersaglio **attualmente legato**, non quelle del canvas: da quando
+ * la scena passa per il buffer interno del compositore (`OutputComposer`), i due numeri sono
+ * diversi appena il supersampling è attivo, e `gl_FragCoord` nello shader parla in pixel del
+ * bersaglio. Con la misura sbagliata il backdrop verrebbe campionato in un punto che non è quello
+ * sotto il pixel, e i blend avanzati mostrerebbero l'immagine sottostante spostata e ingrandita.
+ */
 export function captureBackdrop(renderer: THREE.WebGLRenderer) {
-  renderer.getDrawingBufferSize(bufferSize)
+  const target = renderer.getRenderTarget()
+  if (target) bufferSize.set(target.width, target.height)
+  else renderer.getDrawingBufferSize(bufferSize)
   const width = Math.max(1, Math.floor(bufferSize.x))
   const height = Math.max(1, Math.floor(bufferSize.y))
-  if (!texture || texture.image.width !== width || texture.image.height !== height) {
+  // il tipo deve corrispondere a quello del bersaglio: copiare un buffer a mezza precisione float
+  // dentro una texture a byte è un'operazione non consentita (INVALID_OPERATION), non una
+  // conversione — quindi con il buffer HDR attivo anche la copia è a mezza precisione
+  const type = target ? target.texture.type : THREE.UnsignedByteType
+  if (
+    !texture ||
+    texture.image.width !== width ||
+    texture.image.height !== height ||
+    texture.type !== type
+  ) {
     texture?.dispose()
     texture = new THREE.FramebufferTexture(width, height)
+    texture.type = type
+    texture.format = THREE.RGBAFormat
     // nessun filtro né mipmap: è una copia 1:1 dei pixel a schermo, campionata alle stesse coordinate
     texture.minFilter = THREE.NearestFilter
     texture.magFilter = THREE.NearestFilter

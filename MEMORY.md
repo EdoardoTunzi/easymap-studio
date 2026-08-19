@@ -2,6 +2,65 @@
 
 Ogni modifica al progetto va registrata qui con data, descrizione e motivazione. Le voci più recenti in alto dentro ogni giornata.
 
+## 2026-08-19 — Qualità dell'immagine proiettata: compositore di output, colore, supersampling, diagnostica
+
+L'utente ha chiesto se la finestra Output avesse limiti di qualità propri o se dipendesse tutto dal proiettore (un Full HD), notando che un video HD sullo stesso proiettore si vede molto meglio dei visual. Sono emersi **due difetti veri nel nostro codice**, entrambi misurati, più una serie di leve mancanti.
+
+### Il difetto grosso: mezza conversione di colore (immagini scure di oltre la metà)
+
+Le texture di contenuto erano marcate `SRGBColorSpace`. Three le carica allora come `SRGB8_ALPHA8` e l'hardware **le linearizza a ogni prelievo**; il guadagno ci sarebbe se l'immagine venisse ri-codificata in uscita, ma i layer sono `ShaderMaterial` con sorgente scritta a mano e Three inserisce la conversione finale **solo nei materiali che includono il chunk `colorspace_fragment`** — il nostro wrapper non lo fa. Metà conversione, quindi, e a senso unico.
+
+**Misurato in browser con un test WebGL isolato**: un pixel grigio `128` nel file arrivava allo schermo come **55**. Non un'inezia — le mezze luci di ogni foto, video e ripresa webcam venivano schiacciate verso il nero, proprio su un dispositivo che di contrasto ne ha già poco.
+
+Le texture ora usano `SOURCE_COLOR_SPACE = NoColorSpace` (`mediaTexture.ts`, più lo stencil della maschera-immagine in `ShaderPlane`): i byte del file arrivano intatti. La pipeline lavora tutta in spazio gamma, che è anche lo spazio in cui sono pensati i 100+ shader della libreria, le palette prese dai color picker e le formule dei blend mode (Overlay, Soft Light e compagnia sono definite su valori non lineari, come in Photoshop). **Le immagini caricate ora appaiono più chiare: è la resa corretta, non una schiaritura.**
+
+Nota di rotta: all'inizio avevo indicato come colpevole il tone mapping ACES che R3F imposta di default. **Era sbagliato, e per la stessa ragione**: senza `#include <tonemapping_fragment>` quella curva non tocca i nostri shader. Il `flat` sul Canvas è stato messo lo stesso, per fissare la scelta e proteggere i materiali non nostri (TestPattern, futuri).
+
+### Il compositore (`OutputComposer.tsx`)
+
+La scena non va più diritta a schermo: passa per un buffer interno e un passaggio finale. Serve per quattro cose che prima non erano possibili.
+
+- **Supersampling 1× / 1.25× / 1.5× / 2×.** Il MSAA del canvas lavora solo sui bordi della *geometria*, cioè i 4 lati del quad — che con un PNG scontornato sono trasparenti, quindi invisibili. Tutto ciò che si vede davvero (i contorni disegnati dal fragment shader, il bordo della sagoma) non ne beneficiava in alcun modo: **l'`antialias: true` che c'era non salvava un solo bordo visibile**. L'unico antialiasing che agisce lì è disegnare più grande e ridurre. Riduzione a 4 prelievi quando il rapporto non è intero (1.25×, 1.5×), dove un prelievo solo lascerebbe fuori dei texel.
+- **Buffer a mezza precisione float**, così i blend Add/Screen possono superare 1.0 invece di essere tagliati subito.
+- **Dither** sugli 8 bit finali. Verificato numericamente: su una colonna a valore teorico costante, con dither i pixel alternano 76/77, senza dither sono tutti 77 — cioè lo scalino che al buio si legge come banding.
+- **Grana** opzionale. Un video ha dettaglio ad alta frequenza ovunque, uno shader generativo no: è anche per questo che sullo stesso proiettore il video "sembra migliore" a parità di pixel.
+
+Niente MSAA sul buffer interno, di proposito: un framebuffer multisample non si può copiare con `copyTexSubImage2D`, e la copia del backdrop per i blend avanzati avviene proprio mentre quel buffer è legato. Visto che il MSAA lì non salverebbe comunque nessun bordo visibile, l'antialiasing lo fa il supersampling.
+
+**Il supersampling vale solo per la finestra Output**: durante un set le due finestre girano sulla stessa GPU, e far pagare all'anteprima il quadruplo dei pixel significherebbe toglierli al proiettore.
+
+### Sfondamento morbido, e un errore intercettato dal cartello di prova
+
+Il controllo delle alte luci era nato come curva di compressione classica. Il cartello di prova ha mostrato subito il conto: **il bianco pieno usciva a 239 invece di 255**, cioè il 6% dei lumen del proiettore regalato a una curva — esattamente il difetto che avevo contestato ad ACES. Riscritto come *versamento dell'eccesso*: sotto il fondo scala non tocca niente, e solo ciò che sfonda vira verso il bianco invece di far scivolare la tinta (senza, un `clamp` porta un (1.6, 1.2, 0.3) a giallo pieno). Dopo la correzione: bianco 255, primari a fondo scala, rampa a 128.
+
+### Backdrop dei blend avanzati (`backdrop.ts`)
+
+Due correzioni obbligate dal buffer interno, entrambe altrimenti fatali: le dimensioni si leggono dal **bersaglio legato** e non dal canvas (con supersampling attivo i due numeri differiscono, e `gl_FragCoord` parla in pixel del bersaglio: il backdrop sarebbe stato campionato spostato e ingrandito); e il tipo della copia segue quello del bersaglio, perché copiare un buffer a mezza precisione float dentro una texture a byte non è una conversione ma un'operazione **non consentita**. Verificato con due layer in Overlay a 2× e buffer HDR: nessun errore WebGL, blend allineato, 119 fps.
+
+### Nitidezza del bordo (per-layer)
+
+`edgeSharp` comprime la rampa dell'alpha attorno a metà scala **senza spostarla**, così il mapping non si muove. Il contorno di un PNG è largo pochi pixel e il corner-pin lo ingrandisce fino a decine di pixel di proiettore, dove si legge come alone sfocato. Effetto collaterale gradito, visto in prova: con il luma key attivo sparisce anche il pulviscolo di pixel semitrasparenti attorno al soggetto.
+
+### Anisotropia (`textureQuality.ts`)
+
+Mai impostata finora, quindi ferma a 1. Nel projection mapping il quad è **sempre** guardato di sbieco: senza filtro anisotropico i lati inclinati perdono dettaglio molto prima di quelli frontali, e a occhio sembra fuori fuoco. Il valore massimo lo conosce solo il renderer, che nasce col Canvas — cioè dopo che qualche texture può già essere stata creata: per questo le texture si registrano e vengono aggiornate a ritroso.
+
+### Diagnostica e cartello di prova
+
+- **Pannello sulla finestra Output** (tasto S): pixel reali del canvas, dimensione del buffer interno, supersampling, precisione, fps, e se la finestra copre davvero lo schermo. "Sembra povero" ha troppe cause che a occhio si confondono; questi numeri le separano in due secondi. Vive fuori da Zustand di proposito: aggiornarlo dentro il ciclo di disegno via React sarebbe il tipo di costo che dovrebbe aiutare a scovare.
+- **Cartello di prova** (tasto C, o dal pannello): righe da un pixel, rampa, barre sature, gradini di nero e di bianco. Si è ripagato subito trovando il bianco a 239. Non si ricorda mai acceso fra le sessioni: ritrovarselo a tutto schermo cinque minuti prima di un set sarebbe solo un danno.
+- Le impostazioni di resa viaggiano su un **messaggio dedicato** del BroadcastChannel e passano **sempre**, modalità Live compresa: non sono la scena, sono il modo di disegnarla, e alzare la qualità durante un set deve avere effetto subito. Stanno in localStorage e non nei progetti: dipendono dalla macchina e dal proiettore, non dal lavoro.
+
+### Finestra di proiezione
+
+Si apre sullo schermo secondario quando il browser espone la Window Management API (prima nasceva 1280×720 sopra il pannello di controllo, da trascinare a mano). Pieno schermo con F o doppio click — comandabile solo da lì, perché il browser lo concede solo a chi ha ricevuto un gesto nella finestra che lo chiede.
+
+**Il pieno schermo può fallire in silenzio**: provato nel pannello di anteprima, la promise non viene rifiutata e lo stato non cambia. Si controlla quindi `document.fullscreenElement` dopo la richiesta, non l'esito della promise, e si scrive a schermo cosa fare al suo posto. Un tasto che sul palco non fa niente e non dice niente è il modo peggiore di fallire.
+
+### Cosa resta al proiettore e al sistema (fuori dal nostro codice)
+
+Il Full HD non è il limite. Contano molto di più: **keystone digitale del proiettore da spegnere** (ricampiona e distrugge la nitidezza — la deformazione la fa il nostro corner-pin), risoluzione del display **nativa e non "scalata"** in macOS, modalità immagine del proiettore su Standard/Cinema con sharpness a zero, ed evitare i fade a bassa opacità su nero (un proiettore somma luce: Add/Screen leggono molto meglio).
+
 ## 2026-08-19 — Interruttore rapido della palette (e stop del loop che la riaccendeva)
 
 Richiesta dell'utente: un pulsante on/off accanto a "Colori casuali" nel pannello Shader per spegnere al volo la palette; poi, subito dopo, che spegnendola si spenga anche il loop dei colori.

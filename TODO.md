@@ -122,6 +122,25 @@ Modello: scena = pila di Layer indipendenti; ogni layer ha contenuto (img/gif/vi
 - [ ] Bridge OSC/DMX (richiede servizio Node locale: il browser non parla UDP)
 - [ ] Multi-output / più superfici indipendenti nella stessa scena
 
+## Qualità dell'immagine proiettata
+
+- [x] **Fix colore**: le texture di contenuto erano marcate `SRGBColorSpace` e venivano linearizzate dall'hardware senza mai essere ri-codificate in uscita (i nostri `ShaderMaterial` non includono il chunk `colorspace_fragment`). Misurato: un grigio 128 nel file arrivava a schermo come **55**. Ora `SOURCE_COLOR_SPACE = NoColorSpace`: pipeline tutta in spazio gamma, coerente con shader, palette e blend mode
+- [x] **Compositore di output** (`OutputComposer.tsx`): la scena passa per un buffer interno con passaggio finale, che rende possibili supersampling, precisione HDR, dither e grana
+- [x] Supersampling 1×/1.25×/1.5×/2× sulla sola finestra Output (l'anteprima non deve rubare GPU al proiettore), con riduzione a 4 prelievi per i rapporti non interi. È l'unico antialiasing che agisce sui contorni disegnati dagli shader: il MSAA del canvas lavorava solo sui lati del quad, che con un PNG scontornato sono trasparenti
+- [x] Buffer interno a mezza precisione float: i blend Add/Screen non vengono più tagliati a 1.0
+- [x] Dither finale (verificato: colonna a valore costante alterna 76/77 con dither, tutti 77 senza) e grana opzionale
+- [x] **Sfondamento morbido**: l'eccesso oltre il fondo scala vira verso il bianco invece di far scivolare la tinta. Riscritto dopo che il cartello di prova ha mostrato il bianco pieno a 239 invece di 255 con la curva di compressione della prima versione
+- [x] Anisotropia delle texture (`textureQuality.ts`): mai impostata prima, quindi ferma a 1, con perdita di dettaglio sui lati inclinati dal corner-pin. Registro delle texture per applicarla anche a quelle create prima che il renderer esista
+- [x] Nitidezza del bordo della sagoma per-layer (`edgeSharp`): comprime la rampa dell'alpha senza spostarla, così il mapping non si muove
+- [x] `backdrop.ts` adattato al buffer interno: dimensioni dal bersaglio legato (non dal canvas) e tipo della copia uguale a quello del bersaglio — copiare un buffer float in una texture a byte non è consentito
+- [x] Pannello diagnostico sulla finestra Output (tasto S): pixel reali, buffer interno, supersampling, precisione, fps, avviso se la finestra non copre lo schermo
+- [x] Cartello di prova (tasto C): righe da un pixel, rampa, barre sature, gradini di nero e bianco. Non si ricorda mai acceso fra le sessioni
+- [x] Impostazioni di resa in uno store dedicato (`renderStore`), su localStorage e sincronizzate con un messaggio proprio che passa **sempre**, Live compreso: non sono la scena, sono il modo di disegnarla
+- [x] Finestra Output aperta sullo schermo secondario (Window Management API) invece che 1280×720 sopra il pannello; pieno schermo con F o doppio click, con avviso a schermo quando il browser lo nega — verificato che può fallire **in silenzio**, senza rifiutare la promise
+- [ ] Verificare sul proiettore reale il guadagno del supersampling 2× e scegliere il default definitivo (ora 1×: alzarlo di default significa quadruplicare i pixel su macchine che non conosciamo)
+- [ ] Valutare l'estensione della maschera-immagine e dell'`edgeSharp` alle sorgenti video/camera (oggi l'anisotropia non le tocca: sono senza mipmap, rigenerarle a ogni frame costerebbe più di quanto renda)
+- [ ] Valutare il rilevamento automatico del calo di fps con proposta di abbassare il supersampling (oggi l'avviso sotto i 50 fps è solo informativo)
+
 ## Manutenzione / debito tecnico
 
 - [x] Fix `npm run build`: alzato `workbox.maximumFileSizeToCacheInBytes` a 10 MB in `vite.config.ts` per precachare `default-stage.png` (7.1 MB), sopra il limite di default 2 MB di vite-plugin-pwa

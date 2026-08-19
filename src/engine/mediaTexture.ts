@@ -2,6 +2,25 @@ import * as THREE from 'three'
 import { parseGIF, decompressFrames, type ParsedFrame } from 'gifuct-js'
 import type { MediaAsset } from '../store/projectStore'
 import { acquireCameraStream, dropCameraStream, releaseCameraStream } from '../lib/cameraSources'
+import { releaseTexture, trackTexture } from './textureQuality'
+
+/**
+ * Spazio colore delle sorgenti: **nessuna conversione**, i byte del file arrivano allo shader
+ * come sono.
+ *
+ * Marcarle `SRGBColorSpace` — come si faceva prima — dice a Three di caricarle in un formato
+ * `SRGB8_ALPHA8`, e da lì l'hardware le linearizza a ogni prelievo. Il guadagno ci sarebbe se
+ * l'immagine venisse poi ri-codificata in uscita, ma i nostri layer sono `ShaderMaterial` con
+ * sorgente scritta a mano: Three inserisce la conversione finale solo nei materiali che includono
+ * il chunk `colorspace_fragment`, e il nostro wrapper non lo fa. Risultato: mezza conversione,
+ * cioè una foto proiettata molto più scura e contrastata dell'originale (un grigio 50% finiva a
+ * circa 21%). Le ombre si chiudevano e la sagoma perdeva stacco proprio dove serve.
+ *
+ * La pipeline lavora quindi tutta in spazio gamma, che è anche lo spazio in cui sono pensati i
+ * 100+ shader della libreria, le palette prese dai color picker e le formule dei blend mode
+ * (Overlay, Soft Light e compagnia sono definiti su valori non lineari, come in Photoshop).
+ */
+export const SOURCE_COLOR_SPACE = THREE.NoColorSpace
 
 /**
  * Controller di texture per una sorgente: immagine statica, video (VideoTexture) o GIF
@@ -66,13 +85,15 @@ function createImageController(media: MediaAsset): MediaTextureController {
     entry = { refs: 0, texture: FALLBACK, release: null }
     imageCache.set(url, entry)
     new THREE.TextureLoader().load(url, (tex) => {
-      tex.colorSpace = THREE.SRGBColorSpace
+      tex.colorSpace = SOURCE_COLOR_SPACE
       const current = imageCache.get(url)
       if (!current) {
         tex.dispose() // già liberata mentre decodificava
         return
       }
-      current.texture = tex
+      // il corner-pin guarda l'immagine di sbieco: senza filtro anisotropico i lati inclinati
+      // perdono dettaglio molto prima di quelli frontali (vedi textureQuality.ts)
+      current.texture = trackTexture(tex)
     })
   }
   entry.refs++
@@ -95,7 +116,10 @@ function createImageController(media: MediaAsset): MediaTextureController {
         const e = imageCache.get(url)
         if (!e || e.refs > 0) return
         imageCache.delete(url)
-        if (e.texture !== FALLBACK) e.texture.dispose()
+        if (e.texture !== FALLBACK) {
+          releaseTexture(e.texture)
+          e.texture.dispose()
+        }
       }, IMAGE_RELEASE_MS)
     },
   }
@@ -220,7 +244,7 @@ function createCameraController(media: MediaAsset): MediaTextureController {
     video.playsInline = true
     video.autoplay = true
     const texture = new THREE.VideoTexture(video)
-    texture.colorSpace = THREE.SRGBColorSpace
+    texture.colorSpace = SOURCE_COLOR_SPACE
     const created: CameraEntry = { refs: 0, video, texture, release: null, recoveries: 0 }
     cameraCache.set(key, created)
     acquireCameraStream(key)
@@ -294,7 +318,8 @@ class GifController implements MediaTextureController {
     this.ctx = this.canvas.getContext('2d')!
     this.patchCtx = this.patchCanvas.getContext('2d')!
     this.texture = new THREE.CanvasTexture(this.canvas)
-    this.texture.colorSpace = THREE.SRGBColorSpace
+    this.texture.colorSpace = SOURCE_COLOR_SPACE
+    trackTexture(this.texture)
     void this.load(media)
   }
 
@@ -353,6 +378,7 @@ class GifController implements MediaTextureController {
   }
 
   dispose() {
+    releaseTexture(this.texture)
     this.texture.dispose()
   }
 }

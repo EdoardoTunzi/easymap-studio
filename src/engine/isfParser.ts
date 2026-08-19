@@ -66,6 +66,7 @@ uniform float uTime;
 uniform vec2 uResolution;
 uniform float uScale;
 uniform float uLumaKey;
+uniform float uEdgeSharp;            // 0 = bordo della sagoma come sta nel file, 1 = massima nitidezza
 uniform float uOpacity;
 uniform vec3 uPalette[5];
 uniform float uPaletteCount;
@@ -272,6 +273,13 @@ void main() {
   if (uLumaKey > 0.0) {
     float luma = dot(src.rgb, vec3(0.299, 0.587, 0.114));
     mask *= smoothstep(0.0, uLumaKey, luma);
+  }
+  // Nitidezza del bordo: comprime la rampa dell'alpha attorno a metà scala, senza spostarla.
+  // Serve perché il contorno del PNG viene ingrandito dal mapping (pochi pixel del file coprono
+  // molti pixel del proiettore) e arriva sulla statua come un alone morbido invece che come un
+  // taglio netto; la soglia a 0.5 tiene il bordo dov'era, così il mapping non si sposta.
+  if (uEdgeSharp > 0.0) {
+    mask = clamp((mask - 0.5) * (1.0 + uEdgeSharp * 11.0) + 0.5, 0.0, 1.0);
   }
   if (mask <= 0.0) {
     // fuori dai bordi dell'immagine: pixel completamente trasparente, niente effetto
