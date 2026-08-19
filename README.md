@@ -20,6 +20,7 @@ Progetto solista, sviluppato in modo iterativo con un ciclo di lavoro rigoroso (
 
 ## Novità della versione 4
 
+- **Ingresso video live (webcam, cam USB, capture card HDMI)** — un layer può avere come contenuto una **ripresa dal vivo** invece di un file: si riprende il DJ, il pubblico o il palco e lo si proietta effettato in tempo reale. La sorgente si comporta come qualunque altro media — shader, palette, maschere, corner-pin, blend e opacità valgono senza differenze — e il pulsante **"Nuovo strato"** duplica il feed su un layer sopra, già allineato e in Screen, per impilare più effetti sulla stessa ripresa. Il device resta aperto **una volta sola** qualunque sia il numero di strati. Sul proiettore la ripresa arriva senza latenza aggiunta, perché la finestra Output apre la camera per conto proprio. Se la cam si scollega o viene presa da un altro programma il layer si riaggancia da solo; restano comunque un pulsante di riavvio della sorgente e una diagnostica che spiega perché un'attivazione non riesce (permesso bloccato, pagina non sicura, device occupato).
 - **Loop delle palette casuali** — accanto a "Genera" c'è ora un interruttore **Loop**: la palette si rigenera da sola a intervalli regolari (**0,5–60 secondi**, preimpostati a 5) e **si dissolve** da una all'altra invece di cambiare di scatto. Basta accenderlo per avere un colore che evolve per conto suo mentre ci si occupa di mapping, layer o playlist. Se durante il loop tocchi "Genera", il numero di colori o un color picker, la dissolvenza successiva riparte da quello che c'è sullo schermo, senza stacchi.
 - **Cambio effetto rapido e Random dei controlli** — frecce accanto alla lista degli effetti e scorciatoie `⌥A` / `⌥S` per scorrere la libreria senza aprire il menu, più un pulsante che estrae valori casuali per tutti i parametri dell'effetto attivo.
 - **Barra spaziatrice per "Esegui in output"** in modalità Live, così l'invio al proiettore non passa dal mouse.
@@ -32,7 +33,7 @@ Progetto solista, sviluppato in modo iterativo con un ciclo di lavoro rigoroso (
 2. Allinei i 4 angoli dell'immagine alla superficie reale tramite corner-pin, direttamente da finestra di controllo.
 3. Scegli tra **97 shader GLSL** generativi/psichedelici, ognuno con parametri regolabili via slider e colori personalizzabili — scorribili al volo con le frecce o da tastiera, e randomizzabili con un pulsante.
 4. Regoli l'effetto con i **controlli globali** (velocità, rotazione, kaleidoscopio, mirror, pixelate, colore): funzionano su qualsiasi shader, senza doverne conoscere i parametri.
-5. Componi più layer indipendenti (immagine/video/GIF), ciascuno con la propria maschera, il proprio effetto, opacità e blend mode.
+5. Componi più layer indipendenti (immagine, video, GIF o **ripresa live** da webcam/capture card), ciascuno con la propria maschera, il proprio effetto, opacità e blend mode.
 6. Costruisci una **playlist di effetti** con transizioni a crossfade, per sequenze automatizzate durante il live.
 7. Apri la finestra **Output** (su un secondo monitor/proiettore) che riceve lo stato in tempo reale via `BroadcastChannel`, con una modalità **Live** per decidere manualmente quando "mandare in onda" le modifiche.
 8. Il progetto si salva da solo in locale (IndexedDB) e funziona anche offline (PWA), utile a bordo palco senza rete.
@@ -46,7 +47,7 @@ Tutto quello che puoi fare dall'editor, pannello per pannello.
 ### Layer e maschere
 
 - Scena come pila di **layer indipendenti**: aggiungi, duplichi, riordini (drag&drop), rinomini, nascondi/mostri, regoli opacità e blend mode (Normal/Add/Screen/Multiply) di ognuno.
-- Per ogni layer: upload di **immagine, GIF o video**, con rilevamento automatico dello sfondo opaco e slider manuale "rimuovi sfondo scuro" (luma key) per le immagini senza canale alpha.
+- Per ogni layer: upload di **immagine, GIF o video**, oppure **ingresso video live** da una camera collegata, con rilevamento automatico dello sfondo opaco e slider manuale "rimuovi sfondo scuro" (luma key) per le immagini senza canale alpha.
 - **Corner-pin** a 4 maniglie trascinabili per allineare la proiezione alla superficie reale, pad direzionale + zoom per spostare/ridimensionare l'intera proiezione, fit automatico al caricamento.
 - **Zoom e pan della vista di anteprima**, indipendenti dall'output: utile per raggiungere le maniglie del corner-pin quando l'asset è ingrandito oltre i bordi del canvas.
 - **Riferimenti di mapping nascondibili** (pulsante a forma di occhio sul canvas): cornice e maniglie servono a posizionare, ma coprono l'effetto quando lo vuoi valutare davvero. L'Output non li ha mai disegnati.
@@ -70,7 +71,10 @@ Tutto quello che puoi fare dall'editor, pannello per pannello.
 ### Assets
 
 - Caricamento diretto di immagine/GIF/video dal pannello Assets, con anteprima del file selezionato.
+- **Ingresso video live** _(novità v4)_: attivi la camera dal pannello Asset e scegli quale usare da una tendina che si aggiorna da sola quando colleghi o stacchi un device. La ripresa viene adattata automaticamente al suo formato, si può stratificare con "Nuovo strato" (stesso feed, layer sopra, già allineato e in blend Screen) e si riavvia a freddo con un pulsante se durante un set l'immagine si pianta. Cambiando camera la precedente viene spenta subito, perché due webcam USB sullo stesso controller spesso non stanno insieme per banda disponibile.
 - Un **asset dimostrativo** è precaricato automaticamente alla primissima apertura dell'app, per poter provare subito il programma senza dover cercare un'immagine propria.
+
+> Sugli effetti da usare con una ripresa live: 56 shader della libreria (famiglie _Halo_, _Liquid_, _Morph_, _SD_, più _3D Surface Morph Spirals_) campionano la sorgente e quindi **elaborano davvero l'immagine della camera**. Gli altri sono puramente generativi: siccome un feed video è opaco e non ha una sagoma da ritagliare, lo coprono — vanno messi su uno strato sopra in Add/Screen, o con opacità ridotta.
 
 ### Output e modalità Live
 
@@ -123,7 +127,7 @@ Fuori dalla modalità Live la barra spaziatrice resta interamente al pan della v
 
 - Scena come pila di layer indipendenti: ognuno con proprio media, effetto, corner-pin, maschere, opacità e blend mode (Normal/Add/Screen/Multiply), compositati via `CustomBlending` con alpha premoltiplicato.
 - Maschere per-layer (rettangolo/ellisse con feather, rotazione, invert) o da stencil PNG, editabili direttamente sul canvas.
-- Sorgenti dinamiche: immagini, **video** (`THREE.VideoTexture`) e **GIF animate** (decodifica frame via `gifuct-js`).
+- Sorgenti dinamiche: immagini, **video** (`THREE.VideoTexture`), **GIF animate** (decodifica frame via `gifuct-js`) e **camere live** (`getUserMedia`), con stream condivisi per device a conteggio di riferimenti: più layer sulla stessa ripresa significano un solo device aperto e un solo upload di frame sulla GPU.
 - Sincronizzazione dell'effetto tra layer selezionati, con propagazione live dei parametri.
 
 ### Playlist / sequencer live
@@ -149,7 +153,7 @@ Fuori dalla modalità Live la barra spaziatrice resta interamente al pan della v
 | Persistenza            | IndexedDB (`idb`), autosave con debounce                                |
 | UI                     | Tailwind CSS v4, shadcn/ui (Radix), lucide-react                        |
 | Sync multi-finestra    | `BroadcastChannel` API con handshake `hello`                            |
-| Media                  | `THREE.VideoTexture`, `gifuct-js` per GIF animate                       |
+| Media                  | `THREE.VideoTexture`, `gifuct-js` per GIF animate, `MediaDevices.getUserMedia` per le sorgenti live |
 | Offline                | `vite-plugin-pwa`                                                       |
 | Routing                | react-router-dom                                                        |
 
@@ -162,6 +166,7 @@ Fuori dalla modalità Live la barra spaziatrice resta interamente al pan della v
 - **Corner-pin**: i 4 angoli vivono in coordinate mondo, coerenti con la geometria del piano renderizzato; l'overlay di editing converte schermo↔mondo usando lo stesso frustum della camera ortografica.
 - **Maschera automatica**: il wrapper GLSL generato dal parser ISF moltiplica sempre l'alpha finale per l'alpha (o luma) della texture sorgente — ogni effetto resta confinato dentro i bordi dell'immagine, qualunque sia lo shader.
 - **Shader "ISF-like"**: uniform `float`/`vec3` con commenti `@min @max @default` letti a build-time (`import.meta.glob`) → slider e color picker generati automaticamente in UI.
+- **Sorgenti live tra le due finestre**: un `MediaStream` non è serializzabile, quindi sul canale di sincronizzazione viaggia **solo l'identificativo del device** e la finestra Output apre la camera per conto suo. Niente inoltro di frame tra finestre (che aggiungerebbe latenza e un canale WebRTC da mantenere), a costo di dover consentire l'accesso alla camera anche lì.
 - **Controlli globali nel wrapper**: essendo applicati attorno a `processColor`, ogni nuovo shader li eredita automaticamente — l'autore dell'effetto non deve prevederli.
 
 ---
@@ -190,7 +195,7 @@ Il progetto segue una roadmap tracciata in dettaglio in `TODO.md`. Macro-fasi:
 
 - ✅ **Fase 1 — MVP core**: upload, corner-pin, libreria shader, palette colori, preset, persistenza, layout UI.
 - ✅ **Fase 2 — Multi-layer**: layer indipendenti, maschere, media dinamici (video/GIF), modalità Live, playlist con transizioni, controlli globali validi per qualsiasi effetto.
-- ⏳ **Fase 3 — Live performance**: audio-reactive (Web Audio API + FFT), BPM sync, controller MIDI, bridge OSC/DMX, multi-output.
+- ⏳ **Fase 3 — Live performance**: ingresso video live da webcam/capture card ✅, poi audio-reactive (Web Audio API + FFT), BPM sync, controller MIDI, bridge OSC/DMX, multi-output.
 - 🔭 **Oltre**: motore particellare 3D GPU-instanced (point cloud reali con profondità e camera) e feedback buffer per le scie accumulate — i due passi che avvicinerebbero davvero l'estetica delle _data sculpture_.
 
 ---

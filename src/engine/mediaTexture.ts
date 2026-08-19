@@ -1,6 +1,7 @@
 import * as THREE from 'three'
 import { parseGIF, decompressFrames, type ParsedFrame } from 'gifuct-js'
 import type { MediaAsset } from '../store/projectStore'
+import { acquireCameraStream, dropCameraStream, releaseCameraStream } from '../lib/cameraSources'
 
 /**
  * Controller di texture per una sorgente: immagine statica, video (VideoTexture) o GIF
@@ -128,6 +129,154 @@ function createVideoController(media: MediaAsset): MediaTextureController {
   }
 }
 
+interface CameraEntry {
+  /** Quanti layer stanno riprendendo questa camera. */
+  refs: number
+  video: HTMLVideoElement
+  texture: THREE.VideoTexture
+  release: ReturnType<typeof setTimeout> | null
+  /** Riagganci già tentati dopo la morte di un track: evita di martellare un device sparito. */
+  recoveries: number
+}
+
+/**
+ * Camere già aperte in questa finestra, per deviceId.
+ *
+ * A differenza dei video da file (playhead indipendente per layer) una sorgente live è la stessa
+ * immagine per tutti: condividere elemento video e texture è corretto e permette di impilare più
+ * layer sulla stessa ripresa — la ripresa del DJ con tre effetti diversi — con un solo stream
+ * aperto e un solo upload di frame sulla GPU.
+ */
+const cameraCache = new Map<string, CameraEntry>()
+
+/** Attesa prima di smontare una camera senza più layer (vedi imageCache: i cambi di scena). */
+const CAMERA_RELEASE_MS = 4000
+
+/** Pausa prima di riagganciare un device morto, e quante volte insistere. */
+const RECOVERY_DELAY_MS = 1200
+const MAX_RECOVERIES = 5
+
+/** Aggancia lo stream all'elemento video e resta in ascolto della morte del track. */
+function attachStream(key: string, entry: CameraEntry, stream: MediaStream) {
+  // smontata mentre il browser apriva il device: non agganciare nulla
+  if (cameraCache.get(key) !== entry) return
+  entry.video.srcObject = stream
+  void entry.video.play().catch(() => {
+    /* niente autoplay senza interazione: resta la FALLBACK finché il play non riesce */
+  })
+  const track = stream.getVideoTracks()[0]
+  track?.addEventListener('ended', () => recoverCamera(key, entry), { once: true })
+}
+
+/**
+ * Riapre la camera quando il suo track muore: cam staccata e rimessa, device rubato da un'altra
+ * app, risveglio del sistema. Senza questo il layer resterebbe congelato sull'ultimo frame fino
+ * a un intervento manuale — inaccettabile a metà set.
+ */
+function recoverCamera(key: string, entry: CameraEntry) {
+  if (cameraCache.get(key) !== entry || entry.refs <= 0) return
+  if (entry.recoveries >= MAX_RECOVERIES) return
+  entry.recoveries++
+  dropCameraStream(key) // lo stream in cache è morto: via, così il prossimo acquire riapre davvero
+  setTimeout(() => {
+    if (cameraCache.get(key) !== entry || entry.refs <= 0) return
+    acquireCameraStream(key)
+      .then((stream) => attachStream(key, entry, stream))
+      .catch(() => {
+        /* device ancora assente: si riproverà al prossimo evento o al riavvio manuale */
+      })
+  }, RECOVERY_DELAY_MS)
+}
+
+/**
+ * Chiude immediatamente una camera (texture, elemento video e stream) senza attese.
+ * Serve al pulsante di riavvio: i controller montati tornano alla FALLBACK e la sorgente
+ * riparte pulita al montaggio successivo.
+ */
+export function dropCameraTexture(deviceId: string) {
+  const key = deviceId ?? ''
+  const entry = cameraCache.get(key)
+  if (entry) {
+    if (entry.release != null) clearTimeout(entry.release)
+    cameraCache.delete(key)
+    entry.video.pause()
+    entry.video.srcObject = null
+    entry.texture.dispose()
+  }
+  dropCameraStream(key)
+}
+
+function createCameraController(media: MediaAsset): MediaTextureController {
+  const key = media.deviceId ?? ''
+  let entry = cameraCache.get(key)
+  if (entry) {
+    if (entry.release != null) {
+      clearTimeout(entry.release)
+      entry.release = null
+    }
+  } else {
+    const video = document.createElement('video')
+    video.muted = true
+    video.playsInline = true
+    video.autoplay = true
+    const texture = new THREE.VideoTexture(video)
+    texture.colorSpace = THREE.SRGBColorSpace
+    const created: CameraEntry = { refs: 0, video, texture, release: null, recoveries: 0 }
+    cameraCache.set(key, created)
+    acquireCameraStream(key)
+      .then((stream) => attachStream(key, created, stream))
+      .catch(() => {
+        // permesso negato o device assente: la texture resta la FALLBACK e la UI mostra l'errore
+        if (cameraCache.get(key) === created) cameraCache.delete(key)
+      })
+    entry = created
+  }
+  entry.refs++
+  let released = false
+  return {
+    // finché non arriva il primo frame si mostra la FALLBACK: un VideoTexture senza dati
+    // disegnerebbe un rettangolo nero (o l'ultimo frame di un'altra texture) sul layer
+    getTexture: () => {
+      const current = cameraCache.get(key)
+      if (!current) return FALLBACK
+      return current.video.readyState >= current.video.HAVE_CURRENT_DATA
+        ? current.texture
+        : FALLBACK
+    },
+    tick: () => {
+      const current = cameraCache.get(key)
+      if (!current) return
+      // come per i video da file: la texture è un uniform, non la .map di un materiale,
+      // quindi l'upload va forzato quando ci sono nuovi dati
+      if (current.video.readyState >= current.video.HAVE_CURRENT_DATA) {
+        current.texture.needsUpdate = true
+        // un elemento video può finire in pausa da solo (throttling della finestra in secondo
+        // piano, primo play rifiutato): riavviarlo qui evita l'immagine congelata
+        if (current.video.paused) void current.video.play().catch(() => {})
+      }
+    },
+    dispose: () => {
+      if (released) return
+      released = true
+      const current = cameraCache.get(key)
+      // entry già sparita = apertura fallita: lo stream non è mai stato agganciato, niente
+      // da restituire (acquire e release sono appaiati al ciclo di vita dell'entry)
+      if (!current) return
+      current.refs--
+      if (current.refs > 0 || current.release != null) return
+      current.release = setTimeout(() => {
+        const e = cameraCache.get(key)
+        if (!e || e.refs > 0) return
+        cameraCache.delete(key)
+        e.video.pause()
+        e.video.srcObject = null
+        e.texture.dispose()
+        releaseCameraStream(key)
+      }, CAMERA_RELEASE_MS)
+    },
+  }
+}
+
 /** Renderer di GIF animate: compone i frame (con disposal) su un canvas e ne fa una CanvasTexture. */
 class GifController implements MediaTextureController {
   private canvas = document.createElement('canvas')
@@ -209,7 +358,14 @@ class GifController implements MediaTextureController {
 }
 
 export function createMediaTexture(media: MediaAsset): MediaTextureController {
+  if (media.type === 'camera') return createCameraController(media)
   if (media.type === 'video') return createVideoController(media)
   if (media.type === 'gif') return new GifController(media)
   return createImageController(media)
+}
+
+// Stessa ragione di cameraSources: le cache di texture vivono nel modulo, un hot-replace le
+// sdoppierebbe lasciando i controller montati agganciati a quelle vecchie.
+if (import.meta.hot) {
+  import.meta.hot.accept(() => import.meta.hot?.invalidate())
 }

@@ -302,12 +302,16 @@ function LayerMesh({
   const controllerRef = useRef<MediaTextureController>(NOOP_CONTROLLER)
   const mediaUrl = layer?.media?.url
   const mediaType = layer?.media?.type
+  // le sorgenti live non hanno url: le identificano il device e l'id dell'asset (che cambia a
+  // ogni riattivazione, ed è così che il riavvio manuale della camera ricrea il controller)
+  const mediaDeviceId = layer?.media?.deviceId
+  const mediaId = layer?.media?.id
   const media = layer?.media
   useEffect(() => {
     controllerRef.current = media ? createMediaTexture(media) : NOOP_CONTROLLER
     return () => controllerRef.current.dispose()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mediaUrl, mediaType])
+  }, [mediaUrl, mediaType, mediaDeviceId, mediaId])
 
   // Texture della maschera-immagine (stencil), caricata dall'url quando cambia.
   const maskTexRef = useRef<THREE.Texture>(FALLBACK_TEXTURE)

@@ -23,7 +23,10 @@ interface StoredMedia {
   type: MediaType
   width: number
   height: number
-  blob: Blob
+  /** Assente per le sorgenti live: non c'è nessun file da salvare. */
+  blob?: Blob
+  /** Solo `camera`: device da riaprire al ripristino del progetto. */
+  deviceId?: string
 }
 
 /** Un layer serializzato: media e maschera-immagine ridotti al solo blob; niente stato transiente. */
@@ -83,23 +86,36 @@ function getDb() {
 }
 
 function serializeMedia(media: MediaAsset | null): StoredMedia | null {
-  return media?.blob != null
+  if (!media) return null
+  // sorgente live: si salva il riferimento al device, il flusso video ovviamente no
+  if (media.type === 'camera') {
+    return {
+      name: media.name,
+      type: media.type,
+      width: media.width,
+      height: media.height,
+      deviceId: media.deviceId,
+    }
+  }
+  return media.blob != null
     ? { name: media.name, type: media.type, width: media.width, height: media.height, blob: media.blob }
     : null
 }
 
 function deserializeMedia(stored: StoredMedia | null): MediaAsset | null {
-  return stored
-    ? {
-        id: crypto.randomUUID(),
-        name: stored.name,
-        type: stored.type ?? 'image',
-        url: URL.createObjectURL(stored.blob),
-        width: stored.width,
-        height: stored.height,
-        blob: stored.blob,
-      }
-    : null
+  if (!stored) return null
+  const base = {
+    id: crypto.randomUUID(),
+    name: stored.name,
+    type: stored.type ?? 'image',
+    width: stored.width,
+    height: stored.height,
+  }
+  // la camera riparte da sola: il controller riapre il device al montaggio del layer (se non è
+  // più collegato la texture resta vuota, senza rompere il resto della scena)
+  if (stored.type === 'camera') return { ...base, url: '', deviceId: stored.deviceId }
+  if (!stored.blob) return null
+  return { ...base, url: URL.createObjectURL(stored.blob), blob: stored.blob }
 }
 
 /** Serializza un layer per la persistenza (media/maschera → solo blob, url rigenerato al load). */

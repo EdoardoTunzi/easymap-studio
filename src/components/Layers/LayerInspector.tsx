@@ -4,6 +4,7 @@ import { LayerList } from './LayerList'
 import { LayerProperties } from './LayerProperties'
 import { CollapsibleSection } from './CollapsibleSection'
 import { MediaUploader } from '@/components/ControlPanel/MediaUploader'
+import { CameraPicker } from '@/components/ControlPanel/CameraPicker'
 import { BackgroundKeyPanel } from '@/components/Positioning/BackgroundKeyPanel'
 import { PositioningPanel } from '@/components/Positioning/PositioningPanel'
 import { MaskPanel } from '@/components/Mask/MaskPanel'
@@ -53,6 +54,8 @@ export function LayerInspector() {
         >
           <div className="flex flex-col gap-4">
             <MediaUploader />
+            <Separator />
+            <CameraPicker />
             <Separator />
             <BackgroundKeyPanel />
             <Separator />

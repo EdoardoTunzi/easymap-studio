@@ -103,6 +103,10 @@ Modello: scena = pila di Layer indipendenti; ogni layer ha contenuto (img/gif/vi
 
 ## Fase 3 — Live performance
 
+- [x] Ingresso video live (webcam / cam USB / capture card HDMI) come sorgente di un layer: `MediaType 'camera'` + `deviceId`, stream condivisi per device con refcount (`src/lib/cameraSources.ts`), texture live in `mediaTexture.ts`, pannello `CameraPicker` con select dei device, riavvio della sorgente e "Nuovo strato" per impilare più effetti sulla stessa ripresa. L'Output riceve solo il deviceId e apre il device per conto suo
+- [ ] Mirror orizzontale dedicato per la camera (oggi si usa "Specchia in orizzontale" della toolbar di mapping, che però tocca i corner e non funziona a mapping bloccato)
+- [ ] Selezione di risoluzione/frame rate della camera (oggi si chiede sempre il massimo fino a 1080p)
+- [ ] Condivisione schermo (`getDisplayMedia`) come sorgente di layer: stesso percorso della camera, sorgente diversa
 - [ ] Audio reactive: Web Audio API (microfono + FFT → uniform negli shader)
 - [ ] BPM sync / tap tempo
 - [ ] MIDI controller (Web MIDI API) con mapping parametri
