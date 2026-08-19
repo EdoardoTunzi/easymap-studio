@@ -55,6 +55,9 @@ Spuntare gli step completati; aggiungere nuovi step quando emergono. Tenere alli
 - [ ] Palette memorizzata per-shader (ora è per-layer) + salvataggio di palette custom dell'utente
 - [x] Famiglie di effetti (Psy/Morph/Halo/Liquid/SD/Audio/Altri) dedotte dal prefisso del file, con pulsanti di filtro e conteggi sopra la lista degli effetti (`src/lib/shaderCategories.ts` + `ShaderPicker`)
 - [x] Frecce ◀ ▶ e ⌥A/⌥S scorrono dentro la sola famiglia filtrata: il filtro è passato da stato locale del picker a `uiStore.shaderCategory`, che `cycleActiveShader` consulta
+- [x] Interruttore rapido della palette accanto a "Colori casuali" (pannello Shader), che spegne anche il loop dei colori — altrimenti il loop la riaccendeva al primo tick. Stessa correzione applicata al toggle del pannello Palette
+- [x] Pulsante "Reset" accanto a "Random": riporta uniform e colori dell'effetto attivo ai default dichiarati nel `.glsl` (non tocca Size, palette e controlli globali del layer)
+- [x] Due effetti da riferimenti visivi dell'utente: `Wire Network` (maglia di nodi/segmenti con scaglie scure, stile data-sculpture) e `Liquid Zebra Flow` (bande bianco/nere avvolte in vortici, domain warping). Libreria a 103 effetti
 - [ ] Anteprime/thumbnail degli shader nella libreria (come i preset nello screenshot MAPSHROOM) — il motore esiste già: `src/engine/effectThumbnail.ts` (usato dalle card della playlist)
 - [ ] Export/import progetto come file JSON (backup portabile tra macchine)
 - [ ] PWA: icone reali (pwa-192x192.png, pwa-512x512.png mancanti in public/) e test offline

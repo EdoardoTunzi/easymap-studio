@@ -11,6 +11,8 @@ import {
   DEFAULT_SIZE,
   DEFAULT_SHADER_NAME,
   NONE_SHADER_NAME,
+  defaultColorsFor,
+  defaultParamsFor,
   useEffectsStore,
 } from './effectsStore'
 import {
@@ -340,6 +342,11 @@ interface LayersState {
   cycleActiveShader: (dir: 1 | -1) => void
   /** Estrae valori casuali per tutti gli uniform float dello shader attivo. */
   randomizeActiveParams: () => void
+  /**
+   * Riporta i controlli dell'effetto attivo (uniform e colori) ai valori dichiarati dallo
+   * shader: è il modo di tornare a un punto noto dopo un Random o una serie di ritocchi.
+   */
+  resetActiveParams: () => void
   setActiveSize: (size: number) => void
   /** Aggiorna i controlli globali dell'effetto sul layer attivo (+ layer sincronizzati). */
   setActiveFx: (patch: Partial<FxControls>) => void
@@ -606,6 +613,18 @@ export const useLayersStore = create<LayersState>((set, get) => {
           }),
         )
         return { params: { ...l.params, [l.shaderName]: random } }
+      }),
+
+    resetActiveParams: () =>
+      editEffect((l) => {
+        const shader = useEffectsStore.getState().shaders.find((s) => s.name === l.shaderName)
+        if (!shader) return {}
+        // si azzerano solo gli uniform DI QUESTO shader: i valori messi a punto sugli altri
+        // effetti restano dove sono, e tornandoci si ritrovano intatti
+        return {
+          params: { ...l.params, [l.shaderName]: defaultParamsFor(shader) },
+          colorParams: { ...l.colorParams, [l.shaderName]: defaultColorsFor(shader) },
+        }
       }),
 
     setActiveSize: (size) => editEffect(() => ({ size })),

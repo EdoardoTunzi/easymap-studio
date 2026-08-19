@@ -2,6 +2,43 @@
 
 Ogni modifica al progetto va registrata qui con data, descrizione e motivazione. Le voci più recenti in alto dentro ogni giornata.
 
+## 2026-08-19 — Interruttore rapido della palette (e stop del loop che la riaccendeva)
+
+Richiesta dell'utente: un pulsante on/off accanto a "Colori casuali" nel pannello Shader per spegnere al volo la palette; poi, subito dopo, che spegnendola si spenga anche il loop dei colori.
+
+- Icona power a destra dell'intestazione (in `justify-between`), verde quando la palette è attiva e grigia quando è spenta. Spegnere la palette **non perde i colori generati**: restano nel layer, pronti alla riaccensione.
+- **Il secondo requisito non era solo comodità, era un bug**: il motore del loop scrive con `setLayerPaletteColors`, che riabilita la palette a ogni tick. Senza fermare il loop, spegnerla non avrebbe avuto alcun effetto — si sarebbe riaccesa entro un trentesimo di secondo.
+- Nuova azione `stopPaletteLoopFor` in `uiStore` (spegne senza invertire, idempotente), usata **in entrambi** i punti che disattivano la palette: il nuovo interruttore e il pulsante "Palette attiva/disattivata" del pannello Palette — dove lo stesso difetto esisteva già ed è stato corretto ora.
+- Verificato nel browser: con loop acceso, un click spegne palette e loop insieme, e dopo due secondi la palette è ancora spenta (con il loop vivo si sarebbe riaccesa) mentre i cinque colori generati sono conservati.
+
+## 2026-08-19 — Reset dei controlli effetto ai valori di partenza
+
+Richiesta dell'utente: un pulsante per riportare i controlli di qualunque effetto ai valori standard e ripartire puliti (nasce come contraltare del Random).
+
+- **`resetActiveParams`** in `layersStore`: riscrive uniform e colori dello shader attivo con i default dichiarati dal file `.glsl` (`defaultParamsFor` / `defaultColorsFor`, già usati altrove). Passa da `editEffect`, quindi rispetta la propagazione ai layer collegati come ogni altra modifica di effetto.
+- **Azzera solo lo shader corrente**: i valori messi a punto su altri effetti restano dove sono e tornandoci si ritrovano intatti — `params` è una mappa per nome di shader, sarebbe stato facile (e sbagliato) svuotarla tutta.
+- **Cosa NON tocca**: Size, palette e controlli globali del layer. Sono proprietà del layer, non dell'effetto, e hanno già i loro reset; azzerarle da qui cancellerebbe il lavoro fatto sul layer per rimettere a posto un solo effetto. Scritto nel tooltip.
+- Il blocco "Controlli effetto" ora compare anche per gli shader che espongono **solo** colori e nessuno slider: prima la condizione guardava i soli `controls` e lì il pulsante non sarebbe mai apparso.
+- Verificato nel browser: dopo Random più un colore modificato a mano, il pulsante riporta tutti e nove i parametri e i due colori esattamente ai default del file.
+
+## 2026-08-19 — Due nuovi effetti da riferimenti visivi: "Wire Network" e "Liquid Zebra Flow"
+
+L'utente ha allegato due immagini di proiezioni su statua e ha chiesto un effetto per ciascuna, animato e parametrico.
+
+**Wire Network** (`wireNetwork.glsl`, famiglia Altri, 13 controlli + 2 colori) — maglia di nodi e segmenti tratteggiati con scaglie poligonali scure che scoprono il soggetto.
+- Griglia di celle con nodo spostato a caso e animato: ogni cella collega il proprio nodo a quelli delle vicine. **Una vera triangolazione di Delaunay in un fragment shader costerebbe molto di più per una differenza che a schermo non si distingue.**
+- **`linkChance`**: al primo tentativo la rete tradiva la griglia di partenza (trama regolare di X, visibile in prova). Scartare a caso una parte dei collegamenti — con hash **simmetrico** nelle due celle, altrimenti il filo comparirebbe o no a seconda di quale cella lo disegna — è ciò che l'ha resa organica. Il test viene prima del calcolo del nodo vicino, così le coppie scartate non costano nulla.
+- Tratteggio ricavato dalla posizione **lungo** il segmento, non dalle coordinate schermo: altrimenti scorrerebbe via dal filo invece di viaggiarci sopra.
+- Le scaglie usano la cella di Voronoi più vicina con soglia animata: unendosi fra loro formano macchie frastagliate che si aprono e si richiudono.
+
+**Liquid Zebra Flow** (`liquidZebraFlow.glsl`, famiglia Liquid, 9 controlli + 2 colori) — bande ad altissimo contrasto piegate in vortici, tagliate con soglia netta.
+- Domain warping a due stadi: un campo di rumore deforma il piano, un secondo deforma il risultato, e solo alla fine si taglia. È la piega ripetuta a produrre gli "occhi"; alzando la frequenza senza warp si otterrebbero solo righe dritte.
+- **Niente `atan` per l'avvolgimento**: al primo tentativo un termine sull'angolo polare tagliava l'immagine con una riga netta — è il salto da +π a −π sul semiasse negativo, ben visibile in prova. Sostituito da una torsione (rotazione crescente col raggio), continua ovunque.
+- Taratura finale trovata a schermo confrontando con il riferimento: il warp deve **dominare** la direzione di base (`flow` 1.5, `warp` 1.9), altrimenti restano bande parallele invece di vortici chiusi.
+- `sourceWarp` (default 0) fa deformare le bande dalla luminanza del soggetto, come negli effetti Morph: sul mapping è ciò che fa "aderire" il pattern al corpo.
+
+Verificati entrambi nel browser sull'asset dimostrativo, senza errori di compilazione GLSL. Libreria a 103 effetti.
+
 ## 2026-08-19 — Nove blend mode in più (Overlay, Difference, Soft Light…) via copia del backdrop
 
 Richiesta dell'utente: aggiungere i blend mode di una lista tipo Photoshop, avendo in app solo Normal/Add/Screen/Multiply.

@@ -1,4 +1,5 @@
 import { Dices, Power } from 'lucide-react'
+import { useUiStore } from '@/store/uiStore'
 import { Button } from '@/components/ui/button'
 import { Slider } from '@/components/ui/slider'
 import { Separator } from '@/components/ui/separator'
@@ -28,6 +29,8 @@ export function PalettePanel() {
     useLayersStore((s) => s.layers.find((l) => l.id === s.activeLayerId)?.palette) ??
     createDefaultPalette()
   const { enabled, colors, count, amount, activePreset } = palette
+  const activeLayerId = useLayersStore((s) => s.activeLayerId)
+  const stopPaletteLoopFor = useUiStore((s) => s.stopPaletteLoopFor)
   const setEnabled = useLayersStore((s) => s.setPaletteEnabled)
   const setAmount = useLayersStore((s) => s.setPaletteAmount)
   const setCount = useLayersStore((s) => s.setPaletteCount)
@@ -39,7 +42,13 @@ export function PalettePanel() {
     <div className="flex flex-col gap-5">
       <Button
         variant={enabled ? 'default' : 'outline'}
-        onClick={() => setEnabled(!enabled)}
+        onClick={() => {
+          const next = !enabled
+          setEnabled(next)
+          // come nel pannello Shader: senza spegnere il loop, al primo tick la palette
+          // si riaccenderebbe da sola (il loop la riabilita ogni volta che scrive)
+          if (!next && activeLayerId) stopPaletteLoopFor(activeLayerId)
+        }}
         className="w-full gap-2"
       >
         <Power className="size-4" />

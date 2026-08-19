@@ -1,4 +1,14 @@
-import { Link2, CheckSquare, Square, Dices, ChevronLeft, ChevronRight, Repeat } from 'lucide-react'
+import {
+  Link2,
+  CheckSquare,
+  Square,
+  Dices,
+  ChevronLeft,
+  ChevronRight,
+  Repeat,
+  RotateCcw,
+  Power,
+} from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Slider } from '@/components/ui/slider'
@@ -27,16 +37,20 @@ export function EffectsPanel() {
   const setActiveShader = useLayersStore((s) => s.setActiveShader)
   const cycleActiveShader = useLayersStore((s) => s.cycleActiveShader)
   const randomizeActiveParams = useLayersStore((s) => s.randomizeActiveParams)
+  const resetActiveParams = useLayersStore((s) => s.resetActiveParams)
   const setSize = useLayersStore((s) => s.setActiveSize)
   const setParam = useLayersStore((s) => s.setActiveParam)
   const setColorParam = useLayersStore((s) => s.setActiveColorParam)
   const setPaletteColors = useLayersStore((s) => s.setPaletteColors)
+  const setPaletteEnabled = useLayersStore((s) => s.setPaletteEnabled)
+  const paletteEnabled = activeLayer?.palette.enabled ?? false
   const paletteCount = activeLayer?.palette.count ?? 5
   const syncTargetIds = useLayersStore((s) => s.syncTargetIds)
   const toggleSyncTarget = useLayersStore((s) => s.toggleSyncTarget)
   const setSyncAll = useLayersStore((s) => s.setSyncAll)
   const paletteLoopLayerIds = useUiStore((s) => s.paletteLoopLayerIds)
   const togglePaletteLoopFor = useUiStore((s) => s.togglePaletteLoopFor)
+  const stopPaletteLoopFor = useUiStore((s) => s.stopPaletteLoopFor)
   const shaderCategory = useUiStore((s) => s.shaderCategory)
   const paletteLoopIntervals = useUiStore((s) => s.paletteLoopIntervals)
   const defaultLoopInterval = useUiStore((s) => s.paletteLoopInterval)
@@ -179,9 +193,37 @@ export function EffectsPanel() {
       {/* Colorazione rapida: la palette è una gradient map, quindi ricolora QUALSIASI effetto.
           Qui accanto all'effetto per non dover passare dal pannello Palette a ogni prova. */}
       <div className="flex flex-col gap-1.5">
-        <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-          Colori casuali
-        </span>
+        {/* Interruttore rapido della palette: spegnerla riporta l'effetto ai suoi colori nativi
+            senza perdere quelli generati, che restano pronti alla riaccensione. */}
+        <div className="flex items-center justify-between gap-2">
+          <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+            Colori casuali
+          </span>
+          <button
+            type="button"
+            onClick={() => {
+              const next = !paletteEnabled
+              setPaletteEnabled(next)
+              // spegnendo la palette va spento anche il loop, altrimenti continuerebbe a
+              // generare colori e al primo tick la riaccenderebbe da solo
+              if (!next && activeLayerId) stopPaletteLoopFor(activeLayerId)
+            }}
+            aria-pressed={paletteEnabled}
+            title={
+              paletteEnabled
+                ? 'Palette attiva sui colori dell\'effetto: clicca per spegnerla e tornare ai colori originali'
+                : "Palette spenta: clicca per riapplicarla all'effetto"
+            }
+            className={cn(
+              'rounded p-1 transition-colors',
+              paletteEnabled
+                ? 'text-emerald-400 hover:bg-accent/50'
+                : 'text-muted-foreground/50 hover:bg-accent/50 hover:text-muted-foreground',
+            )}
+          >
+            <Power className="size-3.5" />
+          </button>
+        </div>
         <div className="flex items-center gap-1.5">
           <Button
             variant="outline"
@@ -240,7 +282,7 @@ export function EffectsPanel() {
         </div>
       </div>
 
-      {shader && shader.controls.length > 0 && <Separator />}
+      {shader && (shader.controls.length > 0 || shader.colorControls.length > 0) && <Separator />}
 
       {/* Colori dell'effetto: uniform vec3 dello shader, modificabili col picker */}
       {shader && shader.colorControls.length > 0 && (
@@ -271,24 +313,37 @@ export function EffectsPanel() {
         </div>
       )}
 
-      {shader && shader.controls.length > 0 && (
+      {shader && (shader.controls.length > 0 || shader.colorControls.length > 0) && (
         <div className="flex flex-col gap-4">
           {/* Il random pesca dentro il range dichiarato da ogni uniform (@min/@max): è il modo
-              più rapido di far emergere look che a mano non si proverebbero. */}
+              più rapido di far emergere look che a mano non si proverebbero. Il reset è la via
+              di ritorno: dopo qualche giro di random e ritocchi, riporta l'effetto al punto noto. */}
           <div className="flex items-center justify-between gap-2">
             <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
               Controlli effetto
             </span>
-            <Button
-              variant="outline"
-              size="sm"
-              className="h-7 gap-1.5 px-2 text-xs"
-              onClick={randomizeActiveParams}
-              title="Valori casuali per tutti i controlli di questo effetto"
-            >
-              <Dices className="size-3.5 shrink-0" />
-              Random
-            </Button>
+            <div className="flex items-center gap-1.5">
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-7 gap-1.5 px-2 text-xs"
+                onClick={resetActiveParams}
+                title="Riporta controlli e colori di questo effetto ai valori di partenza (Size, palette e controlli globali non vengono toccati)"
+              >
+                <RotateCcw className="size-3.5 shrink-0" />
+                Reset
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-7 gap-1.5 px-2 text-xs"
+                onClick={randomizeActiveParams}
+                title="Valori casuali per tutti i controlli di questo effetto"
+              >
+                <Dices className="size-3.5 shrink-0" />
+                Random
+              </Button>
+            </div>
           </div>
           {shader.controls.map((control) => {
             const value = params[shader.name]?.[control.name] ?? control.default

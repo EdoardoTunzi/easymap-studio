@@ -122,6 +122,12 @@ interface UiState {
    */
   paletteLoopLayerIds: string[]
   togglePaletteLoopFor: (layerId: string) => void
+  /**
+   * Spegne il loop di un layer senza invertirlo. Serve a chi disattiva la palette: lasciandolo
+   * acceso continuerebbe a generare colori, e al primo tick la palette si riaccenderebbe da sé
+   * (il loop la riabilita quando scrive). Idempotente: su un layer senza loop non fa nulla.
+   */
+  stopPaletteLoopFor: (layerId: string) => void
   /** Toglie dal loop i layer che non esistono più (eliminati o sostituiti dal caricamento). */
   prunePaletteLoopLayers: (existingIds: string[]) => void
   /**
@@ -194,6 +200,12 @@ export const useUiStore = create<UiState>((set) => ({
             : { ...s.paletteLoopIntervals, [layerId]: s.paletteLoopInterval },
       }
     }),
+  stopPaletteLoopFor: (layerId) =>
+    set((s) =>
+      s.paletteLoopLayerIds.includes(layerId)
+        ? { paletteLoopLayerIds: s.paletteLoopLayerIds.filter((id) => id !== layerId) }
+        : s,
+    ),
   prunePaletteLoopLayers: (existingIds) =>
     set((s) => {
       const paletteLoopLayerIds = s.paletteLoopLayerIds.filter((id) => existingIds.includes(id))
