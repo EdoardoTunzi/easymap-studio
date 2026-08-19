@@ -6,6 +6,7 @@ import { useEffectsStore } from '../store/effectsStore'
 import type { ParsedShader } from './isfParser'
 import { createMediaTexture, FALLBACK_TEXTURE, type MediaTextureController } from './mediaTexture'
 import { getAudioLevel, getAudioTexture, isAudioActive } from './audioInput'
+import { captureBackdrop, getBackdropSize, getBackdropTexture } from './backdrop'
 
 const NOOP_CONTROLLER: MediaTextureController = {
   getTexture: () => FALLBACK_TEXTURE,
@@ -13,13 +14,34 @@ const NOOP_CONTROLLER: MediaTextureController = {
   dispose: () => {},
 }
 
-// Fattori di CustomBlending per ogni blend mode, con output premoltiplicato dallo shader.
-// equation = Add per tutti. Vedi isfParser: gl_FragColor = vec4(rgb*a, a).
-const BLEND_FACTORS: Record<BlendMode, { src: THREE.BlendingSrcFactor; dst: THREE.BlendingDstFactor }> = {
+// Fattori di CustomBlending per i blend mode che il blending hardware sa calcolare, con output
+// premoltiplicato dallo shader. equation = Add per tutti. Vedi isfParser: gl_FragColor = vec4(rgb*a, a).
+const BLEND_FACTORS: Partial<
+  Record<BlendMode, { src: THREE.BlendingSrcFactor; dst: THREE.BlendingDstFactor }>
+> = {
   normal: { src: THREE.OneFactor, dst: THREE.OneMinusSrcAlphaFactor },
   add: { src: THREE.OneFactor, dst: THREE.OneFactor },
   screen: { src: THREE.OneFactor, dst: THREE.OneMinusSrcColorFactor },
   multiply: { src: THREE.DstColorFactor, dst: THREE.OneMinusSrcAlphaFactor },
+}
+
+/** Sostituzione pura: usata dai blend calcolati nello shader, che scrive il colore già composto. */
+const REPLACE_BLEND = { src: THREE.OneFactor, dst: THREE.ZeroFactor } as const
+
+/**
+ * Blend mode risolti nello shader perché richiedono la lettura del colore sottostante (vedi
+ * `backdrop.ts`). Il numero è l'id passato a `uBlendMode` e atteso da `easyvj_blend`.
+ */
+const SHADER_BLEND: Partial<Record<BlendMode, number>> = {
+  overlay: 1,
+  softLight: 2,
+  hardLight: 3,
+  difference: 4,
+  exclusion: 5,
+  darken: 6,
+  lighten: 7,
+  colorBurn: 8,
+  colorDodge: 9,
 }
 
 const MASK_SLOTS = 8
@@ -62,6 +84,10 @@ export function buildUniforms(shader: ParsedShader | undefined): Record<string, 
     uMaskTex: { value: FALLBACK_TEXTURE },
     uMaskTexOn: { value: 0 },
     uQuadAspect: { value: 1 },
+    // blend calcolati nello shader: 0 = ci pensa l'hardware (nessuna copia dello schermo)
+    uBackdrop: { value: FALLBACK_TEXTURE },
+    uScreenSize: { value: new THREE.Vector2(1, 1) },
+    uBlendMode: { value: 0 },
     // ingresso audio: la texture esiste sempre (a silenzio) così gli shader audio-reattivi
     // compilano e renderizzano anche senza microfono aperto
     uAudio: { value: getAudioTexture() },
@@ -228,6 +254,13 @@ function EffectPass({ layerId, variant, source, renderOrder, geometry, controlle
     // maschera-immagine
     u.uMaskTexOn.value = l.maskImage ? 1 : 0
     u.uMaskTex.value = maskTexRef.current
+    // blend avanzato: la copia del backdrop è già stata fatta da onBeforeRender di questa mesh
+    const blendId = SHADER_BLEND[l.blendMode] ?? 0
+    u.uBlendMode.value = blendId
+    if (blendId > 0) {
+      u.uBackdrop.value = getBackdropTexture()
+      ;(u.uScreenSize.value as THREE.Vector2).copy(getBackdropSize())
+    }
     // ingresso audio (il campionamento vero avviene una volta per frame, vedi AudioSampler)
     u.uAudio.value = getAudioTexture()
     u.uAudioLevel.value = getAudioLevel()
@@ -249,10 +282,18 @@ function EffectPass({ layerId, variant, source, renderOrder, geometry, controlle
 
   if (!layer || !shader || !layer.visible) return null
 
-  const blend = BLEND_FACTORS[layer.blendMode]
+  const shaderBlend = SHADER_BLEND[layer.blendMode] ?? 0
+  // i blend calcolati nello shader scrivono il colore già composto: qui il materiale sostituisce
+  const blend = shaderBlend > 0 ? REPLACE_BLEND : (BLEND_FACTORS[layer.blendMode] ?? BLEND_FACTORS.normal!)
 
   return (
-    <mesh geometry={geometry} renderOrder={renderOrder}>
+    <mesh
+      geometry={geometry}
+      renderOrder={renderOrder}
+      // la copia dello schermo va fatta immediatamente prima di disegnare QUESTA mesh: solo così
+      // il backdrop contiene i layer sottostanti già composti, e nient'altro
+      onBeforeRender={shaderBlend > 0 ? (renderer) => captureBackdrop(renderer) : undefined}
+    >
       <shaderMaterial
         // shader.id (non il nome): un visual generativo rigenerato mantiene il nome ma cambia
         // sorgente, e senza ricreare il materiale Three riuserebbe il programma GLSL già compilato

@@ -46,7 +46,7 @@ Tutto quello che puoi fare dall'editor, pannello per pannello.
 
 ### Layer e maschere
 
-- Scena come pila di **layer indipendenti**: aggiungi, duplichi, riordini (drag&drop), rinomini, nascondi/mostri, regoli opacità e blend mode (Normal/Add/Screen/Multiply) di ognuno.
+- Scena come pila di **layer indipendenti**: aggiungi, duplichi, riordini (drag&drop), rinomini, nascondi/mostri, regoli opacità e **blend mode** di ognuno — tredici modalità: Normal, Add, Screen, Multiply, Overlay, Soft Light, Hard Light, Difference, Exclusion, Darken, Lighten, Color Burn, Color Dodge.
 - Per ogni layer: upload di **immagine, GIF o video**, oppure **ingresso video live** da una camera collegata, con rilevamento automatico dello sfondo opaco e slider manuale "rimuovi sfondo scuro" (luma key) per le immagini senza canale alpha.
 - **Corner-pin** a 4 maniglie trascinabili per allineare la proiezione alla superficie reale, pad direzionale + zoom per spostare/ridimensionare l'intera proiezione, fit automatico al caricamento.
 - **Zoom e pan della vista di anteprima**, indipendenti dall'output: utile per raggiungere le maniglie del corner-pin quando l'asset è ingrandito oltre i bordi del canvas.
@@ -125,7 +125,8 @@ Fuori dalla modalità Live la barra spaziatrice resta interamente al pan della v
 
 ### Multi-layer (stile Resolume/MadMapper)
 
-- Scena come pila di layer indipendenti: ognuno con proprio media, effetto, corner-pin, maschere, opacità e blend mode (Normal/Add/Screen/Multiply), compositati via `CustomBlending` con alpha premoltiplicato.
+- Scena come pila di layer indipendenti: ognuno con proprio media, effetto, corner-pin, maschere, opacità e blend mode.
+- **Tredici blend mode su due strade diverse**: Normal, Add, Screen e Multiply li calcola il blending hardware (`CustomBlending` con alpha premoltiplicato, costo zero); Overlay, Soft/Hard Light, Difference, Exclusion, Darken, Lighten, Color Burn e Color Dodge hanno invece bisogno di **leggere il colore sottostante**, cosa che un fragment shader non può fare sul framebuffer su cui scrive. Per questi, la mesh copia lo schermo in una texture subito prima di disegnarsi e lo shader calcola la formula, scrivendo il risultato già composto — una copia a schermo pieno per layer, e nessun costo per le scene che non li usano.
 - Maschere per-layer (rettangolo/ellisse con feather, rotazione, invert) o da stencil PNG, editabili direttamente sul canvas.
 - Sorgenti dinamiche: immagini, **video** (`THREE.VideoTexture`), **GIF animate** (decodifica frame via `gifuct-js`) e **camere live** (`getUserMedia`), con stream condivisi per device a conteggio di riferimenti: più layer sulla stessa ripresa significano un solo device aperto e un solo upload di frame sulla GPU.
 - Sincronizzazione dell'effetto tra layer selezionati, con propagazione live dei parametri.

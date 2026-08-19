@@ -2,6 +2,18 @@
 
 Ogni modifica al progetto va registrata qui con data, descrizione e motivazione. Le voci più recenti in alto dentro ogni giornata.
 
+## 2026-08-19 — Nove blend mode in più (Overlay, Difference, Soft Light…) via copia del backdrop
+
+Richiesta dell'utente: aggiungere i blend mode di una lista tipo Photoshop, avendo in app solo Normal/Add/Screen/Multiply.
+
+- **Perché i quattro esistenti erano quelli e non altri**: il blending hardware calcola `src·fattore OP dst·fattore`, e da lì escono esattamente Normal, Add, Screen e Multiply. Overlay, Soft/Hard Light, Difference, Exclusion, Darken, Lighten, Color Burn e Color Dodge sono formule che devono **leggere** il colore sottostante — cosa che un fragment shader non può fare sul framebuffer su cui sta scrivendo.
+- **Soluzione scelta**: `renderer.copyFramebufferToTexture` dentro l'`onBeforeRender` della mesh del layer (`backdrop.ts`), poi la formula nello shader (`easyvj_blend` nel wrapper). Il materiale in questo caso **sostituisce** invece di fondere (`One`/`Zero`), perché lo shader scrive il colore già composto; dove il layer è trasparente riscrive il backdrop tale e quale, quindi fuori dalla sagoma non cambia nulla.
+- **Alternativa scartata**: pipeline multi-pass con render target e ping-pong. È la strada "giusta" in astratto, ma avrebbe richiesto di riscrivere il rendering della scena (crossfade fra scene, test pattern, ordini di disegno) per un guadagno solo teorico a questi numeri di layer.
+- **Una sola texture condivisa**: i layer si disegnano in sequenza e ciascuno la riscrive al proprio turno, quindi ognuno vede esattamente ciò che ha sotto. Costo: una copia a schermo pieno per layer a blend avanzato, **zero** per le scene che non ne usano (i quattro classici restano sulla via hardware).
+- Le formule sono quelle dei *separable blend modes* del compositing standard, con due attenzioni: la sorgente va limitata a 0..1 prima del blend (gli shader emettono spesso valori oltre 1) e le divisioni di Color Burn/Dodge hanno il denominatore protetto.
+- **L'opacità del layer entra come `mix(backdrop, blended, outA)`**, quindi continua a funzionare da dissolvenza anche sui blend avanzati: verificato a 30%, dove l'effetto si attenua senza scurire.
+- Verificato nel browser su due layer sovrapposti: Difference, Overlay, Color Dodge e opacità parziale, senza errori WebGL in console.
+
 ## 2026-08-19 — Famiglie di effetti e filtri rapidi nella libreria
 
 Richiesta dell'utente: con cento effetti la lista non è più scorribile — raggrupparli per famiglia (halo, sd, psy…) e filtrare la lista con dei pulsanti.

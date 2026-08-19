@@ -99,6 +99,7 @@ Modello: scena = pila di Layer indipendenti; ogni layer ha contenuto (img/gif/vi
 - [ ] **SDF precalcolato dall'alpha** (distance transform all'upload dell'immagine, texture ausiliaria negli uniform): sblocca il neon morbido a distanza arbitraria e le **onde che si propagano dal bordo verso l'interno**, che il campionamento a raggio limitato di `sdEdgePulse` non può rendere (oltre ~20 texel degenera in un riempimento). Tocca engine, store e persistenza
 - [ ] Contorni vettoriali (marching squares → polilinee con coordinata di lunghezza d'arco): abilita la **cometa che corre lungo il perimetro** a velocità costante, non ottenibile né con il gradiente né con l'SDF
 - [ ] Editor maschera manuale di rifinitura (per bordi imperfetti)
+- [x] Blend mode completi (13): ai quattro risolti dal blending hardware si aggiungono Overlay, Soft Light, Hard Light, Difference, Exclusion, Darken, Lighten, Color Burn e Color Dodge, calcolati nello shader leggendo una copia del backdrop (`src/engine/backdrop.ts`)
 - [ ] Opzione "tratta il nero come trasparente" (luminance key) per immagini senza canale alpha
 - [ ] Warp proiettivo vero (omografia nello shader o mesh suddivisa) — il warp attuale a 2 triangoli può creare una piega diagonale con deformazioni estreme
 - [ ] Rimozione sfondo automatica (client-side ML o servizio esterno — decisione rimandata, per ora si caricano PNG già scontornati)

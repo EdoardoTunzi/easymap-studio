@@ -116,14 +116,42 @@ export const DEFAULT_FX: FxControls = {
   invert: 0,
 }
 
-/** Modalità di fusione del layer con quelli sottostanti. */
-export type BlendMode = 'normal' | 'add' | 'screen' | 'multiply'
+/**
+ * Modalità di fusione del layer con quelli sottostanti.
+ *
+ * Le prime quattro le calcola il blending hardware; le altre hanno bisogno di leggere il colore
+ * sottostante e vengono risolte nello shader (vedi `backdrop.ts`). La differenza è invisibile
+ * all'uso, ma le seconde costano una copia dello schermo per layer.
+ */
+export type BlendMode =
+  | 'normal'
+  | 'add'
+  | 'screen'
+  | 'multiply'
+  | 'overlay'
+  | 'softLight'
+  | 'hardLight'
+  | 'difference'
+  | 'exclusion'
+  | 'darken'
+  | 'lighten'
+  | 'colorBurn'
+  | 'colorDodge'
 
 export const BLEND_MODES: { value: BlendMode; label: string }[] = [
   { value: 'normal', label: 'Normal' },
   { value: 'add', label: 'Add' },
   { value: 'screen', label: 'Screen' },
   { value: 'multiply', label: 'Multiply' },
+  { value: 'overlay', label: 'Overlay' },
+  { value: 'softLight', label: 'Soft Light' },
+  { value: 'hardLight', label: 'Hard Light' },
+  { value: 'difference', label: 'Difference' },
+  { value: 'exclusion', label: 'Exclusion' },
+  { value: 'darken', label: 'Darken' },
+  { value: 'lighten', label: 'Lighten' },
+  { value: 'colorBurn', label: 'Color Burn' },
+  { value: 'colorDodge', label: 'Color Dodge' },
 ]
 
 /**

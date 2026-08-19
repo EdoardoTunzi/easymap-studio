@@ -84,6 +84,10 @@ uniform float uMaskTexOn;            // 1 = usa la maschera-immagine
 // Rapporto larghezza/altezza del QUAD del layer (dai corner-pin, non del canvas): serve agli
 // shader che disegnano forme riconoscibili (cerchi, occhi…) e non devono deformarsi col mapping.
 uniform float uQuadAspect;
+// --- Blend mode "avanzati" (quelli che il blending hardware non sa calcolare) ---
+uniform sampler2D uBackdrop;         // copia di ciò che è già disegnato sotto questo layer
+uniform vec2 uScreenSize;            // dimensioni del buffer di disegno, per campionarla
+uniform float uBlendMode;            // 0 = ci pensa l'hardware; >0 = formula in easyvj_blend
 // --- Ingresso audio (per gli shader audio-reattivi: si legge con easyvj_wave/easyvj_level) ---
 uniform sampler2D uAudio;            // forma d'onda nel dominio del tempo, 256x1; 0.5 = silenzio
 uniform float uAudioLevel;           // volume RMS 0..1
@@ -138,6 +142,46 @@ float easyvj_maskRegion() {
     region *= dot(mt.rgb, vec3(0.299, 0.587, 0.114)) * mt.a;
   }
   return clamp(region, 0.0, 1.0);
+}
+
+// --- Formule di blend (separable blend modes del compositing standard) ---
+// cb = colore di sotto (backdrop), cs = colore di questo layer. Tutte lavorano per canale.
+vec3 easyvj_bMultiply(vec3 cb, vec3 cs) { return cb * cs; }
+vec3 easyvj_bScreen(vec3 cb, vec3 cs) { return cb + cs - cb * cs; }
+
+vec3 easyvj_bHardLight(vec3 cb, vec3 cs) {
+  // sotto metà scurisce come Multiply, sopra schiarisce come Screen (con cs riscalato)
+  return mix(easyvj_bMultiply(cb, 2.0 * cs), easyvj_bScreen(cb, 2.0 * cs - 1.0), step(0.5, cs));
+}
+
+vec3 easyvj_bSoftLight(vec3 cb, vec3 cs) {
+  // la "D(cb)" della specifica: sotto un quarto una cubica, sopra la radice — serve a evitare
+  // il gradino che si vedrebbe usando direttamente sqrt su tutto l'intervallo
+  vec3 d = mix(((16.0 * cb - 12.0) * cb + 4.0) * cb, sqrt(cb), step(0.25, cb));
+  vec3 lo = cb - (1.0 - 2.0 * cs) * cb * (1.0 - cb);
+  vec3 hi = cb + (2.0 * cs - 1.0) * (d - cb);
+  return mix(lo, hi, step(0.5, cs));
+}
+
+vec3 easyvj_bColorDodge(vec3 cb, vec3 cs) {
+  return min(vec3(1.0), cb / max(1.0 - cs, 1e-4));
+}
+
+vec3 easyvj_bColorBurn(vec3 cb, vec3 cs) {
+  return 1.0 - min(vec3(1.0), (1.0 - cb) / max(cs, 1e-4));
+}
+
+/** Formula corrispondente all'id passato in uBlendMode (vedi SHADER_BLEND in ShaderPlane). */
+vec3 easyvj_blend(float mode, vec3 cb, vec3 cs) {
+  if (mode < 1.5) return easyvj_bHardLight(cs, cb); // Overlay = Hard Light con gli operandi scambiati
+  if (mode < 2.5) return easyvj_bSoftLight(cb, cs);
+  if (mode < 3.5) return easyvj_bHardLight(cb, cs);
+  if (mode < 4.5) return abs(cb - cs);                  // Difference
+  if (mode < 5.5) return cb + cs - 2.0 * cb * cs;       // Exclusion
+  if (mode < 6.5) return min(cb, cs);                   // Darken
+  if (mode < 7.5) return max(cb, cs);                   // Lighten
+  if (mode < 8.5) return easyvj_bColorBurn(cb, cs);
+  return easyvj_bColorDodge(cb, cs);
 }
 
 // Trasformazioni della uv dell'effetto, comuni a tutti gli shader: agiscono PRIMA di
@@ -254,6 +298,17 @@ void main() {
   // mascherate (alpha 0) non inquinano i layer sottostanti.
   // La region delle maschere per-layer restringe ulteriormente dove il layer è visibile.
   float outA = color.a * mask * easyvj_maskRegion() * uOpacity;
+  if (uBlendMode > 0.5) {
+    // Blend che il blending hardware non sa fare: si legge il backdrop copiato prima del disegno
+    // e si scrive il risultato GIÀ composto (il materiale, in questo caso, sostituisce invece di
+    // fondere). Dove il layer è trasparente si riscrive il backdrop tale e quale, quindi fuori
+    // dalla sagoma non cambia nulla.
+    vec2 screenUv = gl_FragCoord.xy / max(uScreenSize, vec2(1.0));
+    vec3 backdrop = texture2D(uBackdrop, screenUv).rgb;
+    vec3 blended = clamp(easyvj_blend(uBlendMode, backdrop, clamp(color.rgb, 0.0, 1.0)), 0.0, 1.0);
+    gl_FragColor = vec4(mix(backdrop, blended, outA), 1.0);
+    return;
+  }
   gl_FragColor = vec4(color.rgb * outA, outA);
 }
 `
