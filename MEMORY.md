@@ -2,6 +2,52 @@
 
 Ogni modifica al progetto va registrata qui con data, descrizione e motivazione. Le voci più recenti in alto dentro ogni giornata.
 
+## 2026-08-20 — Mapping, seconda parte: reticolo, keystone, correzione obiettivo, soft edge, undo/redo
+
+Completate le voci rimaste dal brainstorming sul canvas di mapping. Tutta la matematica nuova è stata verificata in browser importando i moduli veri, non a occhio.
+
+### Reticolo di nodi (la terza modalità concordata)
+
+`Warp` ha ora un `mode` (`bezier` | `grid`) e un reticolo opzionale di celle 2×2…4×4 (3×3…5×5 nodi). Le due modalità sono **alternative e non si sommano**, ma i dati dell'altra restano memorizzati: si torna indietro senza rifare il lavoro.
+
+L'interpolazione è Catmull-Rom bicubica sui nodi. **La trappola**: fuori dai bordi i nodi fantasma non vanno clampati ma **estrapolati linearmente** (`P₋₁ = 2P₀ − P₁`). Col clamp la tangente al bordo verrebbe dimezzata e la superficie si affloscerebbe lì anche a reticolo fermo, rompendo l'identità. Con l'estrapolazione l'identità è esatta: errore misurato 1.1e-16.
+
+Altre invarianti verificate: i nodi sono interpolati esattamente (3.1e-16), i 4 angoli restano ancorati al corner-pin (3.1e-16), il flip andata/ritorno è esatto (0).
+
+Cambiare densità **conserva la forma solo approssimativamente**: i nodi nuovi cadono esattamente sulla superficie vecchia (errore 0), ma fra un nodo e l'altro la spline è un'altra e su una deformazione marcata lo scarto misurato arriva a 0.042 in spazio unitario. È inerente al passare a un reticolo che non contiene il precedente, non un difetto da correggere.
+
+**Difetto trovato provando la UI**: con reticolo 3×3 i nodi di bordo cadono esattamente sotto le maniglie a rombo di selezione del lato — due maniglie diverse sovrapposte, ingovernabili. Le maniglie del lato ora spariscono mentre si lavora col reticolo; il lato resta selezionabile dai pulsanti della toolbar.
+
+### Correzione dell'obiettivo (barile / cuscino)
+
+Deformazione radiale in spazio unitario, applicata sopra la modalità attiva. Il fattore è costruito per **lasciare fermi i 4 angoli** (a raggio d'angolo vale 1), così si corregge l'ottica senza perdere l'allineamento: verificato, errore 0 sui corner a ogni valore.
+
+**Il limite ±0.5 non è arbitrario.** Il profilo radiale `lensRadius(a) = 2·lens·a³ + (1−lens)·a` resta crescente su tutto il quadrato unitario solo per lens ≥ −0.5: sotto ha un massimo prima del raggio d'angolo, quindi due raggi diversi finiscono sullo stesso punto e **la mesh si ripiega su sé stessa** vicino agli angoli. A −0.5 il massimo cade esattamente sull'angolo. Verificato monotono al limite.
+
+Percorso sbagliato, per non ripeterlo: prima avevo scritto l'inversa della lente a punto fisso (`a ← target/f(a)`) per far passare anche le maniglie attraverso la lente. **Non converge**: con lens forte il fattore scende a 0.4 vicino al centro, il passo scavalca la soluzione e oscilla — errore misurato 0.172, un sesto del quad. La bisezione monotona che l'ha sostituita sbagliava ramo proprio nella zona di ripiegamento, e cercare l'ultimo attraversamento peggiorava (1.35). Conclusione: **le maniglie non passano per la lente**. Vivono nello spazio pre-correzione, dove `screenToControl` è l'inverso esatto di `controlToScreen` e il trascinamento segue il puntatore alla perfezione. Il prezzo è che con la lente spinta la maniglia si stacca di poco dalla superficie che comanda — molto meglio di un gesto approssimato o appiccicoso proprio agli estremi.
+
+### Keystone numerico
+
+`keystoneCorners` in `mappingGeometry.ts`: agisce sui **corner** come rotazione e scala, non come valore memorizzato. Il keystone è già interamente esprimibile dai 4 angoli, e uno stato parallelo entrerebbe in conflitto col trascinamento diretto delle maniglie. Due pulsanti in toolbar (⌃K / ⌐K, Alt per il verso opposto). Verificato: centro invariato, lato alto 1.92 contro lato basso 1.28.
+
+### Soft edge del perimetro
+
+Uniform `uEdgeFeather` e campo per-layer `edgeFeather?`. Nel fragment la uv **è** lo spazio del quad, quindi la distanza dal bordo si legge direttamente e la sfumatura segue il warp senza calcoli aggiuntivi. Diverso da `edgeSharp`, che lavora sul contorno della sagoma dell'asset: qui si ammorbidisce il bordo della luce proiettata.
+
+### Undo/redo del mapping
+
+`patchActiveMapping` era già l'imbuto unico di ogni modifica di mapping (drag sul canvas incluso): è lì che si fotografa lo stato precedente. Cronologia da 80 voci, non persistita.
+
+Le raffiche vengono **accorpate**: due modifiche sullo stesso layer entro 500 ms contano come una, e si tiene la voce più vecchia (è lo stato a cui l'utente vuole tornare). Senza, un trascinamento avrebbe riempito la cronologia di micro-passi. ⌘Z / ⇧⌘Z più due pulsanti in toolbar. Verificato: annulla, ripeti e ritorno allo stato identico.
+
+### Rimosso su richiesta dell'utente
+
+Preset di mapping e campi numerici delle coordinate degli angoli: fatti e poi tolti nella stessa sessione. Restano due tracce da conoscere: la versione di IndexedDB è salita a **6** (la 5 aveva lo store `mappingPresets`; non si può scendere di versione, quindi la 6 elimina lo store orfano dove esiste), e `MappingNumbersPanel` è diventato `MappingOpticsPanel` con le sole regolazioni continue.
+
+### Nota di processo
+
+`npx prettier --write` su un file ha riformattato tutto con i default (virgolette doppie, punto e virgola): il progetto **non ha configurazione prettier** e usa virgolette singole, niente punto e virgola, righe da 100. Rimediato con `--single-quote --no-semi --print-width 100`. Non lanciare prettier senza quei flag.
+
 ## 2026-08-20 — Mapping: corner-pin proiettivamente corretto + curvatura dei 4 bordi
 
 L'utente ha chiesto di aggiungere al canvas di mapping solo le opzioni strettamente necessarie che mancavano: prospettiva, curvatura separata dei lati, punti di controllo aggiuntivi, selezione di un lato cliccando fra due pin. Fatte le prime due fasi delle tre concordate (la terza — griglia NxM di nodi — resta aperta).

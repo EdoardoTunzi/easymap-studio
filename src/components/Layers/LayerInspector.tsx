@@ -9,6 +9,7 @@ import { BackgroundKeyPanel } from '@/components/Positioning/BackgroundKeyPanel'
 import { PositioningPanel } from '@/components/Positioning/PositioningPanel'
 import { MaskPanel } from '@/components/Mask/MaskPanel'
 import { MovePanel } from '@/components/Positioning/MovePanel'
+import { MappingOpticsPanel } from '@/components/Positioning/MappingOpticsPanel'
 import { useLayersStore } from '@/store/layersStore'
 
 /**
@@ -78,7 +79,11 @@ export function LayerInspector() {
         </CollapsibleSection>
 
         <CollapsibleSection section="move" title="Move">
-          <MovePanel />
+          <div className="flex flex-col gap-4">
+            <MovePanel />
+            <Separator />
+            <MappingOpticsPanel />
+          </div>
         </CollapsibleSection>
       </ScrollArea>
     </div>

@@ -75,6 +75,7 @@ uniform vec2 uResolution;
 uniform float uScale;
 uniform float uLumaKey;
 uniform float uEdgeSharp;            // 0 = bordo della sagoma come sta nel file, 1 = massima nitidezza
+uniform float uEdgeFeather;          // sfumatura del PERIMETRO della proiezione (0 = bordo netto)
 uniform float uOpacity;
 uniform vec3 uPalette[5];
 uniform float uPaletteCount;
@@ -317,6 +318,13 @@ void main() {
   // mascherate (alpha 0) non inquinano i layer sottostanti.
   // La region delle maschere per-layer restringe ulteriormente dove il layer è visibile.
   float outA = color.a * mask * easyvj_maskRegion() * uOpacity;
+  // Soft edge del perimetro: la uv È lo spazio del quad, quindi la distanza dal bordo si legge
+  // direttamente e la sfumatura segue il warp senza calcoli aggiuntivi. Serve a far morire la
+  // luce sull'oggetto invece di tagliarla di netto, e a fondere due proiettori affiancati.
+  if (uEdgeFeather > 0.0) {
+    vec2 border = min(vUv, 1.0 - vUv);
+    outA *= smoothstep(0.0, uEdgeFeather, min(border.x, border.y));
+  }
   if (uBlendMode > 0.5) {
     // Blend che il blending hardware non sa fare: si legge il backdrop copiato prima del disegno
     // e si scrive il risultato GIÀ composto (il materiale, in questo caso, sostituisce invece di

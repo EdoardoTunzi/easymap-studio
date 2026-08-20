@@ -73,13 +73,18 @@ interface EasyVjDB extends DBSchema {
 let dbPromise: Promise<IDBPDatabase<EasyVjDB>> | null = null
 
 function getDb() {
-  dbPromise ??= openDB<EasyVjDB>('easyvj', 4, {
+  dbPromise ??= openDB<EasyVjDB>('easyvj', 6, {
     upgrade(db, oldVersion) {
       if (oldVersion < 1) db.createObjectStore('projects', { keyPath: 'id' })
       if (oldVersion < 2) db.createObjectStore('effectPresets', { keyPath: 'id' })
       // v3: i progetti passano da stato piatto a array di layer. Gli oggetti vecchi
       // sono incompatibili col nuovo formato: si svuota lo store dei progetti.
       if (oldVersion > 0 && oldVersion < 3) db.clear('projects')
+      // v5 aveva uno store `mappingPresets`, poi tolto. Non si può tornare alla 4 (IndexedDB non
+      // scende di versione), quindi si sale alla 6 e si elimina lo store orfano dove esiste.
+      if (db.objectStoreNames.contains('mappingPresets' as never)) {
+        db.deleteObjectStore('mappingPresets' as never)
+      }
     },
   })
   return dbPromise

@@ -27,12 +27,43 @@ export interface WarpHandle {
 /** I 2 punti di controllo di un bordo, in ordine di percorrenza del bordo (t = 1/3 e t = 2/3). */
 export type WarpEdgeHandles = [WarpHandle, WarpHandle]
 
+/**
+ * Come si deforma la superficie fra i 4 corner.
+ * - `bezier`: curvatura dei 4 bordi (patch di Coons). Pochi handle, curve morbide: la modalità
+ *   giusta per statue, colonne e archi, dove a piegarsi è il contorno.
+ * - `grid`: reticolo di nodi trascinabili (Catmull-Rom). Serve quando la superficie ha
+ *   irregolarità *interne* che i soli bordi non descrivono.
+ * Sono alternative, non si sommano: i dati dell'altra restano memorizzati, quindi si può
+ * tornare indietro senza rifare il lavoro.
+ */
+export type WarpMode = 'bezier' | 'grid'
+
+/**
+ * Reticolo di deformazione. `cols`/`rows` sono le CELLE per asse: i nodi sono (cols+1)×(rows+1).
+ * `points` è l'elenco degli scostamenti dalla posizione regolare, riga per riga a partire da
+ * v = 0 (basso); indice = row * (cols+1) + col.
+ */
+export interface WarpGrid {
+  cols: number
+  rows: number
+  points: WarpHandle[]
+}
+
 /** Curvatura dei 4 bordi del quad. Assente/azzerata = quad dritto. */
 export interface Warp {
   top: WarpEdgeHandles
   right: WarpEdgeHandles
   bottom: WarpEdgeHandles
   left: WarpEdgeHandles
+  /** Assente = 'bezier' (i progetti salvati prima della griglia non hanno il campo). */
+  mode?: WarpMode
+  grid?: WarpGrid
+  /**
+   * Correzione della distorsione dell'obiettivo, applicata SOPRA la deformazione scelta e in
+   * qualunque modalità: negativo = barile (i bordi si gonfiano), positivo = cuscino (i bordi
+   * rientrano). I 4 angoli restano fermi per costruzione, quindi il corner-pin non si sposta.
+   */
+  lens?: number
 }
 
 export const WARP_EDGES: WarpEdgeId[] = ['top', 'right', 'bottom', 'left']
@@ -80,11 +111,20 @@ export function cloneWarp(warp: Warp): Warp {
     right: [{ ...warp.right[0] }, { ...warp.right[1] }],
     bottom: [{ ...warp.bottom[0] }, { ...warp.bottom[1] }],
     left: [{ ...warp.left[0] }, { ...warp.left[1] }],
+    mode: warp.mode,
+    grid: warp.grid
+      ? { cols: warp.grid.cols, rows: warp.grid.rows, points: warp.grid.points.map((p) => ({ ...p })) }
+      : undefined,
+    lens: warp.lens,
   }
 }
 
-/** Vero se almeno un handle è spostato: decide se suddividere la mesh e se disegnare i bordi curvi. */
-export function isWarpActive(warp: Warp | null | undefined): boolean {
+export function warpMode(warp: Warp | null | undefined): WarpMode {
+  return warp?.mode === 'grid' ? 'grid' : 'bezier'
+}
+
+/** Vero se almeno un handle di un bordo è spostato. */
+export function isBezierActive(warp: Warp | null | undefined): boolean {
   if (!warp) return false
   for (const edge of WARP_EDGES) {
     for (const h of warp[edge]) {
@@ -92,6 +132,23 @@ export function isWarpActive(warp: Warp | null | undefined): boolean {
     }
   }
   return false
+}
+
+/** Vero se almeno un nodo del reticolo è spostato. */
+export function isGridActive(grid: WarpGrid | null | undefined): boolean {
+  if (!grid) return false
+  return grid.points.some((p) => Math.abs(p.x) > 1e-6 || Math.abs(p.y) > 1e-6)
+}
+
+/**
+ * Vero se la superficie non è un quad piatto: decide se suddividere la mesh e cosa disegnare
+ * nell'overlay. Conta solo la modalità ATTIVA (i dati dell'altra restano memorizzati ma inerti),
+ * più la correzione dell'obiettivo, che vale in entrambe.
+ */
+export function isWarpActive(warp: Warp | null | undefined): boolean {
+  if (!warp) return false
+  if (Math.abs(warp.lens ?? 0) > 1e-6) return true
+  return warpMode(warp) === 'grid' ? isGridActive(warp.grid) : isBezierActive(warp)
 }
 
 /** Estremi di un bordo in spazio unitario, nel verso di percorrenza (u o v crescente). */
@@ -180,6 +237,166 @@ export function coonsPoint(curves: WarpCurves, u: number, v: number): Corner {
   }
 }
 
+// ---- Reticolo di deformazione (modalità 'grid') ----
+
+/** Celle per asse ammesse: da 2×2 celle (3×3 nodi) a 4×4 celle (5×5 nodi). */
+export const GRID_MIN_CELLS = 2
+export const GRID_MAX_CELLS = 4
+export const GRID_DEFAULT_CELLS = 2
+
+export function createWarpGrid(cols = GRID_DEFAULT_CELLS, rows = GRID_DEFAULT_CELLS): WarpGrid {
+  const count = (cols + 1) * (rows + 1)
+  return { cols, rows, points: Array.from({ length: count }, () => ({ x: 0, y: 0 })) }
+}
+
+export function gridNodeIndex(grid: WarpGrid, col: number, row: number): number {
+  return row * (grid.cols + 1) + col
+}
+
+/** Posizione regolare del nodo (senza scostamento), in spazio unitario. */
+export function gridNodeBase(grid: WarpGrid, col: number, row: number): Corner {
+  return { x: col / grid.cols, y: row / grid.rows }
+}
+
+/** Posizione corrente del nodo = regolare + scostamento. */
+export function gridNodePoint(grid: WarpGrid, col: number, row: number): Corner {
+  const base = gridNodeBase(grid, col, row)
+  const h = grid.points[gridNodeIndex(grid, col, row)]
+  return { x: base.x + (h?.x ?? 0), y: base.y + (h?.y ?? 0) }
+}
+
+/** I 4 nodi d'angolo coincidono col corner-pin: non si trascinano da qui, li muovono i suoi handle. */
+export function isGridCornerNode(
+  grid: Pick<WarpGrid, 'cols' | 'rows'>,
+  col: number,
+  row: number,
+): boolean {
+  return (col === 0 || col === grid.cols) && (row === 0 || row === grid.rows)
+}
+
+/**
+ * Nodo con indici anche fuori dal reticolo. Fuori dai bordi NON si clampa ma si estrapola
+ * linearmente: col clamp la tangente di Catmull-Rom al bordo verrebbe dimezzata e la superficie
+ * si affloscerebbe lì anche a reticolo non deformato, rompendo l'identità.
+ */
+function gridNodeExtended(grid: WarpGrid, col: number, row: number): Corner {
+  if (col < 0) {
+    const a = gridNodeExtended(grid, 0, row)
+    const b = gridNodeExtended(grid, 1, row)
+    return { x: 2 * a.x - b.x, y: 2 * a.y - b.y }
+  }
+  if (col > grid.cols) {
+    const a = gridNodeExtended(grid, grid.cols, row)
+    const b = gridNodeExtended(grid, grid.cols - 1, row)
+    return { x: 2 * a.x - b.x, y: 2 * a.y - b.y }
+  }
+  if (row < 0) {
+    const a = gridNodeExtended(grid, col, 0)
+    const b = gridNodeExtended(grid, col, 1)
+    return { x: 2 * a.x - b.x, y: 2 * a.y - b.y }
+  }
+  if (row > grid.rows) {
+    const a = gridNodeExtended(grid, col, grid.rows)
+    const b = gridNodeExtended(grid, col, grid.rows - 1)
+    return { x: 2 * a.x - b.x, y: 2 * a.y - b.y }
+  }
+  return gridNodePoint(grid, col, row)
+}
+
+/** Catmull-Rom uniforme: passa esattamente per p1 e p2. */
+function catmullRom(p0: Corner, p1: Corner, p2: Corner, p3: Corner, t: number): Corner {
+  const t2 = t * t
+  const t3 = t2 * t
+  const f = (a: number, b: number, c: number, d: number) =>
+    0.5 * (2 * b + (c - a) * t + (2 * a - 5 * b + 4 * c - d) * t2 + (-a + 3 * b - 3 * c + d) * t3)
+  return { x: f(p0.x, p1.x, p2.x, p3.x), y: f(p0.y, p1.y, p2.y, p3.y) }
+}
+
+function clampCell(value: number, max: number): number {
+  return Math.min(max, Math.max(0, value))
+}
+
+/** Superficie del reticolo in (u, v): bicubica Catmull-Rom sui nodi. Nodi a riposo = identità. */
+export function gridPoint(grid: WarpGrid, u: number, v: number): Corner {
+  const gu = u * grid.cols
+  const gv = v * grid.rows
+  const i = clampCell(Math.floor(gu), grid.cols - 1)
+  const j = clampCell(Math.floor(gv), grid.rows - 1)
+  const tu = gu - i
+  const tv = gv - j
+  const rows: Corner[] = []
+  for (let k = -1; k <= 2; k++) {
+    rows.push(
+      catmullRom(
+        gridNodeExtended(grid, i - 1, j + k),
+        gridNodeExtended(grid, i, j + k),
+        gridNodeExtended(grid, i + 1, j + k),
+        gridNodeExtended(grid, i + 2, j + k),
+        tu,
+      ),
+    )
+  }
+  return catmullRom(rows[0], rows[1], rows[2], rows[3], tv)
+}
+
+/**
+ * Cambia la risoluzione del reticolo conservando la forma: i nodi nuovi si posizionano sulla
+ * superficie attuale. Cambiare densità a metà allineamento non deve buttare via il lavoro.
+ */
+export function resampleGrid(grid: WarpGrid | undefined, cols: number, rows: number): WarpGrid {
+  const next = createWarpGrid(cols, rows)
+  if (!grid) return next
+  for (let row = 0; row <= rows; row++) {
+    for (let col = 0; col <= cols; col++) {
+      const base = gridNodeBase(next, col, row)
+      const p = gridPoint(grid, base.x, base.y)
+      next.points[gridNodeIndex(next, col, row)] = { x: p.x - base.x, y: p.y - base.y }
+    }
+  }
+  return next
+}
+
+// ---- Correzione dell'obiettivo (barile / cuscino) ----
+
+/**
+ * Limite della correzione. Non è un valore di comodo: il profilo radiale `lensRadius` resta
+ * crescente su tutto il quadrato unitario **solo** per lens ≥ -0.5. Sotto, ha un massimo prima
+ * del raggio d'angolo, quindi due raggi diversi finiscono sullo stesso punto e la mesh si
+ * ripiega su sé stessa vicino agli angoli — un artefatto visibile, non solo un fastidio
+ * matematico. Verificato: a -0.5 il massimo cade esattamente sull'angolo.
+ */
+export const LENS_LIMIT = 0.5
+
+/** |(0.5, 0.5)|²: distanza al quadrato dell'angolo dal centro, usata per normalizzare il raggio. */
+const LENS_MAX_R2 = 0.5
+
+/**
+ * Fattore radiale con i 4 angoli fermi: a raggio pieno (angolo) vale 1, al centro vale 1 - lens.
+ * È questo ancoraggio che permette di correggere l'obiettivo senza spostare il corner-pin.
+ */
+function lensFactor(dx: number, dy: number, lens: number): number {
+  const r2 = (dx * dx + dy * dy) / LENS_MAX_R2
+  return 1 + lens * (r2 - 1)
+}
+
+export function applyLens(p: Corner, lens: number | undefined): Corner {
+  if (!lens) return p
+  const dx = p.x - 0.5
+  const dy = p.y - 0.5
+  const f = lensFactor(dx, dy, lens)
+  return { x: 0.5 + dx * f, y: 0.5 + dy * f }
+}
+
+/**
+ * Raggio dopo la correzione, in funzione del raggio prima: g(a) = |p'| quando |p| = a.
+ * Sostituendo r² = a²/0.5 in `lensFactor` si ottiene a·f = (1-lens)·a + 2·lens·a³.
+ * Serve a giustificare `LENS_LIMIT`: il massimo di g cade in a² = (1-lens)/(-6·lens), che per
+ * lens = -0.5 vale esattamente il raggio d'angolo.
+ */
+export function lensRadius(a: number, lens: number): number {
+  return 2 * lens * a * a * a + (1 - lens) * a
+}
+
 /** Matrice proiettiva 3×3 in ordine di riga: [a b c, d e f, g h i]. */
 export type Homography = [number, number, number, number, number, number, number, number, number]
 
@@ -261,14 +478,41 @@ export function applyHomographyPoint(m: Homography, x: number, y: number): Corne
   return { x: (m[0] * x + m[1] * y + m[2]) / safe, y: (m[3] * x + m[4] * y + m[5]) / safe }
 }
 
-/** Punto unitario (u, v) → mondo, attraversando prima la curvatura dei bordi e poi l'omografia. */
+/**
+ * Deformazione pronta all'uso, precalcolata una volta e riusata per tutti i vertici della mesh
+ * (e per tutti i punti dell'overlay): evita di ricostruire curve e di rileggere la modalità a
+ * ogni campione.
+ */
+export interface WarpEval {
+  mode: WarpMode
+  curves: WarpCurves
+  grid: WarpGrid | null
+  lens: number
+}
+
+export function warpEval(warp: Warp | null | undefined): WarpEval {
+  return {
+    mode: warpMode(warp),
+    curves: warpCurves(warp),
+    grid: warp?.grid ?? null,
+    lens: warp?.lens ?? 0,
+  }
+}
+
+/** (u, v) → punto unitario deformato: modalità attiva, poi correzione dell'obiettivo. */
+export function warpUnit(ev: WarpEval, u: number, v: number): Corner {
+  const p = ev.mode === 'grid' && ev.grid ? gridPoint(ev.grid, u, v) : coonsPoint(ev.curves, u, v)
+  return applyLens(p, ev.lens)
+}
+
+/** Punto unitario deformato → mondo. `k` è il peso della correzione prospettica. */
 export function warpPoint(
-  curves: WarpCurves,
+  ev: WarpEval,
   m: Homography,
   u: number,
   v: number,
 ): { x: number; y: number; k: number } {
-  const p = coonsPoint(curves, u, v)
+  const p = warpUnit(ev, u, v)
   return applyHomography(m, p.x, p.y)
 }
 
@@ -294,9 +538,11 @@ function mirrorY(h: WarpHandle): WarpHandle {
  * salterebbe dall'altra parte e la sagoma proiettata cambierebbe forma.
  */
 export function flipWarp(warp: Warp, axis: 'horizontal' | 'vertical'): Warp {
+  const common = { mode: warp.mode, grid: flipGrid(warp.grid, axis), lens: warp.lens }
   if (axis === 'horizontal') {
     // u → 1-u: i bordi orizzontali si percorrono al contrario, quelli verticali si scambiano
     return {
+      ...common,
       top: [mirrorX(warp.top[1]), mirrorX(warp.top[0])],
       bottom: [mirrorX(warp.bottom[1]), mirrorX(warp.bottom[0])],
       left: [mirrorX(warp.right[0]), mirrorX(warp.right[1])],
@@ -305,11 +551,28 @@ export function flipWarp(warp: Warp, axis: 'horizontal' | 'vertical'): Warp {
   }
   // v → 1-v: speculare del caso sopra
   return {
+    ...common,
     left: [mirrorY(warp.left[1]), mirrorY(warp.left[0])],
     right: [mirrorY(warp.right[1]), mirrorY(warp.right[0])],
     top: [mirrorY(warp.bottom[0]), mirrorY(warp.bottom[1])],
     bottom: [mirrorY(warp.top[0]), mirrorY(warp.top[1])],
   }
+}
+
+/** Specchia il reticolo insieme ai bordi: i nodi si riordinano e lo scostamento cambia segno. */
+function flipGrid(grid: WarpGrid | undefined, axis: 'horizontal' | 'vertical'): WarpGrid | undefined {
+  if (!grid) return undefined
+  const next = createWarpGrid(grid.cols, grid.rows)
+  for (let row = 0; row <= grid.rows; row++) {
+    for (let col = 0; col <= grid.cols; col++) {
+      const src = grid.points[gridNodeIndex(grid, col, row)] ?? { x: 0, y: 0 }
+      const [dc, dr] =
+        axis === 'horizontal' ? [grid.cols - col, row] : [col, grid.rows - row]
+      next.points[gridNodeIndex(next, dc, dr)] =
+        axis === 'horizontal' ? mirrorX(src) : mirrorY(src)
+    }
+  }
+  return next
 }
 
 /**
@@ -319,10 +582,10 @@ export function flipWarp(warp: Warp, axis: 'horizontal' | 'vertical'): Warp {
  */
 export function warpOutline(corners: Corners, warp: Warp | null | undefined, samples = 16): Corner[] {
   const m = cornersHomography(corners)
-  const curves = warpCurves(warp)
+  const ev = warpEval(warp)
   const points: Corner[] = []
   const push = (u: number, v: number) => {
-    const p = warpPoint(curves, m, u, v)
+    const p = warpPoint(ev, m, u, v)
     points.push({ x: p.x, y: p.y })
   }
   for (let i = 0; i < samples; i++) push(i / samples, 1) // alto: TL → TR

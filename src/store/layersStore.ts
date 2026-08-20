@@ -20,15 +20,21 @@ import {
   scaleCorners,
   flipCorners,
   straightenCorners,
+  keystoneCorners,
 } from '../lib/mappingGeometry'
 import {
   clampHandle,
   cloneWarp,
   createWarp,
+  createWarpGrid,
   flipWarp,
+  gridNodeIndex,
+  resampleGrid,
+  LENS_LIMIT,
   type Warp,
   type WarpEdgeId,
   type WarpHandle,
+  type WarpMode,
 } from '../lib/warp'
 import { useUiStore } from './uiStore'
 import {
@@ -219,6 +225,13 @@ export interface Layer {
    * quanto azzerata (quad dritto, mesh a 4 vertici come prima).
    */
   warp?: Warp
+  /**
+   * Sfumatura del perimetro della proiezione, 0..0.5 (frazione del lato). Diversa da `edgeSharp`,
+   * che lavora sul contorno della SAGOMA dell'asset: qui si ammorbidisce il bordo del quad
+   * proiettato, per far sfumare la luce sull'oggetto invece di tagliarla di netto.
+   * Opzionale in lettura: i progetti salvati prima non ce l'hanno.
+   */
+  edgeFeather?: number
   /** Transform (zoom + pan) applicato sopra il corner-pin. */
   transform: Transform
   /**
@@ -233,6 +246,66 @@ export interface Layer {
 
 function cloneCorners(corners: Corners): Corners {
   return corners.map((c) => ({ ...c })) as Corners
+}
+
+/** Stato di mapping di un layer in un istante: quanto basta a tornare indietro. */
+export interface MappingSnapshot {
+  layerId: string
+  corners: Corners
+  warp?: Warp
+  transform: Transform
+  /** Per accorpare le raffiche: vedi `pushHistory`. */
+  at: number
+}
+
+/** Quante annullature tenere. Allineare una statua è lungo: meglio abbondare, pesano poco. */
+const MAPPING_HISTORY_LIMIT = 80
+
+/**
+ * Finestra entro cui due modifiche consecutive sullo stesso layer contano come una sola.
+ * Senza, un trascinamento (decine di eventi al secondo) riempirebbe la cronologia di
+ * micro-passi e servirebbero cinquanta Ctrl+Z per disfare un gesto solo.
+ */
+const MAPPING_COALESCE_MS = 500
+
+function mappingSnapshot(layer: Layer): MappingSnapshot {
+  return {
+    layerId: layer.id,
+    corners: cloneCorners(layer.corners),
+    warp: layer.warp ? cloneWarp(layer.warp) : undefined,
+    transform: { ...layer.transform },
+    at: Date.now(),
+  }
+}
+
+function pushHistory(past: MappingSnapshot[], entry: MappingSnapshot): MappingSnapshot[] {
+  const last = past[past.length - 1]
+  // dentro la finestra e sullo stesso layer: la voce già presente è l'inizio del gesto, si tiene
+  // quella (è lo stato a cui l'utente si aspetta di tornare) e non se ne aggiunge una nuova
+  if (last && last.layerId === entry.layerId && entry.at - last.at < MAPPING_COALESCE_MS) {
+    return past
+  }
+  const next = [...past, entry]
+  return next.length > MAPPING_HISTORY_LIMIT ? next.slice(next.length - MAPPING_HISTORY_LIMIT) : next
+}
+
+/** Riporta un layer allo stato fotografato, restituendo anche quello che c'era prima. */
+function applyMappingSnapshot(layers: Layer[], snap: MappingSnapshot) {
+  const target = layers.find((l) => l.id === snap.layerId)
+  if (!target) return null
+  return {
+    previous: mappingSnapshot(target),
+    layers: layers.map((l) =>
+      l.id === snap.layerId
+        ? {
+            ...l,
+            corners: cloneCorners(snap.corners),
+            warp: snap.warp ? cloneWarp(snap.warp) : undefined,
+            transform: { ...snap.transform },
+          }
+        : l,
+    ),
+  }
 }
 
 function clonePalette(p: Palette): Palette {
@@ -410,11 +483,30 @@ interface LayersState {
    */
   nudgeActiveCorners: (dx: number, dy: number, indices: readonly number[] | null) => void
 
-  // curvatura dei bordi (warp Bézier, vedi lib/warp.ts)
+  /** Correzione trapezoidale sui corner (kx = orizzontale, ky = verticale), incrementale. */
+  keystoneActiveCorners: (kx: number, ky: number) => void
+
+  // deformazione della superficie (warp, vedi lib/warp.ts)
   /** Sposta un punto di controllo di un bordo (scostamento in spazio unitario). */
   setActiveWarpHandle: (edge: WarpEdgeId, index: 0 | 1, handle: WarpHandle) => void
-  /** Riporta tutti i bordi a dritti, senza toccare corner e transform. */
+  /** Modalità di deformazione: curvatura dei bordi o reticolo di nodi. */
+  setActiveWarpMode: (mode: WarpMode) => void
+  /** Sposta un nodo del reticolo (scostamento in spazio unitario). */
+  setActiveGridNode: (col: number, row: number, handle: WarpHandle) => void
+  /** Cambia la densità del reticolo conservando la forma già data. */
+  setActiveGridSize: (cols: number, rows: number) => void
+  /** Correzione dell'obiettivo: negativo = barile, positivo = cuscino. */
+  setActiveLens: (lens: number) => void
+  /** Azzera la deformazione della modalità attiva e la lente; corner e transform restano. */
   resetActiveWarp: () => void
+  /** Sfumatura del perimetro della proiezione (0 = bordo netto). */
+  setActiveEdgeFeather: (value: number) => void
+
+  // cronologia del solo mapping (corner, warp, transform): vedi MAPPING_HISTORY_LIMIT
+  undoMapping: () => void
+  redoMapping: () => void
+  mappingPast: MappingSnapshot[]
+  mappingFuture: MappingSnapshot[]
   /** Blocca/sblocca il mapping di un layer (corner e transform diventano immutabili). */
   setLayerLocked: (id: string, locked: boolean) => void
   toggleActiveLocked: () => void
@@ -483,11 +575,18 @@ export const useLayersStore = create<LayersState>((set, get) => {
    * pad direzionale, frecce da tastiera, toolbar) lo rispetta senza doverlo ricontrollare.
    */
   const patchActiveMapping = (patch: (layer: Layer) => Partial<Layer>) =>
-    set((state) => ({
-      layers: state.layers.map((l) =>
-        l.id === state.activeLayerId && !l.locked ? { ...l, ...patch(l) } : l,
-      ),
-    }))
+    set((state) => {
+      const active = state.layers.find((l) => l.id === state.activeLayerId)
+      if (!active || active.locked) return state
+      return {
+        layers: state.layers.map((l) => (l.id === active.id ? { ...l, ...patch(l) } : l)),
+        // ogni modifica di mapping passa di qui: è il punto giusto per fotografare lo stato
+        // PRECEDENTE, e l'unico che copre anche il drag sul canvas
+        mappingPast: pushHistory(state.mappingPast, mappingSnapshot(active)),
+        // una modifica nuova invalida il ramo rifatto, come in qualunque undo lineare
+        mappingFuture: [],
+      }
+    })
 
   /**
    * Applica una patch di EFFETTO al layer attivo e propaga l'effetto completo (shader + params +
@@ -735,6 +834,9 @@ export const useLayersStore = create<LayersState>((set, get) => {
         ) as Corners,
       })),
 
+    keystoneActiveCorners: (kx, ky) =>
+      patchActiveMapping((l) => ({ corners: keystoneCorners(l.corners, kx, ky) })),
+
     setActiveWarpHandle: (edge, index, handle) =>
       patchActiveMapping((l) => {
         const warp = l.warp ? cloneWarp(l.warp) : createWarp()
@@ -742,7 +844,96 @@ export const useLayersStore = create<LayersState>((set, get) => {
         return { warp }
       }),
 
-    resetActiveWarp: () => patchActiveMapping(() => ({ warp: createWarp() })),
+    setActiveWarpMode: (mode) =>
+      patchActiveMapping((l) => {
+        const warp = l.warp ? cloneWarp(l.warp) : createWarp()
+        warp.mode = mode
+        // passando al reticolo per la prima volta se ne crea uno a riposo: senza, la modalità
+        // sarebbe attiva ma non avrebbe nodi da mostrare
+        if (mode === 'grid' && !warp.grid) warp.grid = createWarpGrid()
+        return { warp }
+      }),
+
+    setActiveGridNode: (col, row, handle) =>
+      patchActiveMapping((l) => {
+        const warp = l.warp ? cloneWarp(l.warp) : createWarp()
+        const grid = warp.grid ?? createWarpGrid()
+        const index = gridNodeIndex(grid, col, row)
+        if (index < 0 || index >= grid.points.length) return {}
+        grid.points[index] = clampHandle(handle)
+        warp.grid = grid
+        return { warp }
+      }),
+
+    setActiveGridSize: (cols, rows) =>
+      patchActiveMapping((l) => {
+        const warp = l.warp ? cloneWarp(l.warp) : createWarp()
+        warp.grid = resampleGrid(warp.grid, cols, rows)
+        return { warp }
+      }),
+
+    setActiveLens: (lens) =>
+      patchActiveMapping((l) => {
+        if (!Number.isFinite(lens)) return {}
+        const warp = l.warp ? cloneWarp(l.warp) : createWarp()
+        warp.lens = Math.min(LENS_LIMIT, Math.max(-LENS_LIMIT, lens))
+        return { warp }
+      }),
+
+    resetActiveWarp: () =>
+      patchActiveMapping((l) => {
+        // si azzera la sola modalità attiva: chi sta lavorando col reticolo non si aspetta di
+        // perdere anche la curvatura dei bordi impostata prima (e viceversa)
+        const warp = l.warp ? cloneWarp(l.warp) : createWarp()
+        warp.lens = 0
+        if (warp.mode === 'grid') {
+          warp.grid = createWarpGrid(warp.grid?.cols, warp.grid?.rows)
+        } else {
+          const blank = createWarp()
+          warp.top = blank.top
+          warp.right = blank.right
+          warp.bottom = blank.bottom
+          warp.left = blank.left
+        }
+        return { warp }
+      }),
+
+    setActiveEdgeFeather: (value) =>
+      patchActive(() => ({ edgeFeather: Math.min(0.5, Math.max(0, value)) })),
+
+    mappingPast: [],
+    mappingFuture: [],
+
+    undoMapping: () =>
+      set((state) => {
+        const snap = state.mappingPast[state.mappingPast.length - 1]
+        if (!snap) return state
+        const applied = applyMappingSnapshot(state.layers, snap)
+        // il layer non esiste più (eliminato o scena ricaricata): scarta la voce e basta
+        if (!applied) return { mappingPast: state.mappingPast.slice(0, -1) }
+        return {
+          layers: applied.layers,
+          mappingPast: state.mappingPast.slice(0, -1),
+          mappingFuture: [...state.mappingFuture, applied.previous],
+          // l'annullamento sposta anche la selezione sul layer coinvolto, altrimenti si vedrebbe
+          // cambiare un layer diverso da quello selezionato
+          activeLayerId: snap.layerId,
+        }
+      }),
+
+    redoMapping: () =>
+      set((state) => {
+        const snap = state.mappingFuture[state.mappingFuture.length - 1]
+        if (!snap) return state
+        const applied = applyMappingSnapshot(state.layers, snap)
+        if (!applied) return { mappingFuture: state.mappingFuture.slice(0, -1) }
+        return {
+          layers: applied.layers,
+          mappingFuture: state.mappingFuture.slice(0, -1),
+          mappingPast: [...state.mappingPast, applied.previous],
+          activeLayerId: snap.layerId,
+        }
+      }),
 
     setLayerLocked: (id, locked) =>
       set((state) => ({

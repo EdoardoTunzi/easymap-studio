@@ -77,6 +77,7 @@ export function buildUniforms(shader: ParsedShader | undefined): Record<string, 
     uScale: { value: 1 },
     uLumaKey: { value: 0 },
     uEdgeSharp: { value: 0 },
+    uEdgeFeather: { value: 0 },
     uOpacity: { value: 1 },
     uPalette: { value: Array.from({ length: 5 }, () => new THREE.Vector3(0, 0, 0)) },
     uPaletteCount: { value: 5 },
@@ -217,6 +218,7 @@ function EffectPass({ layerId, variant, source, renderOrder, geometry, controlle
     u.uLumaKey.value = l.lumaKey
     // ?? 0: i progetti salvati prima di questo controllo non hanno il campo
     u.uEdgeSharp.value = l.edgeSharp ?? 0
+    u.uEdgeFeather.value = l.edgeFeather ?? 0
     // il peso della scena scala l'opacità: è così che le due scene si dissolvono l'una nell'altra
     u.uOpacity.value = fx.opacity * sceneWeight(storeState, source)
     // controlli globali: proprietà del layer, valgono per qualunque shader

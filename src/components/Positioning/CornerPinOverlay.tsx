@@ -12,10 +12,15 @@ import { snapCorner } from '../../lib/mappingGeometry'
 import {
   applyHomographyPoint,
   cornersHomography,
+  createWarpGrid,
   edgeHandleBase,
+  gridNodeBase,
+  gridNodePoint,
   invertHomography,
+  isGridCornerNode,
   isWarpActive,
-  warpCurves,
+  warpEval,
+  warpMode,
   warpOutline,
   warpPoint,
   WARP_EDGES,
@@ -75,6 +80,7 @@ export function CornerPinOverlay() {
   const moveCorners = useLayersStore((s) => s.moveActiveCorners)
   const nudgeCorners = useLayersStore((s) => s.nudgeActiveCorners)
   const setWarpHandle = useLayersStore((s) => s.setActiveWarpHandle)
+  const setGridNode = useLayersStore((s) => s.setActiveGridNode)
   const corners = activeLayer?.corners
   const warp = activeLayer?.warp
   const transform = activeLayer?.transform
@@ -82,7 +88,7 @@ export function CornerPinOverlay() {
   const view = useUiStore((s) => s.view)
   const selection = useUiStore((s) => s.mappingSelection)
   const setSelection = useUiStore((s) => s.setMappingSelection)
-  const warpMode = useUiStore((s) => s.warpMode)
+  const editingWarp = useUiStore((s) => s.warpMode)
   const snapEnabled = useUiStore((s) => s.snapEnabled)
 
   useEffect(() => {
@@ -90,7 +96,11 @@ export function CornerPinOverlay() {
     if (!el) return
     const observer = new ResizeObserver((entries) => {
       const entry = entries[0]
-      if (entry) setSize({ width: entry.contentRect.width, height: entry.contentRect.height })
+      if (entry)
+        setSize({
+          width: entry.contentRect.width,
+          height: entry.contentRect.height,
+        })
     })
     observer.observe(el)
     return () => observer.disconnect()
@@ -102,17 +112,27 @@ export function CornerPinOverlay() {
   // riconvertire il trascinamento (mondo → unitario), dove la curvatura è definita
   const homography = useMemo(() => (corners ? cornersHomography(corners) : null), [corners])
   const inverse = useMemo(() => (homography ? invertHomography(homography) : null), [homography])
-  const curves = useMemo(() => warpCurves(warp), [warp])
+  const ev = useMemo(() => warpEval(warp), [warp])
+  const mode = warpMode(warp)
+  const grid = warp?.grid ?? EMPTY_GRID
 
-  /** Punto in spazio unitario → pixel dell'overlay (curvatura + omografia + transform + vista). */
+  /** Punto in spazio unitario → pixel dell'overlay (deformazione + omografia + transform + vista). */
   const unitToScreen = (u: number, v: number) => {
     if (!homography || !transform) return { x: 0, y: 0 }
-    const w = warpPoint(curves, homography, u, v)
+    const w = warpPoint(ev, homography, u, v)
     const r = applyTransform(w.x, w.y, transform)
     return worldToScreen(r.x, r.y, width, height, view)
   }
 
-  /** Punto unitario "puro" (senza curvatura): posizione degli handle Bézier, che vivono lì. */
+  /**
+   * Maniglia (punto di controllo Bézier o nodo del reticolo) → pixel.
+   *
+   * Le maniglie vivono nello spazio unitario PRIMA della correzione dell'obiettivo, e non ci
+   * passano attraverso: così `screenToControl` ne è l'inverso esatto, e il trascinamento segue il
+   * puntatore alla perfezione in ogni condizione. Il prezzo è che con la lente spinta la maniglia
+   * si stacca di poco dalla superficie che comanda — invertire la lente avrebbe reso il gesto
+   * approssimato o appiccicoso proprio agli estremi, che è molto peggio da usare.
+   */
   const controlToScreen = (p: Corner) => {
     if (!homography || !transform) return { x: 0, y: 0 }
     const w = applyHomographyPoint(homography, p.x, p.y)
@@ -120,31 +140,38 @@ export function CornerPinOverlay() {
     return worldToScreen(r.x, r.y, width, height, view)
   }
 
-  const handleCornerDrag =
-    (index: 0 | 1 | 2 | 3) => (e: ReactPointerEvent<HTMLDivElement>) => {
-      e.preventDefault()
-      e.stopPropagation()
-      // il click seleziona comunque l'angolo, così le frecce agiscono su quello appena toccato
-      setSelection({ kind: 'corner', index })
-      if (!transform || locked) return
-      const rect = containerRef.current!.getBoundingClientRect()
+  /** Pixel → spazio unitario delle maniglie: l'inverso esatto di `controlToScreen`. */
+  const screenToControl = (clientX: number, clientY: number, rect: DOMRect): Corner | null => {
+    if (!inverse || !transform) return null
+    const world = screenToWorld(clientX - rect.left, clientY - rect.top, width, height, view)
+    const local = invertTransform(world.x, world.y, transform)
+    return applyHomographyPoint(inverse, local.x, local.y)
+  }
 
-      const onMove = (ev: PointerEvent) => {
-        const px = ev.clientX - rect.left
-        const py = ev.clientY - rect.top
-        let world = screenToWorld(px, py, width, height, view)
-        // lo snap agisce sulla posizione renderizzata: è lì che l'utente vede la griglia
-        if (snapEnabled) world = snapCorner(world, GRID_STEP)
-        // la maniglia vive nello spazio renderizzato: riportala nello spazio base del corner
-        setCorner(index, invertTransform(world.x, world.y, transform))
-      }
-      const onUp = () => {
-        window.removeEventListener('pointermove', onMove)
-        window.removeEventListener('pointerup', onUp)
-      }
-      window.addEventListener('pointermove', onMove)
-      window.addEventListener('pointerup', onUp)
+  const handleCornerDrag = (index: 0 | 1 | 2 | 3) => (e: ReactPointerEvent<HTMLDivElement>) => {
+    e.preventDefault()
+    e.stopPropagation()
+    // il click seleziona comunque l'angolo, così le frecce agiscono su quello appena toccato
+    setSelection({ kind: 'corner', index })
+    if (!transform || locked) return
+    const rect = containerRef.current!.getBoundingClientRect()
+
+    const onMove = (ev: PointerEvent) => {
+      const px = ev.clientX - rect.left
+      const py = ev.clientY - rect.top
+      let world = screenToWorld(px, py, width, height, view)
+      // lo snap agisce sulla posizione renderizzata: è lì che l'utente vede la griglia
+      if (snapEnabled) world = snapCorner(world, GRID_STEP)
+      // la maniglia vive nello spazio renderizzato: riportala nello spazio base del corner
+      setCorner(index, invertTransform(world.x, world.y, transform))
     }
+    const onUp = () => {
+      window.removeEventListener('pointermove', onMove)
+      window.removeEventListener('pointerup', onUp)
+    }
+    window.addEventListener('pointermove', onMove)
+    window.addEventListener('pointerup', onUp)
+  }
 
   /**
    * Trascinamento di un intero lato: i due angoli che lo delimitano si muovono insieme, mantenendo
@@ -193,17 +220,13 @@ export function CornerPinOverlay() {
       const rect = containerRef.current!.getBoundingClientRect()
       const base = edgeHandleBase(edge, index)
 
-      const onMove = (ev: PointerEvent) => {
-        const world = screenToWorld(
-          ev.clientX - rect.left,
-          ev.clientY - rect.top,
-          width,
-          height,
-          view,
-        )
-        const local = invertTransform(world.x, world.y, transform)
-        const unit = applyHomographyPoint(inverse, local.x, local.y)
-        setWarpHandle(edge, index, { x: unit.x - base.x, y: unit.y - base.y })
+      const onMove = (pe: PointerEvent) => {
+        const unit = screenToControl(pe.clientX, pe.clientY, rect)
+        if (unit)
+          setWarpHandle(edge, index, {
+            x: unit.x - base.x,
+            y: unit.y - base.y,
+          })
       }
       const onUp = () => {
         window.removeEventListener('pointermove', onMove)
@@ -212,6 +235,26 @@ export function CornerPinOverlay() {
       window.addEventListener('pointermove', onMove)
       window.addEventListener('pointerup', onUp)
     }
+
+  /** Trascinamento di un nodo del reticolo: stessa conversione degli handle Bézier. */
+  const handleGridDrag = (col: number, row: number) => (e: ReactPointerEvent<HTMLDivElement>) => {
+    e.preventDefault()
+    e.stopPropagation()
+    if (!transform || locked || !inverse) return
+    const rect = containerRef.current!.getBoundingClientRect()
+    const base = gridNodeBase(grid, col, row)
+
+    const onMove = (pe: PointerEvent) => {
+      const unit = screenToControl(pe.clientX, pe.clientY, rect)
+      if (unit) setGridNode(col, row, { x: unit.x - base.x, y: unit.y - base.y })
+    }
+    const onUp = () => {
+      window.removeEventListener('pointermove', onMove)
+      window.removeEventListener('pointerup', onUp)
+    }
+    window.addEventListener('pointermove', onMove)
+    window.addEventListener('pointerup', onUp)
+  }
 
   const handlePanStart = (e: ReactPointerEvent<SVGPolygonElement>) => {
     e.preventDefault()
@@ -280,11 +323,15 @@ export function CornerPinOverlay() {
           stroke={stroke}
           strokeWidth={1.5}
           strokeDasharray={locked ? '6 4' : undefined}
-          style={{ pointerEvents: 'auto', cursor: locked ? 'not-allowed' : 'move' }}
+          style={{
+            pointerEvents: 'auto',
+            cursor: locked ? 'not-allowed' : 'move',
+          }}
           onPointerDown={handlePanStart}
         />
         {/* steli degli handle Bézier: legano il punto di controllo al bordo che curva */}
-        {warpMode &&
+        {editingWarp &&
+          mode === 'bezier' &&
           WARP_EDGES.flatMap((edge) =>
             ([0, 1] as const).map((i) => {
               const anchor = unitToScreen(...edgeAnchor(edge, i))
@@ -303,29 +350,55 @@ export function CornerPinOverlay() {
               )
             }),
           )}
+
+        {/* reticolo: le linee seguono la superficie deformata, non i segmenti fra i nodi, così
+            si vede davvero come si piega la proiezione fra un nodo e l'altro */}
+        {editingWarp &&
+          mode === 'grid' &&
+          gridLines(grid).map((line, i) => (
+            <polyline
+              key={`gridline-${i}`}
+              points={line
+                .map(([u, v]) => {
+                  const p = unitToScreen(u, v)
+                  return `${p.x},${p.y}`
+                })
+                .join(' ')}
+              fill="none"
+              stroke="rgba(34, 211, 238, 0.35)"
+              strokeWidth={1}
+            />
+          ))}
       </svg>
 
-      {/* maniglie centro-lato: selezionano il lato e muovono i suoi due angoli insieme */}
-      {WARP_EDGES.map((edge) => {
-        const p = unitToScreen(...edgeAnchorMid(edge))
-        const isSelected = sameSelection(selection, { kind: 'edge', edge })
-        return (
-          <div
-            key={`${edge}-mid`}
-            title={`${WARP_EDGE_LABELS[edge]}: trascina per muovere i due angoli insieme`}
-            onPointerDown={handleEdgeDrag(edge)}
-            className={cn(
-              'absolute -translate-x-1/2 -translate-y-1/2 rotate-45 border-2 border-white transition-[height,width]',
-              isSelected ? 'h-4 w-4 ring-2 ring-white/70' : 'h-3 w-3',
-              locked ? 'cursor-not-allowed bg-amber-500' : 'cursor-grab bg-purple-400 active:cursor-grabbing',
-            )}
-            style={{ left: p.x, top: p.y, pointerEvents: 'auto' }}
-          />
-        )
-      })}
+      {/* Maniglie centro-lato: selezionano il lato e muovono i suoi due angoli insieme.
+          Nascoste mentre si lavora col reticolo, perché a 3×3 nodi quelli di bordo cadono
+          esattamente qui: due maniglie sovrapposte e diverse sono ingovernabili. Il lato resta
+          selezionabile dai pulsanti della toolbar. */}
+      {!(editingWarp && mode === 'grid') &&
+        WARP_EDGES.map((edge) => {
+          const p = unitToScreen(...edgeAnchorMid(edge))
+          const isSelected = sameSelection(selection, { kind: 'edge', edge })
+          return (
+            <div
+              key={`${edge}-mid`}
+              title={`${WARP_EDGE_LABELS[edge]}: trascina per muovere i due angoli insieme`}
+              onPointerDown={handleEdgeDrag(edge)}
+              className={cn(
+                'absolute -translate-x-1/2 -translate-y-1/2 rotate-45 border-2 border-white transition-[height,width]',
+                isSelected ? 'h-4 w-4 ring-2 ring-white/70' : 'h-3 w-3',
+                locked
+                  ? 'cursor-not-allowed bg-amber-500'
+                  : 'cursor-grab bg-purple-400 active:cursor-grabbing',
+              )}
+              style={{ left: p.x, top: p.y, pointerEvents: 'auto' }}
+            />
+          )
+        })}
 
       {/* punti di controllo Bézier: solo in modalità curvatura, per non affollare il canvas */}
-      {warpMode &&
+      {editingWarp &&
+        mode === 'bezier' &&
         WARP_EDGES.flatMap((edge) =>
           ([0, 1] as const).map((i) => {
             const p = controlToScreen(currentControl(edge, i, warp))
@@ -336,7 +409,9 @@ export function CornerPinOverlay() {
                 onPointerDown={handleWarpDrag(edge, i)}
                 className={cn(
                   'absolute -translate-x-1/2 -translate-y-1/2 h-3.5 w-3.5 rounded-full border-2 border-white',
-                  locked ? 'cursor-not-allowed bg-amber-400' : 'cursor-grab bg-cyan-400 active:cursor-grabbing',
+                  locked
+                    ? 'cursor-not-allowed bg-amber-400'
+                    : 'cursor-grab bg-cyan-400 active:cursor-grabbing',
                 )}
                 style={{ left: p.x, top: p.y, pointerEvents: 'auto' }}
               />
@@ -344,8 +419,33 @@ export function CornerPinOverlay() {
           }),
         )}
 
+      {/* nodi del reticolo. I 4 d'angolo non si disegnano: lì comandano le maniglie del
+          corner-pin, e due maniglie sovrapposte sullo stesso punto sarebbero ingovernabili */}
+      {editingWarp &&
+        mode === 'grid' &&
+        gridNodes(grid).map(([col, row]) => {
+          const p = controlToScreen(gridNodePoint(grid, col, row))
+          return (
+            <div
+              key={`node-${col}-${row}`}
+              title={`Nodo ${col + 1},${row + 1} del reticolo`}
+              onPointerDown={handleGridDrag(col, row)}
+              className={cn(
+                'absolute -translate-x-1/2 -translate-y-1/2 h-3 w-3 rounded-sm border-2 border-white',
+                locked
+                  ? 'cursor-not-allowed bg-amber-400'
+                  : 'cursor-grab bg-cyan-400 active:cursor-grabbing',
+              )}
+              style={{ left: p.x, top: p.y, pointerEvents: 'auto' }}
+            />
+          )
+        })}
+
       {screenCorners.map((c, i) => {
-        const isSelected = sameSelection(selection, { kind: 'corner', index: i as 0 | 1 | 2 | 3 })
+        const isSelected = sameSelection(selection, {
+          kind: 'corner',
+          index: i as 0 | 1 | 2 | 3,
+        })
         return (
           <div
             key={i}
@@ -354,7 +454,9 @@ export function CornerPinOverlay() {
               'absolute -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-white transition-[height,width]',
               // l'angolo selezionato è più grande: è il bersaglio delle frecce, va riconosciuto subito
               isSelected ? 'h-5 w-5 ring-2 ring-white/70' : 'h-4 w-4',
-              locked ? 'cursor-not-allowed bg-amber-500' : 'cursor-grab bg-purple-500 active:cursor-grabbing',
+              locked
+                ? 'cursor-not-allowed bg-amber-500'
+                : 'cursor-grab bg-purple-500 active:cursor-grabbing',
             )}
             style={{ left: c.x, top: c.y, pointerEvents: 'auto' }}
           />
@@ -362,6 +464,37 @@ export function CornerPinOverlay() {
       })}
     </div>
   )
+}
+
+/** Reticolo a riposo usato finché il layer non ne ha uno proprio: evita rami null nel rendering. */
+const EMPTY_GRID = createWarpGrid()
+
+/** Segmenti della griglia da disegnare, campionati lungo la superficie deformata. */
+function gridLines(grid: { cols: number; rows: number }): [number, number][][] {
+  const SAMPLES = 12
+  const lines: [number, number][][] = []
+  // linee a u costante (verticali) e a v costante (orizzontali), bordi esclusi: quelli sono già
+  // il contorno del quad, ridisegnarli raddoppierebbe il tratto
+  for (let col = 1; col < grid.cols; col++) {
+    const u = col / grid.cols
+    lines.push(Array.from({ length: SAMPLES + 1 }, (_, i) => [u, i / SAMPLES] as [number, number]))
+  }
+  for (let row = 1; row < grid.rows; row++) {
+    const v = row / grid.rows
+    lines.push(Array.from({ length: SAMPLES + 1 }, (_, i) => [i / SAMPLES, v] as [number, number]))
+  }
+  return lines
+}
+
+/** Nodi trascinabili: tutti tranne i 4 d'angolo, che sono le maniglie del corner-pin. */
+function gridNodes(grid: { cols: number; rows: number }): [number, number][] {
+  const out: [number, number][] = []
+  for (let row = 0; row <= grid.rows; row++) {
+    for (let col = 0; col <= grid.cols; col++) {
+      if (!isGridCornerNode(grid, col, row)) out.push([col, row])
+    }
+  }
+  return out
 }
 
 /** Punto sul bordo (spazio unitario) a cui aggancia lo stelo dell'handle: t = 1/3 e 2/3. */

@@ -9,9 +9,10 @@ import * as THREE from 'three'
 import type { Corners } from '../store/projectStore'
 import {
   cornersHomography,
-  warpCurves,
+  warpEval,
   warpPoint,
   isWarpActive,
+  warpMode,
   WARP_SUBDIVISIONS,
   type Warp,
 } from '../lib/warp'
@@ -19,9 +20,16 @@ import {
 /** Nome dell'attributo del peso prospettico, atteso dal vertex shader del wrapper GLSL. */
 export const PERSP_ATTRIBUTE = 'aPersp'
 
-/** Suddivisioni della mesh: 1 quad senza warp (costo identico a prima), griglia fitta con warp. */
+/**
+ * Suddivisioni della mesh: 1 quad senza deformazione (costo identico a prima). Col reticolo
+ * servono almeno ~10 segmenti per cella, altrimenti le spline fra i nodi si vedono spezzate.
+ */
 export function warpSegments(warp: Warp | null | undefined): number {
-  return isWarpActive(warp) ? WARP_SUBDIVISIONS : 1
+  if (!isWarpActive(warp)) return 1
+  if (warpMode(warp) === 'grid' && warp?.grid) {
+    return Math.max(WARP_SUBDIVISIONS, Math.max(warp.grid.cols, warp.grid.rows) * 10)
+  }
+  return WARP_SUBDIVISIONS
 }
 
 export function createWarpGeometry(segments: number): THREE.PlaneGeometry {
@@ -45,13 +53,13 @@ export function updateWarpGeometry(
   warp: Warp | null | undefined,
 ): void {
   const m = cornersHomography(corners)
-  const curves = warpCurves(warp)
+  const ev = warpEval(warp)
   const position = geometry.getAttribute('position') as THREE.BufferAttribute
   const uv = geometry.getAttribute('uv') as THREE.BufferAttribute
   const persp = geometry.getAttribute(PERSP_ATTRIBUTE) as THREE.BufferAttribute | undefined
 
   for (let i = 0; i < position.count; i++) {
-    const p = warpPoint(curves, m, uv.getX(i), uv.getY(i))
+    const p = warpPoint(ev, m, uv.getX(i), uv.getY(i))
     position.setXYZ(i, p.x, p.y, 0)
     persp?.setX(i, p.k)
   }
