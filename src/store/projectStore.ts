@@ -2,18 +2,27 @@
 // ecc.) vive ora dentro i singoli layer in `layersStore.ts`: qui restano solo i tipi puri e
 // le funzioni di fit, usati sia dai layer sia dai componenti di posizionamento.
 
-export type MediaType = 'image' | 'video' | 'gif'
+export type MediaType = 'image' | 'video' | 'gif' | 'camera'
 
 export interface MediaAsset {
   id: string
   name: string
+  /** Vuoto per le sorgenti live (`camera`): lì il contenuto arriva da getUserMedia, non da un URL. */
   url: string
-  /** Tipo di sorgente: immagine statica, video (VideoTexture) o GIF animata (decodificata a frame). */
+  /**
+   * Tipo di sorgente: immagine statica, video (VideoTexture), GIF animata (decodificata a frame)
+   * o camera (ingresso video live: webcam, capture card HDMI…).
+   */
   type: MediaType
   width: number
   height: number
   /** Blob originale, tenuto per la persistenza su IndexedDB (i blob URL non sopravvivono al refresh). */
   blob?: Blob
+  /**
+   * Solo per `camera`: device da aprire. È l'unica cosa che viaggia verso la finestra Output,
+   * che apre la stessa camera per conto suo (uno stream non è trasferibile via BroadcastChannel).
+   */
+  deviceId?: string
 }
 
 export interface Corner {

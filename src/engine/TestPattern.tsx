@@ -1,11 +1,16 @@
 import { useEffect, useMemo } from 'react'
 import * as THREE from 'three'
 import { useLayersStore } from '../store/layersStore'
+import { createWarpGeometry, updateWarpGeometry, warpSegments } from './warpGeometry'
 
+// Stessa correzione prospettica della mesh dei layer (vedi engine/warpGeometry.ts): il test
+// pattern serve proprio a leggere la deformazione, quindi deve essere mappato come il contenuto.
 const VERTEX_SHADER = `
-varying vec2 vUv;
+attribute float aPersp;
+varying vec3 vUvW;
 void main() {
-  vUv = uv;
+  float k = aPersp <= 0.0 ? 1.0 : aPersp;
+  vUvW = vec3(uv * k, k);
   gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
 }
 `
@@ -15,7 +20,8 @@ void main() {
 // rendono evidente una prospettiva sbagliata, che il solo bordo non mostrerebbe.
 const FRAGMENT_SHADER = `
 precision highp float;
-varying vec2 vUv;
+varying vec3 vUvW;
+#define vUv (vUvW.xy / vUvW.z)
 uniform float uCells;
 
 // linea di spessore w centrata sulla distanza dist, con bordi morbidi per non aliasare
@@ -63,25 +69,18 @@ export function TestPattern() {
   const on = useLayersStore((s) => s.testPattern)
   const layer = useLayersStore((s) => s.layers.find((l) => l.id === s.activeLayerId))
 
-  // stessa geometria a 4 vertici warpata dai corner usata da LayerMesh
-  const geometry = useMemo(() => {
-    const geo = new THREE.PlaneGeometry(1, 1, 1, 1)
-    geo.setAttribute('uv', new THREE.Float32BufferAttribute([0, 1, 1, 1, 0, 0, 1, 0], 2))
-    return geo
-  }, [])
+  // stessa geometria warpata dai corner usata da LayerMesh, warp dei bordi incluso
+  const corners = layer?.corners
+  const warp = layer?.warp
+  const segments = warpSegments(warp)
+  const geometry = useMemo(() => createWarpGeometry(segments), [segments])
 
   const uniforms = useMemo(() => ({ uCells: { value: 8 } }), [])
 
-  const corners = layer?.corners
   useEffect(() => {
     if (!corners) return
-    const posAttr = geometry.getAttribute('position') as THREE.BufferAttribute
-    posAttr.setXYZ(0, corners[0].x, corners[0].y, 0)
-    posAttr.setXYZ(1, corners[1].x, corners[1].y, 0)
-    posAttr.setXYZ(2, corners[2].x, corners[2].y, 0)
-    posAttr.setXYZ(3, corners[3].x, corners[3].y, 0)
-    posAttr.needsUpdate = true
-  }, [geometry, corners])
+    updateWarpGeometry(geometry, corners, warp)
+  }, [geometry, corners, warp])
 
   useEffect(() => () => geometry.dispose(), [geometry])
 

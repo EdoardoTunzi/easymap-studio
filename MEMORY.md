@@ -2,6 +2,324 @@
 
 Ogni modifica al progetto va registrata qui con data, descrizione e motivazione. Le voci più recenti in alto dentro ogni giornata.
 
+## 2026-08-20 — Barra playlist: azioni in hover sui clip e toggle di visibilità
+
+### Il clip non è più cliccabile (`PlaylistBar.tsx`)
+
+Prima l'intero blocco del clip era il trigger del popover, e aprire l'editor applica il look al layer come anteprima: durante un live un click accidentale mandava in onda l'effetto sbagliato. Ora il blocco è solo trascinabile (riordino) e in hover compaiono due icone in alto a destra:
+
+- **tre puntini** (`MoreHorizontal`) → apre lo stesso pannello editor di prima (con l'anteprima sul layer, che ora è una scelta esplicita);
+- **cestino** (`Trash2`) → `removeClip`, che toglie il clip **solo dalla playlist**: shader e preset restano nella libreria.
+
+Le icone restano visibili anche con l'editor aperto (`focus-within` + stato `isEditing`), e il contenitore ha `draggable={false}` per non far partire il drag del clip dal pulsante.
+
+### Toggle "Playlist" nella barra in alto (`TopToolbar.tsx`, `uiStore.ts`)
+
+Nuovo bottone fra *Progetti* e *Output* che mostra/nasconde la barra playlist (`playlistVisible`, persistito in `localStorage` con chiave `easyvj-playlist-visible`). Non è un `Panel` della sidebar, quindi la nav è divisa in due gruppi con il bottone in mezzo.
+
+La barra viene nascosta con `hidden` (display:none) e **non smontata**: il motore di riproduzione (`usePlaylistPlayback`) vive dentro `PlaylistBar`, smontarlo fermerebbe la sequenza in corso.
+
+## 2026-08-20 — Mapping, seconda parte: reticolo, keystone, correzione obiettivo, soft edge, undo/redo
+
+Completate le voci rimaste dal brainstorming sul canvas di mapping. Tutta la matematica nuova è stata verificata in browser importando i moduli veri, non a occhio.
+
+### Reticolo di nodi (la terza modalità concordata)
+
+`Warp` ha ora un `mode` (`bezier` | `grid`) e un reticolo opzionale di celle 2×2…4×4 (3×3…5×5 nodi). Le due modalità sono **alternative e non si sommano**, ma i dati dell'altra restano memorizzati: si torna indietro senza rifare il lavoro.
+
+L'interpolazione è Catmull-Rom bicubica sui nodi. **La trappola**: fuori dai bordi i nodi fantasma non vanno clampati ma **estrapolati linearmente** (`P₋₁ = 2P₀ − P₁`). Col clamp la tangente al bordo verrebbe dimezzata e la superficie si affloscerebbe lì anche a reticolo fermo, rompendo l'identità. Con l'estrapolazione l'identità è esatta: errore misurato 1.1e-16.
+
+Altre invarianti verificate: i nodi sono interpolati esattamente (3.1e-16), i 4 angoli restano ancorati al corner-pin (3.1e-16), il flip andata/ritorno è esatto (0).
+
+Cambiare densità **conserva la forma solo approssimativamente**: i nodi nuovi cadono esattamente sulla superficie vecchia (errore 0), ma fra un nodo e l'altro la spline è un'altra e su una deformazione marcata lo scarto misurato arriva a 0.042 in spazio unitario. È inerente al passare a un reticolo che non contiene il precedente, non un difetto da correggere.
+
+**Difetto trovato provando la UI**: con reticolo 3×3 i nodi di bordo cadono esattamente sotto le maniglie a rombo di selezione del lato — due maniglie diverse sovrapposte, ingovernabili. Le maniglie del lato ora spariscono mentre si lavora col reticolo; il lato resta selezionabile dai pulsanti della toolbar.
+
+### Correzione dell'obiettivo (barile / cuscino)
+
+Deformazione radiale in spazio unitario, applicata sopra la modalità attiva. Il fattore è costruito per **lasciare fermi i 4 angoli** (a raggio d'angolo vale 1), così si corregge l'ottica senza perdere l'allineamento: verificato, errore 0 sui corner a ogni valore.
+
+**Il limite ±0.5 non è arbitrario.** Il profilo radiale `lensRadius(a) = 2·lens·a³ + (1−lens)·a` resta crescente su tutto il quadrato unitario solo per lens ≥ −0.5: sotto ha un massimo prima del raggio d'angolo, quindi due raggi diversi finiscono sullo stesso punto e **la mesh si ripiega su sé stessa** vicino agli angoli. A −0.5 il massimo cade esattamente sull'angolo. Verificato monotono al limite.
+
+Percorso sbagliato, per non ripeterlo: prima avevo scritto l'inversa della lente a punto fisso (`a ← target/f(a)`) per far passare anche le maniglie attraverso la lente. **Non converge**: con lens forte il fattore scende a 0.4 vicino al centro, il passo scavalca la soluzione e oscilla — errore misurato 0.172, un sesto del quad. La bisezione monotona che l'ha sostituita sbagliava ramo proprio nella zona di ripiegamento, e cercare l'ultimo attraversamento peggiorava (1.35). Conclusione: **le maniglie non passano per la lente**. Vivono nello spazio pre-correzione, dove `screenToControl` è l'inverso esatto di `controlToScreen` e il trascinamento segue il puntatore alla perfezione. Il prezzo è che con la lente spinta la maniglia si stacca di poco dalla superficie che comanda — molto meglio di un gesto approssimato o appiccicoso proprio agli estremi.
+
+### Keystone numerico
+
+`keystoneCorners` in `mappingGeometry.ts`: agisce sui **corner** come rotazione e scala, non come valore memorizzato. Il keystone è già interamente esprimibile dai 4 angoli, e uno stato parallelo entrerebbe in conflitto col trascinamento diretto delle maniglie. Due pulsanti in toolbar (⌃K / ⌐K, Alt per il verso opposto). Verificato: centro invariato, lato alto 1.92 contro lato basso 1.28.
+
+### Soft edge del perimetro
+
+Uniform `uEdgeFeather` e campo per-layer `edgeFeather?`. Nel fragment la uv **è** lo spazio del quad, quindi la distanza dal bordo si legge direttamente e la sfumatura segue il warp senza calcoli aggiuntivi. Diverso da `edgeSharp`, che lavora sul contorno della sagoma dell'asset: qui si ammorbidisce il bordo della luce proiettata.
+
+### Undo/redo del mapping
+
+`patchActiveMapping` era già l'imbuto unico di ogni modifica di mapping (drag sul canvas incluso): è lì che si fotografa lo stato precedente. Cronologia da 80 voci, non persistita.
+
+Le raffiche vengono **accorpate**: due modifiche sullo stesso layer entro 500 ms contano come una, e si tiene la voce più vecchia (è lo stato a cui l'utente vuole tornare). Senza, un trascinamento avrebbe riempito la cronologia di micro-passi. ⌘Z / ⇧⌘Z più due pulsanti in toolbar. Verificato: annulla, ripeti e ritorno allo stato identico.
+
+### Rimosso su richiesta dell'utente
+
+Preset di mapping e campi numerici delle coordinate degli angoli: fatti e poi tolti nella stessa sessione. Restano due tracce da conoscere: la versione di IndexedDB è salita a **6** (la 5 aveva lo store `mappingPresets`; non si può scendere di versione, quindi la 6 elimina lo store orfano dove esiste), e `MappingNumbersPanel` è diventato `MappingOpticsPanel` con le sole regolazioni continue.
+
+### Nota di processo
+
+`npx prettier --write` su un file ha riformattato tutto con i default (virgolette doppie, punto e virgola): il progetto **non ha configurazione prettier** e usa virgolette singole, niente punto e virgola, righe da 100. Rimediato con `--single-quote --no-semi --print-width 100`. Non lanciare prettier senza quei flag.
+
+## 2026-08-20 — Mapping: corner-pin proiettivamente corretto + curvatura dei 4 bordi
+
+L'utente ha chiesto di aggiungere al canvas di mapping solo le opzioni strettamente necessarie che mancavano: prospettiva, curvatura separata dei lati, punti di controllo aggiuntivi, selezione di un lato cliccando fra due pin. Fatte le prime due fasi delle tre concordate (la terza — griglia NxM di nodi — resta aperta).
+
+### Il difetto trovato: il corner-pin non aveva prospettiva
+
+La mesh del layer era una `PlaneGeometry(1,1,1,1)`: **4 vertici, 2 triangoli, uv interpolate in modo affine**. Appena i 4 corner non formano un parallelogramma — cioè in qualunque keystone su una statua o un palco — i due triangoli si deformano indipendentemente e la texture si spezza **lungo la diagonale**, con la classica piega a "V". Non era un'opzione mancante: era un difetto presente su ogni mapping non frontale.
+
+**Correzione** (`src/lib/warp.ts` + `src/engine/warpGeometry.ts`): si calcola l'omografia quadrato-unitario → quad (algoritmo di Heckbert, con caso affine separato per i parallelogrammi, dove il denominatore si annullerebbe). Ogni vertice porta l'attributo `aPersp` = 1/W; il wrapper GLSL trasporta `vec3(uv*k, k)` e il fragment ricostruisce `vUv` dividendo.
+
+Il trucco che ha evitato di toccare i 103 shader della libreria: nel fragment `vUv` non è più un varying ma una **macro** — `#define vUv (vUvW.xy / vUvW.z)`. I file `.glsl` continuano a scrivere `vUv` come prima. (Verificato prima che nessuno shader dichiari un proprio `varying vUv`: nessuno lo fa.)
+
+**Verificato numericamente in browser**, simulando l'interpolazione baricentrica della GPU su un quad in forte keystone e confrontandola con l'inversa esatta dell'omografia: uv corretta `0.198496, 0.413534` = uv esatta alle 6 cifre; l'interpolazione affine di prima dava `0.200000, 0.500000`, **sbagliata di 0.087 in v** (8.7% dell'altezza della texture in quel punto).
+
+Nota per i progetti già allineati: il contenuto si ridistribuisce (correttamente) rispetto a prima, quindi un mapping tarato sul palco con keystone forte va rivisto.
+
+### Curvatura dei bordi (patch di Coons)
+
+I 4 bordi sono Bézier cubiche definite **in spazio unitario**, non in coordinate mondo: così la curvatura resta indipendente da posizione, rotazione e scala del quad (che vivono nei corner) e sopravvive a qualunque spostamento del mapping. La superficie è una patch di Coons fra i 4 bordi.
+
+La scelta che ha tenuto il codice senza casi speciali: gli handle memorizzano lo **scostamento** dalla posizione a bordo dritto (t = 1/3 e 2/3). A scostamento zero le Bézier sono rette e la patch degenera **esattamente** nell'identità — verificato, errore massimo 6.7e-16. Quindi "nessun warp" = mesh a 4 vertici e comportamento identico a prima, senza un ramo `if` nel rendering: la suddivisione (24×24) si accende sola quando `isWarpActive` è vero.
+
+Altre invarianti verificate in browser: i 4 angoli restano ancorati anche con curvatura forte (errore 0), il bordo segue esattamente la sua Bézier (errore 0), `flipWarp` andata/ritorno è esatto.
+
+`flipWarp` è servito perché `flipCorners` scambia i corner senza spostare il quad: l'omografia si ribalta, e senza ribaltare anche il warp la curvatura sarebbe saltata dall'altro lato cambiando la sagoma proiettata.
+
+### Selezione del lato
+
+`uiStore.selectedCorner` (indice o null) è diventato `mappingSelection`: `all` | `corner` | `edge`. Con un lato selezionato le frecce muovono **i due angoli insieme**; sul canvas lo stesso si ottiene dalla maniglia a rombo al centro del lato. `nudgeActiveCorners` accetta ora una lista di indici invece di un indice singolo. Verificato col drag della maniglia centro-lato: TL e TR si spostano del delta esatto, BL e BR di zero.
+
+### Dove tocca
+
+- `src/lib/warp.ts` (nuovo): omografia, Coons, handle, `flipWarp`, contorno campionato.
+- `src/engine/warpGeometry.ts` (nuovo): costruzione/aggiornamento della mesh, attributo `aPersp`, `computeBoundingSphere` (senza, il frustum culling avrebbe usato la sfera della PlaneGeometry originale e a mapping molto spostati la mesh sarebbe sparita). Qui viene anche disposta la geometria, che prima restava appesa.
+- `src/engine/isfParser.ts`: vertex shader con `aPersp`, macro `vUv` nel fragment.
+- `src/engine/TestPattern.tsx`: stessa geometria e stessa correzione — è la griglia con cui si legge la deformazione, dev'essere mappata come il contenuto.
+- `src/store/layersStore.ts`: campo `warp?` (opzionale come `edgeSharp`, i progetti salvati prima non ce l'hanno e assente = bordi dritti), `setActiveWarpHandle`, `resetActiveWarp`. Persistenza e sync viaggiano già per layer intero: nessuna modifica lì.
+- `src/components/Positioning/CornerPinOverlay.tsx`: contorno curvo campionato, maniglie centro-lato, handle Bézier con stelo (solo in modalità curvatura, per non affollare il canvas durante il live).
+- `src/components/Positioning/MappingControls.tsx`: 4 pulsanti di selezione lato, toggle curvatura, azzera curvatura.
+
+## 2026-08-19 — Qualità dell'immagine proiettata: compositore di output, colore, supersampling, diagnostica
+
+L'utente ha chiesto se la finestra Output avesse limiti di qualità propri o se dipendesse tutto dal proiettore (un Full HD), notando che un video HD sullo stesso proiettore si vede molto meglio dei visual. Sono emersi **due difetti veri nel nostro codice**, entrambi misurati, più una serie di leve mancanti.
+
+### Il difetto grosso: mezza conversione di colore (immagini scure di oltre la metà)
+
+Le texture di contenuto erano marcate `SRGBColorSpace`. Three le carica allora come `SRGB8_ALPHA8` e l'hardware **le linearizza a ogni prelievo**; il guadagno ci sarebbe se l'immagine venisse ri-codificata in uscita, ma i layer sono `ShaderMaterial` con sorgente scritta a mano e Three inserisce la conversione finale **solo nei materiali che includono il chunk `colorspace_fragment`** — il nostro wrapper non lo fa. Metà conversione, quindi, e a senso unico.
+
+**Misurato in browser con un test WebGL isolato**: un pixel grigio `128` nel file arrivava allo schermo come **55**. Non un'inezia — le mezze luci di ogni foto, video e ripresa webcam venivano schiacciate verso il nero, proprio su un dispositivo che di contrasto ne ha già poco.
+
+Le texture ora usano `SOURCE_COLOR_SPACE = NoColorSpace` (`mediaTexture.ts`, più lo stencil della maschera-immagine in `ShaderPlane`): i byte del file arrivano intatti. La pipeline lavora tutta in spazio gamma, che è anche lo spazio in cui sono pensati i 100+ shader della libreria, le palette prese dai color picker e le formule dei blend mode (Overlay, Soft Light e compagnia sono definite su valori non lineari, come in Photoshop). **Le immagini caricate ora appaiono più chiare: è la resa corretta, non una schiaritura.**
+
+Nota di rotta: all'inizio avevo indicato come colpevole il tone mapping ACES che R3F imposta di default. **Era sbagliato, e per la stessa ragione**: senza `#include <tonemapping_fragment>` quella curva non tocca i nostri shader. Il `flat` sul Canvas è stato messo lo stesso, per fissare la scelta e proteggere i materiali non nostri (TestPattern, futuri).
+
+### Il compositore (`OutputComposer.tsx`)
+
+La scena non va più diritta a schermo: passa per un buffer interno e un passaggio finale. Serve per quattro cose che prima non erano possibili.
+
+- **Supersampling 1× / 1.25× / 1.5× / 2×.** Il MSAA del canvas lavora solo sui bordi della *geometria*, cioè i 4 lati del quad — che con un PNG scontornato sono trasparenti, quindi invisibili. Tutto ciò che si vede davvero (i contorni disegnati dal fragment shader, il bordo della sagoma) non ne beneficiava in alcun modo: **l'`antialias: true` che c'era non salvava un solo bordo visibile**. L'unico antialiasing che agisce lì è disegnare più grande e ridurre. Riduzione a 4 prelievi quando il rapporto non è intero (1.25×, 1.5×), dove un prelievo solo lascerebbe fuori dei texel.
+- **Buffer a mezza precisione float**, così i blend Add/Screen possono superare 1.0 invece di essere tagliati subito.
+- **Dither** sugli 8 bit finali. Verificato numericamente: su una colonna a valore teorico costante, con dither i pixel alternano 76/77, senza dither sono tutti 77 — cioè lo scalino che al buio si legge come banding.
+- **Grana** opzionale. Un video ha dettaglio ad alta frequenza ovunque, uno shader generativo no: è anche per questo che sullo stesso proiettore il video "sembra migliore" a parità di pixel.
+
+Niente MSAA sul buffer interno, di proposito: un framebuffer multisample non si può copiare con `copyTexSubImage2D`, e la copia del backdrop per i blend avanzati avviene proprio mentre quel buffer è legato. Visto che il MSAA lì non salverebbe comunque nessun bordo visibile, l'antialiasing lo fa il supersampling.
+
+**Il supersampling vale solo per la finestra Output**: durante un set le due finestre girano sulla stessa GPU, e far pagare all'anteprima il quadruplo dei pixel significherebbe toglierli al proiettore.
+
+### Sfondamento morbido, e un errore intercettato dal cartello di prova
+
+Il controllo delle alte luci era nato come curva di compressione classica. Il cartello di prova ha mostrato subito il conto: **il bianco pieno usciva a 239 invece di 255**, cioè il 6% dei lumen del proiettore regalato a una curva — esattamente il difetto che avevo contestato ad ACES. Riscritto come *versamento dell'eccesso*: sotto il fondo scala non tocca niente, e solo ciò che sfonda vira verso il bianco invece di far scivolare la tinta (senza, un `clamp` porta un (1.6, 1.2, 0.3) a giallo pieno). Dopo la correzione: bianco 255, primari a fondo scala, rampa a 128.
+
+### Backdrop dei blend avanzati (`backdrop.ts`)
+
+Due correzioni obbligate dal buffer interno, entrambe altrimenti fatali: le dimensioni si leggono dal **bersaglio legato** e non dal canvas (con supersampling attivo i due numeri differiscono, e `gl_FragCoord` parla in pixel del bersaglio: il backdrop sarebbe stato campionato spostato e ingrandito); e il tipo della copia segue quello del bersaglio, perché copiare un buffer a mezza precisione float dentro una texture a byte non è una conversione ma un'operazione **non consentita**. Verificato con due layer in Overlay a 2× e buffer HDR: nessun errore WebGL, blend allineato, 119 fps.
+
+### Nitidezza del bordo (per-layer)
+
+`edgeSharp` comprime la rampa dell'alpha attorno a metà scala **senza spostarla**, così il mapping non si muove. Il contorno di un PNG è largo pochi pixel e il corner-pin lo ingrandisce fino a decine di pixel di proiettore, dove si legge come alone sfocato. Effetto collaterale gradito, visto in prova: con il luma key attivo sparisce anche il pulviscolo di pixel semitrasparenti attorno al soggetto.
+
+### Anisotropia (`textureQuality.ts`)
+
+Mai impostata finora, quindi ferma a 1. Nel projection mapping il quad è **sempre** guardato di sbieco: senza filtro anisotropico i lati inclinati perdono dettaglio molto prima di quelli frontali, e a occhio sembra fuori fuoco. Il valore massimo lo conosce solo il renderer, che nasce col Canvas — cioè dopo che qualche texture può già essere stata creata: per questo le texture si registrano e vengono aggiornate a ritroso.
+
+### Diagnostica e cartello di prova
+
+- **Pannello sulla finestra Output** (tasto S): pixel reali del canvas, dimensione del buffer interno, supersampling, precisione, fps, e se la finestra copre davvero lo schermo. "Sembra povero" ha troppe cause che a occhio si confondono; questi numeri le separano in due secondi. Vive fuori da Zustand di proposito: aggiornarlo dentro il ciclo di disegno via React sarebbe il tipo di costo che dovrebbe aiutare a scovare.
+- **Cartello di prova** (tasto C, o dal pannello): righe da un pixel, rampa, barre sature, gradini di nero e di bianco. Si è ripagato subito trovando il bianco a 239. Non si ricorda mai acceso fra le sessioni: ritrovarselo a tutto schermo cinque minuti prima di un set sarebbe solo un danno.
+- Le impostazioni di resa viaggiano su un **messaggio dedicato** del BroadcastChannel e passano **sempre**, modalità Live compresa: non sono la scena, sono il modo di disegnarla, e alzare la qualità durante un set deve avere effetto subito. Stanno in localStorage e non nei progetti: dipendono dalla macchina e dal proiettore, non dal lavoro.
+
+### Finestra di proiezione
+
+Si apre sullo schermo secondario quando il browser espone la Window Management API (prima nasceva 1280×720 sopra il pannello di controllo, da trascinare a mano). Pieno schermo con F o doppio click — comandabile solo da lì, perché il browser lo concede solo a chi ha ricevuto un gesto nella finestra che lo chiede.
+
+**Il pieno schermo può fallire in silenzio**: provato nel pannello di anteprima, la promise non viene rifiutata e lo stato non cambia. Si controlla quindi `document.fullscreenElement` dopo la richiesta, non l'esito della promise, e si scrive a schermo cosa fare al suo posto. Un tasto che sul palco non fa niente e non dice niente è il modo peggiore di fallire.
+
+### 3× e 4× rimossi dopo la prova sul proiettore (la scala si ferma a 2×)
+
+Provati sul proiettore reale: **nessun miglioramento visibile oltre il 2×**, come previsto dalla teoria ma ora verificato. A quel punto il limite della nitidezza non è più l'aliasing, è l'ottica — messa a fuoco, contrasto, dimensione del pixel proiettato — e il supersampling in più si paga senza ricevere niente.
+
+Tolti dall'elenco. Un'opzione che non migliora nulla ma dimezza gli fps, in un'app che si usa dal vivo, non è una scelta in più: è un modo di rovinarsi la serata con un click. La motivazione è scritta nel commento di `SUPER_SAMPLE_STEPS`, insieme all'avvertenza per chi volesse riaprire la questione — **il confronto va fatto sul proiettore**, perché a monitor la differenza fra 2× e 4× si vede, ed è proprio questo che rende ingannevole la prova.
+
+I valori già salvati si sistemano da soli: `sanitizeRender` accetta solo i fattori in elenco, quindi chi avesse 3× o 4× in localStorage (o lo ricevesse via BroadcastChannel) torna al default.
+
+**Restano** il tetto di memoria video e il fattore effettivo nel pannello, nati per gestire i fattori alti ma utili comunque: su un display 4K anche il 2× arriva a sfiorare il limite, e una riduzione silenziosa resterebbe invisibile.
+
+### Scala del supersampling estesa a 3× e 4× (poi rimossa, vedi sopra), default alzato a 2×
+
+L'utente ha girato il set a 2× ("molto più nitido da proiettore") e ha chiesto se avesse senso arrivare a 4×. Misurato invece che stimato, su un canvas da 2,03 MP — cioè praticamente un 1080p (2,07 MP), quindi i numeri valgono direttamente per il caso reale — con un layer e uno shader:
+
+| Fattore | Buffer | Memoria | FPS |
+| ------- | ------ | ------- | --- |
+| 1× | 1336×1522 | 16 MB | 124 |
+| 2× | 2672×3044 | 62 MB | 126 |
+| 3× | 4008×4566 | 140 MB | 93 |
+| 4× | 5344×6088 | 248 MB | 56 |
+
+- **A 2× il costo è nullo**: 126 fps contro 124, cioè entrambi limitati dal vsync e non dalla GPU. Da qui la decisione di **alzare il default a 2×** — chiude il punto lasciato aperto ieri, che aspettava solo il riscontro sul proiettore. Su una macchina modesta si abbassa con un click, e il pannello avvisa da sé sotto i 50 fps.
+- **3× e 4× aggiunti ma marcati "oltre il punto di resa"**, con avviso in pannello: il guadagno cala (da 4 a 16 campioni per pixel si vede poco, e su un 1080p il limite diventa l'ottica del proiettore) mentre il costo continua a crescere col quadrato. I numeri qui sopra sono con **un solo layer**: in una scena da tre o quattro, a 4× si scende sotto la soglia utile.
+- **Tetto di memoria video** (`MAX_BUFFER_BYTES`, 256 MB) accanto a quello già presente sul lato massimo delle texture: a mezza precisione un pixel costa 8 byte e i blend avanzati allocano un secondo buffer grande uguale, quindi il consumo reale raddoppia. Un'allocazione fallita non dà un errore leggibile, dà uno schermo nero — a metà set, il modo peggiore di scoprirlo.
+- **La riduzione non è più silenziosa**: il pannello pubblica il fattore *effettivo* letto dal bersaglio allocato accanto a quello chiesto, e quando differiscono mostra `4× → 2.10×` con la spiegazione. Prima il clamp c'era già ma nessuno lo vedeva: si sarebbe creduto di proiettare a una qualità che non si ha.
+
+### Esito e documentazione
+
+Provato dall'utente sul proiettore reale: **qualità aumentata molto**. `README.md` aggiornato di conseguenza — nuova sezione "Qualità dell'immagine proiettata" fra le funzionalità, sottosezione tecnica "Pipeline di output", tabella delle scorciatoie della finestra di proiezione (F/S/C), voce in cima alle novità v4 e roadmap di Fase 3. Nel README è documentato anche il fix del colore: chi conosceva l'app nelle versioni precedenti deve sapere che le immagini ora appaiono più chiare **perché prima erano sbagliate**, non perché siano state schiarite.
+
+### Cosa resta al proiettore e al sistema (fuori dal nostro codice)
+
+Il Full HD non è il limite. Contano molto di più: **keystone digitale del proiettore da spegnere** (ricampiona e distrugge la nitidezza — la deformazione la fa il nostro corner-pin), risoluzione del display **nativa e non "scalata"** in macOS, modalità immagine del proiettore su Standard/Cinema con sharpness a zero, ed evitare i fade a bassa opacità su nero (un proiettore somma luce: Add/Screen leggono molto meglio).
+
+## 2026-08-19 — Interruttore rapido della palette (e stop del loop che la riaccendeva)
+
+Richiesta dell'utente: un pulsante on/off accanto a "Colori casuali" nel pannello Shader per spegnere al volo la palette; poi, subito dopo, che spegnendola si spenga anche il loop dei colori.
+
+- Icona power a destra dell'intestazione (in `justify-between`), verde quando la palette è attiva e grigia quando è spenta. Spegnere la palette **non perde i colori generati**: restano nel layer, pronti alla riaccensione.
+- **Il secondo requisito non era solo comodità, era un bug**: il motore del loop scrive con `setLayerPaletteColors`, che riabilita la palette a ogni tick. Senza fermare il loop, spegnerla non avrebbe avuto alcun effetto — si sarebbe riaccesa entro un trentesimo di secondo.
+- Nuova azione `stopPaletteLoopFor` in `uiStore` (spegne senza invertire, idempotente), usata **in entrambi** i punti che disattivano la palette: il nuovo interruttore e il pulsante "Palette attiva/disattivata" del pannello Palette — dove lo stesso difetto esisteva già ed è stato corretto ora.
+- Verificato nel browser: con loop acceso, un click spegne palette e loop insieme, e dopo due secondi la palette è ancora spenta (con il loop vivo si sarebbe riaccesa) mentre i cinque colori generati sono conservati.
+
+## 2026-08-19 — Reset dei controlli effetto ai valori di partenza
+
+Richiesta dell'utente: un pulsante per riportare i controlli di qualunque effetto ai valori standard e ripartire puliti (nasce come contraltare del Random).
+
+- **`resetActiveParams`** in `layersStore`: riscrive uniform e colori dello shader attivo con i default dichiarati dal file `.glsl` (`defaultParamsFor` / `defaultColorsFor`, già usati altrove). Passa da `editEffect`, quindi rispetta la propagazione ai layer collegati come ogni altra modifica di effetto.
+- **Azzera solo lo shader corrente**: i valori messi a punto su altri effetti restano dove sono e tornandoci si ritrovano intatti — `params` è una mappa per nome di shader, sarebbe stato facile (e sbagliato) svuotarla tutta.
+- **Cosa NON tocca**: Size, palette e controlli globali del layer. Sono proprietà del layer, non dell'effetto, e hanno già i loro reset; azzerarle da qui cancellerebbe il lavoro fatto sul layer per rimettere a posto un solo effetto. Scritto nel tooltip.
+- Il blocco "Controlli effetto" ora compare anche per gli shader che espongono **solo** colori e nessuno slider: prima la condizione guardava i soli `controls` e lì il pulsante non sarebbe mai apparso.
+- Verificato nel browser: dopo Random più un colore modificato a mano, il pulsante riporta tutti e nove i parametri e i due colori esattamente ai default del file.
+
+## 2026-08-19 — Due nuovi effetti da riferimenti visivi: "Wire Network" e "Liquid Zebra Flow"
+
+L'utente ha allegato due immagini di proiezioni su statua e ha chiesto un effetto per ciascuna, animato e parametrico.
+
+**Wire Network** (`wireNetwork.glsl`, famiglia Altri, 13 controlli + 2 colori) — maglia di nodi e segmenti tratteggiati con scaglie poligonali scure che scoprono il soggetto.
+- Griglia di celle con nodo spostato a caso e animato: ogni cella collega il proprio nodo a quelli delle vicine. **Una vera triangolazione di Delaunay in un fragment shader costerebbe molto di più per una differenza che a schermo non si distingue.**
+- **`linkChance`**: al primo tentativo la rete tradiva la griglia di partenza (trama regolare di X, visibile in prova). Scartare a caso una parte dei collegamenti — con hash **simmetrico** nelle due celle, altrimenti il filo comparirebbe o no a seconda di quale cella lo disegna — è ciò che l'ha resa organica. Il test viene prima del calcolo del nodo vicino, così le coppie scartate non costano nulla.
+- Tratteggio ricavato dalla posizione **lungo** il segmento, non dalle coordinate schermo: altrimenti scorrerebbe via dal filo invece di viaggiarci sopra.
+- Le scaglie usano la cella di Voronoi più vicina con soglia animata: unendosi fra loro formano macchie frastagliate che si aprono e si richiudono.
+
+**Liquid Zebra Flow** (`liquidZebraFlow.glsl`, famiglia Liquid, 9 controlli + 2 colori) — bande ad altissimo contrasto piegate in vortici, tagliate con soglia netta.
+- Domain warping a due stadi: un campo di rumore deforma il piano, un secondo deforma il risultato, e solo alla fine si taglia. È la piega ripetuta a produrre gli "occhi"; alzando la frequenza senza warp si otterrebbero solo righe dritte.
+- **Niente `atan` per l'avvolgimento**: al primo tentativo un termine sull'angolo polare tagliava l'immagine con una riga netta — è il salto da +π a −π sul semiasse negativo, ben visibile in prova. Sostituito da una torsione (rotazione crescente col raggio), continua ovunque.
+- Taratura finale trovata a schermo confrontando con il riferimento: il warp deve **dominare** la direzione di base (`flow` 1.5, `warp` 1.9), altrimenti restano bande parallele invece di vortici chiusi.
+- `sourceWarp` (default 0) fa deformare le bande dalla luminanza del soggetto, come negli effetti Morph: sul mapping è ciò che fa "aderire" il pattern al corpo.
+
+Verificati entrambi nel browser sull'asset dimostrativo, senza errori di compilazione GLSL. Libreria a 103 effetti.
+
+## 2026-08-19 — Nove blend mode in più (Overlay, Difference, Soft Light…) via copia del backdrop
+
+Richiesta dell'utente: aggiungere i blend mode di una lista tipo Photoshop, avendo in app solo Normal/Add/Screen/Multiply.
+
+- **Perché i quattro esistenti erano quelli e non altri**: il blending hardware calcola `src·fattore OP dst·fattore`, e da lì escono esattamente Normal, Add, Screen e Multiply. Overlay, Soft/Hard Light, Difference, Exclusion, Darken, Lighten, Color Burn e Color Dodge sono formule che devono **leggere** il colore sottostante — cosa che un fragment shader non può fare sul framebuffer su cui sta scrivendo.
+- **Soluzione scelta**: `renderer.copyFramebufferToTexture` dentro l'`onBeforeRender` della mesh del layer (`backdrop.ts`), poi la formula nello shader (`easyvj_blend` nel wrapper). Il materiale in questo caso **sostituisce** invece di fondere (`One`/`Zero`), perché lo shader scrive il colore già composto; dove il layer è trasparente riscrive il backdrop tale e quale, quindi fuori dalla sagoma non cambia nulla.
+- **Alternativa scartata**: pipeline multi-pass con render target e ping-pong. È la strada "giusta" in astratto, ma avrebbe richiesto di riscrivere il rendering della scena (crossfade fra scene, test pattern, ordini di disegno) per un guadagno solo teorico a questi numeri di layer.
+- **Una sola texture condivisa**: i layer si disegnano in sequenza e ciascuno la riscrive al proprio turno, quindi ognuno vede esattamente ciò che ha sotto. Costo: una copia a schermo pieno per layer a blend avanzato, **zero** per le scene che non ne usano (i quattro classici restano sulla via hardware).
+- Le formule sono quelle dei *separable blend modes* del compositing standard, con due attenzioni: la sorgente va limitata a 0..1 prima del blend (gli shader emettono spesso valori oltre 1) e le divisioni di Color Burn/Dodge hanno il denominatore protetto.
+- **L'opacità del layer entra come `mix(backdrop, blended, outA)`**, quindi continua a funzionare da dissolvenza anche sui blend avanzati: verificato a 30%, dove l'effetto si attenua senza scurire.
+- Verificato nel browser su due layer sovrapposti: Difference, Overlay, Color Dodge e opacità parziale, senza errori WebGL in console.
+
+## 2026-08-19 — Famiglie di effetti e filtri rapidi nella libreria
+
+Richiesta dell'utente: con cento effetti la lista non è più scorribile — raggrupparli per famiglia (halo, sd, psy…) e filtrare la lista con dei pulsanti.
+
+- **La famiglia si deduce dal percorso del file** (`psyStrobeGrid.glsl` → Psy), non dal nome visualizzato: il prefisso è la convenzione con cui la libreria è cresciuta e resta stabile anche rinominando un effetto. Il percorso è disponibile solo in `effectsStore` (le chiavi di `import.meta.glob`), quindi `parseShader` riceve la categoria come parametro invece di indovinarla.
+- **Due eccezioni esplicite** (`shaderCategories.ts`): i due `symmetricalHaloSwirl` sono Halo e `3DSurfaceMorphSpirals` è il capostipite dei Morph, ma sono nati prima della convenzione sui prefissi. Lasciarli in "Altri" li renderebbe introvabili proprio a chi cerca quella famiglia.
+- **`usesAudio` vince sul prefisso**: un effetto audio-reattivo si cerca fra gli Audio, qualunque nome abbia il file.
+- Ripartizione risultante: Psy 30, Morph 22, Halo 12, Liquid 11, SD 11, Altri 14 (con "Nessun effetto"), Audio 1 — 101 voci.
+- **UI**: pulsanti con il conteggio sopra la lista, a capo automatico invece che in riga scorrevole — la sidebar è stretta e ridimensionabile, e pulsanti oltre il bordo sarebbero irraggiungibili. Ricerca e filtro si combinano in AND.
+- **Via d'uscita dal filtro**: se la ricerca non trova nulla nella famiglia scelta ma trova altrove, compare "N risultati in altre famiglie — mostra tutti". Senza, il modo più facile di credere che un effetto non esista è cercarlo mentre un filtro è attivo. Mostrato **solo mentre si cerca**: al primo tentativo appariva anche a ricerca vuota (visto in prova), ed era puro rumore — filtrare per famiglia è una scelta esplicita.
+- **Lo scorrimento segue il filtro** (chiesto dall'utente subito dopo): frecce ◀ ▶ e ⌥A/⌥S restano dentro la famiglia selezionata, con lo stesso giro ciclico di prima. Per farlo il filtro è passato da `useState` locale del picker a **`uiStore.shaderCategory`**: non governa più solo quali voci si vedono, ma anche comandi che vivono in altri componenti — con un filtro attivo, quella lista è "dove ci si trova". `layersStore` importa `uiStore` (nessun ciclo: `uiStore` dipende solo da zustand). Se l'effetto in uso sta fuori dalla famiglia filtrata, la freccia entra dal primo elemento — è il ramo che già gestiva l'ingresso da "Nessun effetto". I tooltip delle frecce nominano la famiglia, così non sembra che manchino effetti.
+- Il filtro arriva gratis anche nell'editor clip della playlist, che usa lo stesso `ShaderPicker`.
+- Verificato nel browser: conteggi corretti per famiglia, filtro Halo che mostra i soli Halo, ricerca "psy" dentro Halo che offre i 30 risultati fuori famiglia.
+
+## 2026-08-19 — Forme dell'oscilloscopio + preset rapidi (⌥1…⌥6)
+
+Richiesta dell'utente: tasti preset, almeno quattro, per ottenere al volo forme belle — fiore, cerchio, triangolo — sempre reattive al suono e sempre "da oscilloscopio".
+
+- **Nodo di progetto**: una figura riconoscibile e insieme reattiva non si ottiene scuotendo una linea. La soluzione è che il pennello disegni una **figura parametrica** e che il suono ne **increspi il contorno** (`waveDepth` moltiplica il raggio): un cerchio resta un cerchio, ma respira.
+- **`shape` sostituisce `xyMode`** ed è un selettore continuo: 0 traccia temporale, 1 cerchio, 2 rosa (fiore), 3 poligono, 4 stella, 5 piano XY.
+- **Stella come figura a sé** (aggiunta dopo il primo giro: era una rosa a cinque petali, quindi indistinguibile dal fiece — segnalato dall'utente). Ora è una spezzata fra vertici alternati punta/rientranza, con il raggio del lato ricavato dalla formula della retta per due punti in polare: **lati dritti e punte aguzze**, che è esattamente ciò che la distingue dai petali arrotondati della rosa. La profondità delle rientranze scala col numero di punte (`0.62 − 0.04·k`, limitata a 0.22–0.5): con dieci raggi una stella profonda diventa un riccio illeggibile. Il morphing fra una figura e la successiva è **gratuito**: il disegno passa da un solo percorso (polilinea con distanza punto-segmento) e le due letture dell'onda — le uniche cose care — restano condivise. Nuovi parametri: `shapeSides` (petali della rosa / lati del poligono), `waveDepth`, `spin`.
+- Rosa con `abs(cos(k·θ/2))` invece della rosa classica `cos(kθ)`: così i petali sono **esattamente** `shapeSides`, sia pari sia dispari (con la formula classica un k pari ne dà il doppio). Poligono come apotema diviso il coseno dell'angolo dentro il settore: `shapeSides` = 3 dà il triangolo, 4 il quadrato, e così via.
+- **Chiusura del contorno**: sulle figure chiuse l'ultimo campione veniva letto a distanza di un buffer dal primo, lasciando lo scalino del "retrace" — tollerabile su una traccia, brutto su un cerchio (visto in prova). Ora la lettura si dissolve in quella di un giro prima (`mix(w(t), w(t-1), t)`), che a t=1 vale esattamente il campione di t=0. Il fetch in più si paga solo lì: il ramo dipende da un uniform, quindi traccia e piano XY non lo eseguono.
+- **Preset** in `src/lib/oscilloscopePresets.ts` (Traccia, Cerchio, Fiore, Triangolo, Stella, Lissajous): ognuno definisce l'insieme **completo** dei parametri di forma, così il risultato non dipende da dove si arrivava prima. Restano fuori `autoGain` e `reactivity`, che dipendono dalla sorgente audio collegata e non dall'estetica: si tarano una volta a inizio serata e non devono saltare a ogni cambio di forma.
+- **`setActiveParams`** (nuova azione dello store): un preset è **una sola** scrittura. Con quindici `setActiveParam` separate sarebbero quindici notifiche dello store, cioè quindici invii della scena all'Output per un click.
+- **Scorciatoie ⌥1…⌥6**, attive solo quando il layer attivo usa l'oscilloscopio: altrove sarebbero tasti muti. Come per ⌥A/⌥S si confronta `e.code` e non `e.key`, perché su macOS Option cambia il carattere prodotto.
+- Verificato nel browser con sorgente audio sintetica: rosa a sei petali, cerchio chiuso senza scalino, triangolo con i lati incisi dal suono, stella con scia di fosforo; preset applicati dal pulsante e scorciatoie confermate simulando eventi di tastiera reali. **Nota metodologica**: i tasti sintetici del pane di anteprima arrivano con `e.code` vuoto, quindi *nessuna* scorciatoia dell'app risponde lì — non è un difetto del codice (verificato che anche ⌥A/⌥S preesistenti si comportano così), e la verifica va fatta con `KeyboardEvent` costruiti a mano.
+
+## 2026-08-19 — Ingresso audio minimale + shader "Audio Oscilloscope"
+
+Richiesta dell'utente: un oscilloscopio come in un video di riferimento, reattivo al suono, con gestione dell'audio tenuta semplicissima e la complessità concentrata nei parametri dell'effetto. I metadati del video non sono leggibili via fetch (YouTube non li espone), quindi l'estetica precisa resta da confermare: lo shader copre entrambe le letture possibili — traccia temporale classica e piano XY — con un parametro che passa dall'una all'altra.
+
+- **Catena audio (`src/engine/audioInput.ts`)**: un solo ingresso condiviso, `getUserMedia({audio})` → `AnalyserNode` (fftSize 256) → forma d'onda copiata ogni frame in una `DataTexture` 256×1. Niente FFT a bande né beat detection: la richiesta era esplicita. La sorgente non è **mai** collegata alla destinazione del contesto — un microfono aperto sulle casse darebbe un Larsen immediato.
+- **Livello con attacco immediato e rilascio lento** (`level = rms > level ? rms : level*0.92 + rms*0.08`): i transienti passano intatti, la discesa è smorzata. Senza, tutto ciò che si aggancia al volume "pompa" a ogni frame — si è visto subito sulla normalizzazione dell'oscilloscopio.
+- **Esposizione a tutti gli shader** (wrapper in `isfParser.ts`): uniform `uAudio`/`uAudioLevel`/`uAudioOn` più gli helper `easyvj_wave(x, t)` e `easyvj_level(t)`. **A ingresso spento restituiscono un'onda sintetica**, non una linea piatta: così i parametri si regolano prima di aprire il microfono e la miniatura in playlist non resta vuota. `ParsedShader.usesAudio` marca gli shader che li usano.
+- **Tick unico per frame** (`AudioSampler` in `StageCanvas`): il campionamento è chiamato da ogni layer ma si protegge da sé confrontando `elapsedTime`.
+- **UI**: il pannello di attivazione compare **solo** quando l'effetto selezionato è audio-reattivo — altrove sarebbe un controllo inerte. La barra di livello legge il volume in un `requestAnimationFrame` invece che dallo stato React, per non ri-renderizzare il pannello sessanta volte al secondo.
+- **Finestra Output**: apre l'ingresso da sé quando la scena contiene un effetto audio-reattivo (`use-audio-autostart.ts`), come per le camere — uno stream non attraversa il BroadcastChannel. Montato solo lì: in Control l'attivazione resta manuale, un microfono non si apre a sorpresa.
+- **Shader `audioOscilloscope.glsl`** (14 controlli + 2 colori): un solo percorso di disegno — polilinea sui campioni con distanza punto-segmento — dove ogni vertice è interpolato fra la posizione "traccia temporale" e quella "XY", quindi `xyMode` fa il morphing **senza costo aggiuntivo**. In XY il secondo asse è la stessa onda letta con `xyDelay` di ritardo (phase plot): le figure di Lissajous nascono anche da un ingresso mono, senza gestire due canali.
+  - Perché una polilinea e non una funzione y(x) con distanza analitica: l'audio ha salti verticali enormi fra campioni adiacenti, e l'approssimazione con la derivata spezzava la traccia proprio sui transienti.
+  - **Fosforo** (`persistence`): l'età di ogni tratto rispetto alla testa del pennello ne attenua la luminosità — è la persistenza del CRT, non una scia accumulata (che richiederebbe un feedback buffer).
+  - **Taglio dei segmenti lontani**: in traccia pura la X dei campioni è nota senza leggere l'onda, quindi i segmenti fuori portata si saltano **prima** di campionare (è il numero di letture a pesare, non la matematica); rientrando, il vertice precedente viene ricostruito, altrimenti il primo segmento utile partirebbe da un punto vecchio. In XY il taglio non è applicabile e il costo resta quello dei campioni scelti.
+  - **`autoGain`**: normalizza la scala sul volume misurato, con tetto — un'uscita di linea e un microfono a tre metri dalle casse danno segnali di ampiezza diversissima, e senza tetto una pausa del brano mandava la traccia fuori scala (visto e corretto in prova).
+  - Alpha di uscita = quanto il pixel è acceso: fuori dalla traccia il layer resta trasparente, quindi l'oscilloscopio si sovrappone in Add/Screen (per esempio sopra la ripresa della camera) senza coprirla di nero.
+- Verificato nel browser con una sorgente audio sintetica al posto del microfono (oscillatore → `MediaStreamDestination`): compilazione GLSL senza errori, traccia che riproduce il dente di sega del segnale, phase plot che chiude il triangolo atteso, pannello "in ascolto" con livello 0.41, una sola chiamata a `getUserMedia`.
+- In dev `window.__easyvj.audio` espone stato e livello: senza, verificare se sta entrando segnale richiederebbe di leggerlo dall'interfaccia.
+
+## 2026-08-19 — Fix: la tendina non cambiava la camera di ingresso
+
+Segnalazione dell'utente: con un layer già su una camera, scegliendo un'altra sorgente dalla tendina l'immagine restava quella di prima.
+
+- **Causa, autoinflitta**: per evitare l'`OverconstrainedError` da deviceId stantio avevo allentato il vincolo a `deviceId: { ideal }`. Ma `ideal` è una preferenza che il browser può ignorare, e con una camera già aperta Chrome restituisce quella: `getSettings().deviceId` riportava il device vecchio, il codice lo registrava fedelmente sul layer e il cambio si annullava da solo. Il sintomo era esatto — non "non cambia immagine" ma "torna sempre alla stessa".
+- **Correzione** (`openDevice` in `cameraSources.ts`): si torna a `exact`, che è l'unico vincolo che il browser deve rispettare, ma con **fallback esplicito a una camera qualsiasi** solo su `OverconstrainedError`/`NotFoundError` — cioè quando quell'id davvero non esiste più. Si tengono entrambe le proprietà: cambio sorgente affidabile e nessun blocco fatale con un id invalidato.
+- **Cambio sorgente = spegnimento immediato della precedente** (`dropCameraTexture` sul device vecchio, dopo che il nuovo controller è già nato, quindi senza buco visivo): il rilascio ritardato di 4s teneva due camere accese insieme, e due webcam USB sullo stesso controller spesso non ci stanno per banda. Se l'apertura della nuova fallisce con `NotReadableError`/`AbortError` (`isCameraBusyError`) durante un cambio, la vecchia viene chiusa e si riprova una volta sola.
+- Verificato nel browser con due camere finte (stub di `getUserMedia`/`enumerateDevices` con stream da canvas distinti): A → B → A, richiesta sempre emessa con `{"exact": "<id>"}`, media del layer e immagine sul canvas aggiornati a ogni passaggio, console pulita.
+
+## 2026-08-19 — Ingresso video live (webcam / capture card) come sorgente di layer
+
+Richiesta dell'utente: riprendere il DJ dal vivo, proiettare la ripresa sullo sfondo e poterla effettare su più strati.
+
+- **Modello dati**: `MediaType` guadagna `'camera'` e `MediaAsset` un campo `deviceId` (`projectStore.ts`). Il layer tratta la ripresa come qualunque altro media: shader, palette, maschere, corner-pin, luma key e blend valgono senza modifiche.
+- **`src/lib/cameraSources.ts`** (nuovo): elenco device, apertura/chiusura degli stream **condivisi per deviceId con refcount** e rilascio ritardato di 4s. La condivisione è ciò che rende praticabile la stratificazione (più layer sulla stessa ripresa = un solo device aperto e un solo upload GPU); il ritardo serve perché un cambio di scena smonta i vecchi layer prima di montare i nuovi — senza attesa la camera si spegnerebbe e riaccenderebbe nel mezzo.
+- **`createCameraController` in `mediaTexture.ts`**: elemento `<video>` + `VideoTexture` condivisi per device (a differenza dei video da file, che hanno un playhead per istanza). Fino al primo frame espone la FALLBACK invece di un rettangolo nero.
+- **Due finestre**: un `MediaStream` non è serializzabile, quindi via BroadcastChannel viaggia **solo il deviceId** e l'Output apre il device per conto proprio (nessuna latenza aggiunta, nessun WebRTC fra finestre). Serve il consenso alla camera anche nella finestra Output.
+- **Persistenza**: `StoredMedia.blob` diventa opzionale e compare `deviceId`; della camera si salva il riferimento al device, che riparte da solo al ripristino del progetto (verificato con reload).
+- **UI `CameraPicker`** nel blocco Asset: attivazione, select del device (aggiornata su `devicechange`), badge LIVE, riavvio a freddo della sorgente, stop, e **“Nuovo strato”** — duplica il feed su un layer sopra, già allineato (corner e transform copiati) e in Screen, perché in Normal uno shader generativo coprirebbe semplicemente il layer sotto.
+- **Robustezza (dopo un test dal vivo dell'utente finito con immagine congelata e device irriconoscibile)**:
+  - vincolo `deviceId: { ideal }` invece di `exact`: un id stantio (cam staccata, permessi resettati) non produce più un `OverconstrainedError` che blocca del tutto la riattivazione, ma ripiega su una camera disponibile;
+  - stream con tutti i track `ended` scartato e riaperto invece di essere riusato (era la ricetta per l'immagine congelata per sempre);
+  - riaggancio automatico alla morte di un track (max 5 tentativi, 1,2s di pausa) e `play()` di sicurezza nel tick se il video finisce in pausa da solo;
+  - `import.meta.hot.accept(() => invalidate())` in `cameraSources.ts` e `mediaTexture.ts`: **le cache degli stream vivono nei moduli**, e un hot-replace in sviluppo le sdoppiava lasciando i componenti montati agganciati alle vecchie — è la causa del blocco visto durante il test, che avveniva mentre i file venivano salvati.
+- **Diagnostica in-app** (aggiunta dopo un secondo tentativo dell'utente, "non riesco ad attivare la cam"): al fallimento il pannello mostra `hint` + una riga tecnica con contesto sicuro, stato del permesso (`navigator.permissions.query`), numero di camere viste, nome dell'errore e origin (`cameraDiagnostics` in `cameraSources.ts`); c'è anche il link "Perché non si attiva?" per lanciarla senza errori. Serve perché "la camera non si attiva" nasconde quattro cause che dal solo messaggio del browser non si distinguono: pagina non in contesto sicuro (aperta dall'IP di rete invece che da localhost), permesso bloccato per il sito, device occupato da un altro programma, nessuna camera autorizzata a livello di sistema. Verificato nel pane di anteprima, dove il permesso è negato: riporta `permesso: denied · camere: 1 · NotAllowedError` con l'istruzione per sbloccare.
+- **README aggiornato** (19/08): voce in cima a "Novità della versione 4", punto 5 di "Cosa fa in pratica", blocchi "Layer e maschere", "Assets" (con la nota su quali shader elaborano davvero un feed opaco), "Multi-layer", tabella dello stack (`MediaDevices.getUserMedia`), "Architettura in breve" (perché fra le finestre viaggia solo il deviceId) e Fase 3 della roadmap, dove l'ingresso live risulta il primo punto completato.
+- **Esito del test dal vivo**: la camera non si attivava perché il permesso era rimasto **bloccato a livello di browser/sistema** dopo il primo tentativo andato male — non un problema di codice. Risolto riattivando i permessi dalle impostazioni e **riavviando il browser** (su macOS l'autorizzazione di sistema alla fotocamera ha effetto solo dopo il riavvio dell'applicazione). Da lì la sorgente live funziona.
+- **Nota d'uso**: 56 shader su 99 campionano la texture sorgente (`halo*`, `liquid*`, `morph*`, `sd*`, `3DSurface*`) e quindi elaborano davvero la ripresa; gli altri sono generativi e sulla camera — opaca, quindi senza alpha da ritagliare — la coprono, a meno di usarli in Add/Screen o con opacità ridotta.
+- Verificato nel browser sostituendo `getUserMedia` con uno stream da canvas (il pane di anteprima blocca i device reali): fit automatico al formato del feed, due layer sullo stesso device con `getUserMedia` chiamato **una sola volta**, ripristino del layer camera dopo reload, messaggio d'errore leggibile a permesso negato.
+
 ## 2026-08-17 — Texture immagine condivise per URL (cache con refcount) + indagine sul lampo nero al push
 
 Segnalazione dell'utente: premendo Spazio in Live, la finestra Output diventa nera per una frazione di secondo prima di applicare la modifica.

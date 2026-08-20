@@ -1,3 +1,5 @@
+import type { ShaderCategoryId } from '../lib/shaderCategories'
+
 export interface UniformControl {
   name: string
   min: number
@@ -23,6 +25,14 @@ export interface ParsedShader {
   controls: UniformControl[]
   /** Uniform vec3 (tipicamente colori) con valore di default, senza slider. */
   colorControls: ColorControl[]
+  /**
+   * L'effetto legge l'ingresso audio (`easyvj_wave`/`easyvj_level`). Serve alla UI per proporre
+   * l'attivazione del microfono solo dove ha senso, e alla finestra Output per aprire l'ingresso
+   * da sé quando la scena ne contiene uno.
+   */
+  usesAudio: boolean
+  /** Famiglia di appartenenza, per i filtri della libreria (vedi `shaderCategories.ts`). */
+  category: ShaderCategoryId
   vertexShader: string
   fragmentShader: string
 }
@@ -35,10 +45,18 @@ const VEC3_RE =
   /uniform\s+vec3\s+(\w+)\s*;\s*\/\/[^\n]*@default\s+(-?[\d.]+)\s*,\s*(-?[\d.]+)\s*,\s*(-?[\d.]+)/g
 
 const VERTEX_SHADER = `
-varying vec2 vUv;
+// Peso prospettico del vertice (1/W dell'omografia del corner-pin, vedi engine/warpGeometry.ts).
+// La camera è ortografica, quindi gl_Position.w vale 1 e la GPU interpolerebbe le uv linearmente
+// in schermo: la texture si spezzerebbe lungo la diagonale del quad a ogni keystone. Portando
+// (uv*k, k) e dividendo nel fragment si ottiene l'interpolazione proiettiva esatta.
+attribute float aPersp;
+varying vec3 vUvW;
 varying vec2 vPos;
 void main() {
-  vUv = uv;
+  // 0 = attributo non fornito (default WebGL): succede alle miniature, che disegnano un quad
+  // dritto a schermo intero e non hanno bisogno di correzione.
+  float k = aPersp <= 0.0 ? 1.0 : aPersp;
+  vUvW = vec3(uv * k, k);
   // posizione base (pre-transform, spazio dei corner): usata dalle maschere per forma,
   // così seguono il warp del corner-pin del layer.
   vPos = position.xy;
@@ -56,6 +74,8 @@ uniform float uTime;
 uniform vec2 uResolution;
 uniform float uScale;
 uniform float uLumaKey;
+uniform float uEdgeSharp;            // 0 = bordo della sagoma come sta nel file, 1 = massima nitidezza
+uniform float uEdgeFeather;          // sfumatura del PERIMETRO della proiezione (0 = bordo netto)
 uniform float uOpacity;
 uniform vec3 uPalette[5];
 uniform float uPaletteCount;
@@ -74,6 +94,14 @@ uniform float uMaskTexOn;            // 1 = usa la maschera-immagine
 // Rapporto larghezza/altezza del QUAD del layer (dai corner-pin, non del canvas): serve agli
 // shader che disegnano forme riconoscibili (cerchi, occhi…) e non devono deformarsi col mapping.
 uniform float uQuadAspect;
+// --- Blend mode "avanzati" (quelli che il blending hardware non sa calcolare) ---
+uniform sampler2D uBackdrop;         // copia di ciò che è già disegnato sotto questo layer
+uniform vec2 uScreenSize;            // dimensioni del buffer di disegno, per campionarla
+uniform float uBlendMode;            // 0 = ci pensa l'hardware; >0 = formula in easyvj_blend
+// --- Ingresso audio (per gli shader audio-reattivi: si legge con easyvj_wave/easyvj_level) ---
+uniform sampler2D uAudio;            // forma d'onda nel dominio del tempo, 256x1; 0.5 = silenzio
+uniform float uAudioLevel;           // volume RMS 0..1
+uniform float uAudioOn;              // 1 = ingresso audio attivo
 // --- Controlli globali del layer (validi per QUALSIASI shader) ---
 uniform float uFxSpeed;              // moltiplicatore del tempo
 uniform float uFxRotation;           // rotazione del pattern (rad)
@@ -87,7 +115,10 @@ uniform float uFxBrightness;
 uniform float uFxSaturation;
 uniform float uFxPosterize;          // 0 = off, altrimenti livelli per canale
 uniform float uFxInvert;             // 0..1 miscela col negativo
-varying vec2 vUv;
+// vUv arriva divisa per il peso prospettico (vedi VERTEX_SHADER): la macro fa la divisione al
+// momento dell'uso, così i file .glsl continuano a scrivere vUv come se fosse un varying vec2.
+varying vec3 vUvW;
+#define vUv (vUvW.xy / vUvW.z)
 varying vec2 vPos;
 
 // Fattore di visibilità dalle maschere del layer (1 = pieno, 0 = nascosto).
@@ -126,6 +157,46 @@ float easyvj_maskRegion() {
   return clamp(region, 0.0, 1.0);
 }
 
+// --- Formule di blend (separable blend modes del compositing standard) ---
+// cb = colore di sotto (backdrop), cs = colore di questo layer. Tutte lavorano per canale.
+vec3 easyvj_bMultiply(vec3 cb, vec3 cs) { return cb * cs; }
+vec3 easyvj_bScreen(vec3 cb, vec3 cs) { return cb + cs - cb * cs; }
+
+vec3 easyvj_bHardLight(vec3 cb, vec3 cs) {
+  // sotto metà scurisce come Multiply, sopra schiarisce come Screen (con cs riscalato)
+  return mix(easyvj_bMultiply(cb, 2.0 * cs), easyvj_bScreen(cb, 2.0 * cs - 1.0), step(0.5, cs));
+}
+
+vec3 easyvj_bSoftLight(vec3 cb, vec3 cs) {
+  // la "D(cb)" della specifica: sotto un quarto una cubica, sopra la radice — serve a evitare
+  // il gradino che si vedrebbe usando direttamente sqrt su tutto l'intervallo
+  vec3 d = mix(((16.0 * cb - 12.0) * cb + 4.0) * cb, sqrt(cb), step(0.25, cb));
+  vec3 lo = cb - (1.0 - 2.0 * cs) * cb * (1.0 - cb);
+  vec3 hi = cb + (2.0 * cs - 1.0) * (d - cb);
+  return mix(lo, hi, step(0.5, cs));
+}
+
+vec3 easyvj_bColorDodge(vec3 cb, vec3 cs) {
+  return min(vec3(1.0), cb / max(1.0 - cs, 1e-4));
+}
+
+vec3 easyvj_bColorBurn(vec3 cb, vec3 cs) {
+  return 1.0 - min(vec3(1.0), (1.0 - cb) / max(cs, 1e-4));
+}
+
+/** Formula corrispondente all'id passato in uBlendMode (vedi SHADER_BLEND in ShaderPlane). */
+vec3 easyvj_blend(float mode, vec3 cb, vec3 cs) {
+  if (mode < 1.5) return easyvj_bHardLight(cs, cb); // Overlay = Hard Light con gli operandi scambiati
+  if (mode < 2.5) return easyvj_bSoftLight(cb, cs);
+  if (mode < 3.5) return easyvj_bHardLight(cb, cs);
+  if (mode < 4.5) return abs(cb - cs);                  // Difference
+  if (mode < 5.5) return cb + cs - 2.0 * cb * cs;       // Exclusion
+  if (mode < 6.5) return min(cb, cs);                   // Darken
+  if (mode < 7.5) return max(cb, cs);                   // Lighten
+  if (mode < 8.5) return easyvj_bColorBurn(cb, cs);
+  return easyvj_bColorDodge(cb, cs);
+}
+
 // Trasformazioni della uv dell'effetto, comuni a tutti gli shader: agiscono PRIMA di
 // processColor, quindi valgono anche per gli shader che non ne sanno nulla.
 vec2 easyvj_fxUv(vec2 uv) {
@@ -153,6 +224,26 @@ vec2 easyvj_fxUv(vec2 uv) {
     result = (floor(result * cells) + 0.5) / cells;
   }
   return result;
+}
+
+/**
+ * Campione della forma d'onda in [-1, 1] alla posizione x (0..1, ciclica).
+ *
+ * Senza ingresso audio attivo restituisce un'onda sintetica invece di una linea piatta: così un
+ * effetto audio-reattivo resta leggibile in anteprima, nella miniatura della playlist e a
+ * microfono spento, e si può regolarne i parametri prima di aprire l'ingresso.
+ */
+float easyvj_wave(float x, float t) {
+  if (uAudioOn > 0.5) return texture2D(uAudio, vec2(fract(x), 0.5)).r * 2.0 - 1.0;
+  return 0.50 * sin(x * 25.13 - t * 3.0)
+       + 0.28 * sin(x * 9.42 + t * 1.7)
+       + 0.16 * sin(x * 62.83 + t * 5.3);
+}
+
+/** Volume 0..1; a ingresso spento un respiro sintetico, per la stessa ragione di easyvj_wave. */
+float easyvj_level(float t) {
+  if (uAudioOn > 0.5) return uAudioLevel;
+  return 0.32 + 0.22 * sin(t * 2.2) + 0.08 * sin(t * 5.7);
 }
 
 // Correzioni di colore comuni, applicate DOPO processColor e prima della palette.
@@ -195,6 +286,13 @@ void main() {
     float luma = dot(src.rgb, vec3(0.299, 0.587, 0.114));
     mask *= smoothstep(0.0, uLumaKey, luma);
   }
+  // Nitidezza del bordo: comprime la rampa dell'alpha attorno a metà scala, senza spostarla.
+  // Serve perché il contorno del PNG viene ingrandito dal mapping (pochi pixel del file coprono
+  // molti pixel del proiettore) e arriva sulla statua come un alone morbido invece che come un
+  // taglio netto; la soglia a 0.5 tiene il bordo dov'era, così il mapping non si sposta.
+  if (uEdgeSharp > 0.0) {
+    mask = clamp((mask - 0.5) * (1.0 + uEdgeSharp * 11.0) + 0.5, 0.0, 1.0);
+  }
   if (mask <= 0.0) {
     // fuori dai bordi dell'immagine: pixel completamente trasparente, niente effetto
     gl_FragColor = vec4(0.0);
@@ -220,13 +318,34 @@ void main() {
   // mascherate (alpha 0) non inquinano i layer sottostanti.
   // La region delle maschere per-layer restringe ulteriormente dove il layer è visibile.
   float outA = color.a * mask * easyvj_maskRegion() * uOpacity;
+  // Soft edge del perimetro: la uv È lo spazio del quad, quindi la distanza dal bordo si legge
+  // direttamente e la sfumatura segue il warp senza calcoli aggiuntivi. Serve a far morire la
+  // luce sull'oggetto invece di tagliarla di netto, e a fondere due proiettori affiancati.
+  if (uEdgeFeather > 0.0) {
+    vec2 border = min(vUv, 1.0 - vUv);
+    outA *= smoothstep(0.0, uEdgeFeather, min(border.x, border.y));
+  }
+  if (uBlendMode > 0.5) {
+    // Blend che il blending hardware non sa fare: si legge il backdrop copiato prima del disegno
+    // e si scrive il risultato GIÀ composto (il materiale, in questo caso, sostituisce invece di
+    // fondere). Dove il layer è trasparente si riscrive il backdrop tale e quale, quindi fuori
+    // dalla sagoma non cambia nulla.
+    vec2 screenUv = gl_FragCoord.xy / max(uScreenSize, vec2(1.0));
+    vec3 backdrop = texture2D(uBackdrop, screenUv).rgb;
+    vec3 blended = clamp(easyvj_blend(uBlendMode, backdrop, clamp(color.rgb, 0.0, 1.0)), 0.0, 1.0);
+    gl_FragColor = vec4(mix(backdrop, blended, outA), 1.0);
+    return;
+  }
   gl_FragColor = vec4(color.rgb * outA, outA);
 }
 `
 }
 
-/** Estrae nome shader e controlli (@min/@max/@default) da una sorgente GLSL in stile ISF. */
-export function parseShader(raw: string): ParsedShader {
+/**
+ * Estrae nome shader e controlli (@min/@max/@default) da una sorgente GLSL in stile ISF.
+ * `category` arriva da chi carica il file (il percorso non è visibile da qui).
+ */
+export function parseShader(raw: string, category: ShaderCategoryId = 'other'): ParsedShader {
   const nameMatch = raw.match(NAME_RE)
   const name = nameMatch ? nameMatch[1].trim() : 'Untitled Shader'
 
@@ -250,12 +369,17 @@ export function parseShader(raw: string): ParsedShader {
     })
   }
 
+  const usesAudio = /easyvj_wave|easyvj_level|uAudio/.test(raw)
+
   return {
     id: crypto.randomUUID(),
     name,
     raw,
     controls,
     colorControls,
+    usesAudio,
+    // gli effetti audio-reattivi hanno una famiglia propria, qualunque sia il file
+    category: usesAudio ? 'audio' : category,
     vertexShader: VERTEX_SHADER,
     fragmentShader: buildFragmentShader(raw),
   }

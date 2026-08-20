@@ -11,6 +11,8 @@ import {
   DEFAULT_SIZE,
   DEFAULT_SHADER_NAME,
   NONE_SHADER_NAME,
+  defaultColorsFor,
+  defaultParamsFor,
   useEffectsStore,
 } from './effectsStore'
 import {
@@ -18,7 +20,23 @@ import {
   scaleCorners,
   flipCorners,
   straightenCorners,
+  keystoneCorners,
 } from '../lib/mappingGeometry'
+import {
+  clampHandle,
+  cloneWarp,
+  createWarp,
+  createWarpGrid,
+  flipWarp,
+  gridNodeIndex,
+  resampleGrid,
+  LENS_LIMIT,
+  type Warp,
+  type WarpEdgeId,
+  type WarpHandle,
+  type WarpMode,
+} from '../lib/warp'
+import { useUiStore } from './uiStore'
 import {
   type Palette,
   type RGB,
@@ -115,14 +133,42 @@ export const DEFAULT_FX: FxControls = {
   invert: 0,
 }
 
-/** Modalità di fusione del layer con quelli sottostanti. */
-export type BlendMode = 'normal' | 'add' | 'screen' | 'multiply'
+/**
+ * Modalità di fusione del layer con quelli sottostanti.
+ *
+ * Le prime quattro le calcola il blending hardware; le altre hanno bisogno di leggere il colore
+ * sottostante e vengono risolte nello shader (vedi `backdrop.ts`). La differenza è invisibile
+ * all'uso, ma le seconde costano una copia dello schermo per layer.
+ */
+export type BlendMode =
+  | 'normal'
+  | 'add'
+  | 'screen'
+  | 'multiply'
+  | 'overlay'
+  | 'softLight'
+  | 'hardLight'
+  | 'difference'
+  | 'exclusion'
+  | 'darken'
+  | 'lighten'
+  | 'colorBurn'
+  | 'colorDodge'
 
 export const BLEND_MODES: { value: BlendMode; label: string }[] = [
   { value: 'normal', label: 'Normal' },
   { value: 'add', label: 'Add' },
   { value: 'screen', label: 'Screen' },
   { value: 'multiply', label: 'Multiply' },
+  { value: 'overlay', label: 'Overlay' },
+  { value: 'softLight', label: 'Soft Light' },
+  { value: 'hardLight', label: 'Hard Light' },
+  { value: 'difference', label: 'Difference' },
+  { value: 'exclusion', label: 'Exclusion' },
+  { value: 'darken', label: 'Darken' },
+  { value: 'lighten', label: 'Lighten' },
+  { value: 'colorBurn', label: 'Color Burn' },
+  { value: 'colorDodge', label: 'Color Dodge' },
 ]
 
 /**
@@ -141,6 +187,15 @@ export interface Layer {
   media: MediaAsset | null
   /** Luma key (0 = off): ritaglia le zone scure di un media con sfondo nero opaco. */
   lumaKey: number
+  /**
+   * Nitidezza del bordo della sagoma (0 = come nel file, 1 = taglio netto).
+   *
+   * Il contorno di un PNG scontornato è una rampa di alpha larga pochi pixel; il corner-pin la
+   * ingrandisce fino a decine di pixel del proiettore, e sull'oggetto reale si legge come un alone
+   * sfocato. Alzarla restringe la rampa. Opzionale in lettura: i progetti salvati prima non ce
+   * l'hanno.
+   */
+  edgeSharp?: number
   /** Effetto shader applicato sopra il contenuto. */
   shaderName: string
   /** Size globale del pattern dello shader (uniform uScale). */
@@ -163,6 +218,20 @@ export interface Layer {
   maskImage: MediaAsset | null
   /** Corner-pin in coordinate mondo (TL, TR, BL, BR). */
   corners: Corners
+  /**
+   * Curvatura dei 4 bordi del quad (2 handle Bézier per lato, in spazio unitario). Serve alle
+   * superfici curve — statue, colonne, archi — dove i soli 4 angoli lasciano il contenuto piatto
+   * sui fianchi. Opzionale in lettura: i progetti salvati prima non ce l'hanno, e assente vale
+   * quanto azzerata (quad dritto, mesh a 4 vertici come prima).
+   */
+  warp?: Warp
+  /**
+   * Sfumatura del perimetro della proiezione, 0..0.5 (frazione del lato). Diversa da `edgeSharp`,
+   * che lavora sul contorno della SAGOMA dell'asset: qui si ammorbidisce il bordo del quad
+   * proiettato, per far sfumare la luce sull'oggetto invece di tagliarla di netto.
+   * Opzionale in lettura: i progetti salvati prima non ce l'hanno.
+   */
+  edgeFeather?: number
   /** Transform (zoom + pan) applicato sopra il corner-pin. */
   transform: Transform
   /**
@@ -177,6 +246,66 @@ export interface Layer {
 
 function cloneCorners(corners: Corners): Corners {
   return corners.map((c) => ({ ...c })) as Corners
+}
+
+/** Stato di mapping di un layer in un istante: quanto basta a tornare indietro. */
+export interface MappingSnapshot {
+  layerId: string
+  corners: Corners
+  warp?: Warp
+  transform: Transform
+  /** Per accorpare le raffiche: vedi `pushHistory`. */
+  at: number
+}
+
+/** Quante annullature tenere. Allineare una statua è lungo: meglio abbondare, pesano poco. */
+const MAPPING_HISTORY_LIMIT = 80
+
+/**
+ * Finestra entro cui due modifiche consecutive sullo stesso layer contano come una sola.
+ * Senza, un trascinamento (decine di eventi al secondo) riempirebbe la cronologia di
+ * micro-passi e servirebbero cinquanta Ctrl+Z per disfare un gesto solo.
+ */
+const MAPPING_COALESCE_MS = 500
+
+function mappingSnapshot(layer: Layer): MappingSnapshot {
+  return {
+    layerId: layer.id,
+    corners: cloneCorners(layer.corners),
+    warp: layer.warp ? cloneWarp(layer.warp) : undefined,
+    transform: { ...layer.transform },
+    at: Date.now(),
+  }
+}
+
+function pushHistory(past: MappingSnapshot[], entry: MappingSnapshot): MappingSnapshot[] {
+  const last = past[past.length - 1]
+  // dentro la finestra e sullo stesso layer: la voce già presente è l'inizio del gesto, si tiene
+  // quella (è lo stato a cui l'utente si aspetta di tornare) e non se ne aggiunge una nuova
+  if (last && last.layerId === entry.layerId && entry.at - last.at < MAPPING_COALESCE_MS) {
+    return past
+  }
+  const next = [...past, entry]
+  return next.length > MAPPING_HISTORY_LIMIT ? next.slice(next.length - MAPPING_HISTORY_LIMIT) : next
+}
+
+/** Riporta un layer allo stato fotografato, restituendo anche quello che c'era prima. */
+function applyMappingSnapshot(layers: Layer[], snap: MappingSnapshot) {
+  const target = layers.find((l) => l.id === snap.layerId)
+  if (!target) return null
+  return {
+    previous: mappingSnapshot(target),
+    layers: layers.map((l) =>
+      l.id === snap.layerId
+        ? {
+            ...l,
+            corners: cloneCorners(snap.corners),
+            warp: snap.warp ? cloneWarp(snap.warp) : undefined,
+            transform: { ...snap.transform },
+          }
+        : l,
+    ),
+  }
 }
 
 function clonePalette(p: Palette): Palette {
@@ -212,6 +341,7 @@ export function createLayer(partial?: Partial<Layer>): Layer {
     blendMode: 'normal',
     media: null,
     lumaKey: 0,
+    edgeSharp: 0,
     shaderName: DEFAULT_SHADER_NAME,
     size: DEFAULT_SIZE,
     fx: { ...DEFAULT_FX },
@@ -306,17 +436,30 @@ interface LayersState {
   // editing del layer attivo
   setActiveMedia: (media: MediaAsset | null) => void
   setActiveLumaKey: (lumaKey: number) => void
+  /** Nitidezza del contorno della sagoma sul layer attivo (0..1). */
+  setActiveEdgeSharp: (edgeSharp: number) => void
   setActiveShader: (shaderName: string) => void
   /** Passa all'effetto successivo (dir 1) o precedente (dir -1) della libreria, a ciclo. */
   cycleActiveShader: (dir: 1 | -1) => void
   /** Estrae valori casuali per tutti gli uniform float dello shader attivo. */
   randomizeActiveParams: () => void
+  /**
+   * Riporta i controlli dell'effetto attivo (uniform e colori) ai valori dichiarati dallo
+   * shader: è il modo di tornare a un punto noto dopo un Random o una serie di ritocchi.
+   */
+  resetActiveParams: () => void
   setActiveSize: (size: number) => void
   /** Aggiorna i controlli globali dell'effetto sul layer attivo (+ layer sincronizzati). */
   setActiveFx: (patch: Partial<FxControls>) => void
   /** Riporta i controlli globali ai valori neutri. */
   resetActiveFx: () => void
   setActiveParam: (uniformName: string, value: number) => void
+  /**
+   * Applica più uniform in un colpo solo (preset di forma dell'oscilloscopio). Farlo con N
+   * chiamate a `setActiveParam` significherebbe N notifiche dello store, quindi N invii della
+   * scena all'Output per un singolo click.
+   */
+  setActiveParams: (patch: Record<string, number>) => void
   /** Imposta un uniform colore (vec3) dello shader attivo. */
   setActiveColorParam: (uniformName: string, rgb: RGB) => void
   setActiveCorner: (index: 0 | 1 | 2 | 3, corner: Corner) => void
@@ -335,10 +478,35 @@ interface LayersState {
   /** Riporta i corner a un rettangolo, conservando centro e dimensioni. */
   straightenActiveCorners: () => void
   /**
-   * Sposta di (dx, dy) un singolo corner, oppure tutti e quattro se `index` è null.
-   * È il gesto dell'allineamento fine da tastiera.
+   * Sposta di (dx, dy) i corner indicati, oppure tutti e quattro se `indices` è null.
+   * È il gesto dell'allineamento fine da tastiera; con due indici muove un intero lato.
    */
-  nudgeActiveCorners: (dx: number, dy: number, index: 0 | 1 | 2 | 3 | null) => void
+  nudgeActiveCorners: (dx: number, dy: number, indices: readonly number[] | null) => void
+
+  /** Correzione trapezoidale sui corner (kx = orizzontale, ky = verticale), incrementale. */
+  keystoneActiveCorners: (kx: number, ky: number) => void
+
+  // deformazione della superficie (warp, vedi lib/warp.ts)
+  /** Sposta un punto di controllo di un bordo (scostamento in spazio unitario). */
+  setActiveWarpHandle: (edge: WarpEdgeId, index: 0 | 1, handle: WarpHandle) => void
+  /** Modalità di deformazione: curvatura dei bordi o reticolo di nodi. */
+  setActiveWarpMode: (mode: WarpMode) => void
+  /** Sposta un nodo del reticolo (scostamento in spazio unitario). */
+  setActiveGridNode: (col: number, row: number, handle: WarpHandle) => void
+  /** Cambia la densità del reticolo conservando la forma già data. */
+  setActiveGridSize: (cols: number, rows: number) => void
+  /** Correzione dell'obiettivo: negativo = barile, positivo = cuscino. */
+  setActiveLens: (lens: number) => void
+  /** Azzera la deformazione della modalità attiva e la lente; corner e transform restano. */
+  resetActiveWarp: () => void
+  /** Sfumatura del perimetro della proiezione (0 = bordo netto). */
+  setActiveEdgeFeather: (value: number) => void
+
+  // cronologia del solo mapping (corner, warp, transform): vedi MAPPING_HISTORY_LIMIT
+  undoMapping: () => void
+  redoMapping: () => void
+  mappingPast: MappingSnapshot[]
+  mappingFuture: MappingSnapshot[]
   /** Blocca/sblocca il mapping di un layer (corner e transform diventano immutabili). */
   setLayerLocked: (id: string, locked: boolean) => void
   toggleActiveLocked: () => void
@@ -407,11 +575,18 @@ export const useLayersStore = create<LayersState>((set, get) => {
    * pad direzionale, frecce da tastiera, toolbar) lo rispetta senza doverlo ricontrollare.
    */
   const patchActiveMapping = (patch: (layer: Layer) => Partial<Layer>) =>
-    set((state) => ({
-      layers: state.layers.map((l) =>
-        l.id === state.activeLayerId && !l.locked ? { ...l, ...patch(l) } : l,
-      ),
-    }))
+    set((state) => {
+      const active = state.layers.find((l) => l.id === state.activeLayerId)
+      if (!active || active.locked) return state
+      return {
+        layers: state.layers.map((l) => (l.id === active.id ? { ...l, ...patch(l) } : l)),
+        // ogni modifica di mapping passa di qui: è il punto giusto per fotografare lo stato
+        // PRECEDENTE, e l'unico che copre anche il drag sul canvas
+        mappingPast: pushHistory(state.mappingPast, mappingSnapshot(active)),
+        // una modifica nuova invalida il ramo rifatto, come in qualunque undo lineare
+        mappingFuture: [],
+      }
+    })
 
   /**
    * Applica una patch di EFFETTO al layer attivo e propaga l'effetto completo (shader + params +
@@ -489,6 +664,7 @@ export const useLayersStore = create<LayersState>((set, get) => {
           masks: src.masks.map((m) => ({ ...m, id: crypto.randomUUID() })),
           maskImage: src.maskImage ? { ...src.maskImage } : null,
           corners: cloneCorners(src.corners),
+          warp: src.warp ? cloneWarp(src.warp) : undefined,
           transform: { ...src.transform },
           transition: null,
         }
@@ -529,6 +705,7 @@ export const useLayersStore = create<LayersState>((set, get) => {
 
     setActiveMedia: (media) => patchActive(() => ({ media })),
     setActiveLumaKey: (lumaKey) => patchActive(() => ({ lumaKey })),
+    setActiveEdgeSharp: (edgeSharp) => patchActive(() => ({ edgeSharp })),
     // shader / size / param sono EFFETTO → passano da editEffect (propagazione col link)
     setActiveShader: (shaderName) => editEffect(() => ({ shaderName })),
 
@@ -537,10 +714,15 @@ export const useLayersStore = create<LayersState>((set, get) => {
     cycleActiveShader: (dir) =>
       editEffect((l) => {
         // "Nessun effetto" resta fuori dal giro: è il blackout, non una tappa dello scorrimento
-        const names = useEffectsStore
+        const all = useEffectsStore
           .getState()
-          .shaders.map((s) => s.name)
-          .filter((n) => n !== NONE_SHADER_NAME)
+          .shaders.filter((s) => s.name !== NONE_SHADER_NAME)
+        // con un filtro di famiglia attivo lo scorrimento resta dentro quella famiglia: le frecce
+        // devono muoversi in ciò che si sta guardando, non portare fuori dall'elenco filtrato
+        const category = useUiStore.getState().shaderCategory
+        const pool = category === 'all' ? all : all.filter((s) => s.category === category)
+        // famiglia vuota (non dovrebbe accadere: i pulsanti a zero non si mostrano) → tutta la libreria
+        const names = (pool.length > 0 ? pool : all).map((s) => s.name)
         if (names.length === 0) return {}
         const current = names.indexOf(l.shaderName)
         // da "Nessun effetto" (indice -1) si entra dal primo o dall'ultimo, secondo la direzione
@@ -568,6 +750,18 @@ export const useLayersStore = create<LayersState>((set, get) => {
         return { params: { ...l.params, [l.shaderName]: random } }
       }),
 
+    resetActiveParams: () =>
+      editEffect((l) => {
+        const shader = useEffectsStore.getState().shaders.find((s) => s.name === l.shaderName)
+        if (!shader) return {}
+        // si azzerano solo gli uniform DI QUESTO shader: i valori messi a punto sugli altri
+        // effetti restano dove sono, e tornandoci si ritrovano intatti
+        return {
+          params: { ...l.params, [l.shaderName]: defaultParamsFor(shader) },
+          colorParams: { ...l.colorParams, [l.shaderName]: defaultColorsFor(shader) },
+        }
+      }),
+
     setActiveSize: (size) => editEffect(() => ({ size })),
 
     setActiveFx: (patch) => editEffect((l) => ({ fx: { ...l.fx, ...patch } })),
@@ -578,6 +772,14 @@ export const useLayersStore = create<LayersState>((set, get) => {
         params: {
           ...l.params,
           [l.shaderName]: { ...l.params[l.shaderName], [uniformName]: value },
+        },
+      })),
+
+    setActiveParams: (patch) =>
+      editEffect((l) => ({
+        params: {
+          ...l.params,
+          [l.shaderName]: { ...l.params[l.shaderName], ...patch },
         },
       })),
 
@@ -615,17 +817,123 @@ export const useLayersStore = create<LayersState>((set, get) => {
       patchActiveMapping((l) => ({ corners: scaleCorners(l.corners, sx, sy) })),
 
     flipActiveCorners: (axis) =>
-      patchActiveMapping((l) => ({ corners: flipCorners(l.corners, axis) })),
+      patchActiveMapping((l) => ({
+        corners: flipCorners(l.corners, axis),
+        // scambiare i corner ribalta l'omografia: il warp va ribaltato con essa, altrimenti la
+        // curvatura salta dall'altro lato e la sagoma proiettata cambia forma
+        warp: l.warp ? flipWarp(l.warp, axis) : undefined,
+      })),
 
     straightenActiveCorners: () =>
       patchActiveMapping((l) => ({ corners: straightenCorners(l.corners) })),
 
-    nudgeActiveCorners: (dx, dy, index) =>
+    nudgeActiveCorners: (dx, dy, indices) =>
       patchActiveMapping((l) => ({
         corners: l.corners.map((c, i) =>
-          index === null || i === index ? { x: c.x + dx, y: c.y + dy } : c,
+          indices === null || indices.includes(i) ? { x: c.x + dx, y: c.y + dy } : c,
         ) as Corners,
       })),
+
+    keystoneActiveCorners: (kx, ky) =>
+      patchActiveMapping((l) => ({ corners: keystoneCorners(l.corners, kx, ky) })),
+
+    setActiveWarpHandle: (edge, index, handle) =>
+      patchActiveMapping((l) => {
+        const warp = l.warp ? cloneWarp(l.warp) : createWarp()
+        warp[edge][index] = clampHandle(handle)
+        return { warp }
+      }),
+
+    setActiveWarpMode: (mode) =>
+      patchActiveMapping((l) => {
+        const warp = l.warp ? cloneWarp(l.warp) : createWarp()
+        warp.mode = mode
+        // passando al reticolo per la prima volta se ne crea uno a riposo: senza, la modalità
+        // sarebbe attiva ma non avrebbe nodi da mostrare
+        if (mode === 'grid' && !warp.grid) warp.grid = createWarpGrid()
+        return { warp }
+      }),
+
+    setActiveGridNode: (col, row, handle) =>
+      patchActiveMapping((l) => {
+        const warp = l.warp ? cloneWarp(l.warp) : createWarp()
+        const grid = warp.grid ?? createWarpGrid()
+        const index = gridNodeIndex(grid, col, row)
+        if (index < 0 || index >= grid.points.length) return {}
+        grid.points[index] = clampHandle(handle)
+        warp.grid = grid
+        return { warp }
+      }),
+
+    setActiveGridSize: (cols, rows) =>
+      patchActiveMapping((l) => {
+        const warp = l.warp ? cloneWarp(l.warp) : createWarp()
+        warp.grid = resampleGrid(warp.grid, cols, rows)
+        return { warp }
+      }),
+
+    setActiveLens: (lens) =>
+      patchActiveMapping((l) => {
+        if (!Number.isFinite(lens)) return {}
+        const warp = l.warp ? cloneWarp(l.warp) : createWarp()
+        warp.lens = Math.min(LENS_LIMIT, Math.max(-LENS_LIMIT, lens))
+        return { warp }
+      }),
+
+    resetActiveWarp: () =>
+      patchActiveMapping((l) => {
+        // si azzera la sola modalità attiva: chi sta lavorando col reticolo non si aspetta di
+        // perdere anche la curvatura dei bordi impostata prima (e viceversa)
+        const warp = l.warp ? cloneWarp(l.warp) : createWarp()
+        warp.lens = 0
+        if (warp.mode === 'grid') {
+          warp.grid = createWarpGrid(warp.grid?.cols, warp.grid?.rows)
+        } else {
+          const blank = createWarp()
+          warp.top = blank.top
+          warp.right = blank.right
+          warp.bottom = blank.bottom
+          warp.left = blank.left
+        }
+        return { warp }
+      }),
+
+    setActiveEdgeFeather: (value) =>
+      patchActive(() => ({ edgeFeather: Math.min(0.5, Math.max(0, value)) })),
+
+    mappingPast: [],
+    mappingFuture: [],
+
+    undoMapping: () =>
+      set((state) => {
+        const snap = state.mappingPast[state.mappingPast.length - 1]
+        if (!snap) return state
+        const applied = applyMappingSnapshot(state.layers, snap)
+        // il layer non esiste più (eliminato o scena ricaricata): scarta la voce e basta
+        if (!applied) return { mappingPast: state.mappingPast.slice(0, -1) }
+        return {
+          layers: applied.layers,
+          mappingPast: state.mappingPast.slice(0, -1),
+          mappingFuture: [...state.mappingFuture, applied.previous],
+          // l'annullamento sposta anche la selezione sul layer coinvolto, altrimenti si vedrebbe
+          // cambiare un layer diverso da quello selezionato
+          activeLayerId: snap.layerId,
+        }
+      }),
+
+    redoMapping: () =>
+      set((state) => {
+        const snap = state.mappingFuture[state.mappingFuture.length - 1]
+        if (!snap) return state
+        const applied = applyMappingSnapshot(state.layers, snap)
+        if (!applied) return { mappingFuture: state.mappingFuture.slice(0, -1) }
+        return {
+          layers: applied.layers,
+          mappingFuture: state.mappingFuture.slice(0, -1),
+          mappingPast: [...state.mappingPast, applied.previous],
+          activeLayerId: snap.layerId,
+        }
+      }),
 
     setLayerLocked: (id, locked) =>
       set((state) => ({

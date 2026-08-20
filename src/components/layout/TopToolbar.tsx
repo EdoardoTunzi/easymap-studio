@@ -1,4 +1,4 @@
-import { Move, Sparkles, Palette, FolderOpen, MonitorPlay, MonitorUp, Radio, PanelRight } from "lucide-react";
+import { Move, Sparkles, Palette, FolderOpen, ListVideo, MonitorPlay, MonitorUp, Radio, PanelRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 import { SidebarTrigger } from "@/components/ui/sidebar";
@@ -8,12 +8,17 @@ import { cn } from "@/lib/utils";
 
 // Solo ciò che NON riguarda il singolo layer: contenuto, maschere e posizione del layer
 // selezionato vivono nella colonna destra, tutti visibili insieme.
-const NAV: { id: Panel; label: string; icon: typeof Move }[] = [
+type NavItem = { id: Panel; label: string; icon: typeof Move };
+
+// Il toggle della playlist si infila tra "Progetti" e "Output": non è un pannello della
+// sidebar, quindi la nav è spezzata in due gruppi con il bottone in mezzo.
+const NAV_BEFORE_PLAYLIST: NavItem[] = [
   { id: "shader", label: "Shader", icon: Sparkles },
   { id: "palette", label: "Palette", icon: Palette },
-  { id: "projects", label: "Progetti", icon: FolderOpen },
-  { id: "output", label: "Output", icon: MonitorPlay }
+  { id: "projects", label: "Progetti", icon: FolderOpen }
 ];
+
+const NAV_AFTER_PLAYLIST: NavItem[] = [{ id: "output", label: "Output", icon: MonitorPlay }];
 
 export function TopToolbar() {
   const activePanel = useUiStore((s) => s.activePanel);
@@ -24,6 +29,21 @@ export function TopToolbar() {
   const dirty = useOutputStore((s) => s.dirty);
   const setLive = useOutputStore((s) => s.setLive);
   const pushToOutput = useOutputStore((s) => s.pushToOutput);
+  const playlistVisible = useUiStore((s) => s.playlistVisible);
+  const togglePlaylist = useUiStore((s) => s.togglePlaylist);
+
+  const renderPanelButton = ({ id, label, icon: Icon }: NavItem) => (
+    <Button
+      key={id}
+      variant={activePanel === id ? "secondary" : "ghost"}
+      size="sm"
+      onClick={() => setActivePanel(id)}
+      className={cn("gap-1.5 text-xs uppercase tracking-wide", activePanel === id ? "text-foreground" : "text-muted-foreground")}
+    >
+      <Icon className="size-3.5" />
+      {label}
+    </Button>
+  );
 
   return (
     <header className="flex h-12 shrink-0 items-center justify-between border-b border-border bg-card px-3">
@@ -33,18 +53,19 @@ export function TopToolbar() {
       </div>
 
       <nav className="flex items-center gap-1">
-        {NAV.map(({ id, label, icon: Icon }) => (
-          <Button
-            key={id}
-            variant={activePanel === id ? "secondary" : "ghost"}
-            size="sm"
-            onClick={() => setActivePanel(id)}
-            className={cn("gap-1.5 text-xs uppercase tracking-wide", activePanel === id ? "text-foreground" : "text-muted-foreground")}
-          >
-            <Icon className="size-3.5" />
-            {label}
-          </Button>
-        ))}
+        {NAV_BEFORE_PLAYLIST.map(renderPanelButton)}
+        <Button
+          variant={playlistVisible ? "secondary" : "ghost"}
+          size="sm"
+          onClick={togglePlaylist}
+          aria-pressed={playlistVisible}
+          title={playlistVisible ? "Nascondi la barra playlist" : "Mostra la barra playlist"}
+          className={cn("gap-1.5 text-xs uppercase tracking-wide", playlistVisible ? "text-foreground" : "text-muted-foreground")}
+        >
+          <ListVideo className="size-3.5" />
+          Playlist
+        </Button>
+        {NAV_AFTER_PLAYLIST.map(renderPanelButton)}
       </nav>
 
       <div className="flex items-center gap-1.5">

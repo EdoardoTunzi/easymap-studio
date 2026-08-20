@@ -28,6 +28,15 @@ Spuntare gli step completati; aggiungere nuovi step quando emergono. Tenere alli
 - [x] Sidebar shadcn (Provider/Sidebar/Inset) con collapse nativo (SidebarTrigger) e resize via drag handle (localStorage, min 240/max 520px). Toolbar Move/Shader/Palette/Assets/Output spostata dentro SidebarInset, brand EASYVJ in SidebarHeader
 - [x] Toggle visibilità dei riferimenti di mapping (pulsante occhio nella toolbar del canvas): nasconde cornice corner-pin e maniglie/forme mask per valutare l'effetto senza sovrapposizioni. Solo in Control, l'Output non li disegna mai
 - [x] Zoom/pan della vista di anteprima in Control (rotellina + pulsanti + Spazio/click centrale per il pan), puramente visivo — non altera corners/transform, l'Output non ne risente mai. Risolve le maniglie del corner-pin irraggiungibili quando l'asset è ingrandito oltre i bordi del canvas
+- [x] **Corner-pin proiettivamente corretto**: il quad era 2 triangoli con uv affine, quindi la texture si spezzava lungo la diagonale a ogni keystone. Ora si calcola l'omografia quadrato→quad e ogni vertice porta `aPersp` = 1/W; nel fragment `vUv` è una macro (`vUvW.xy / vUvW.z`), così nessuno dei 103 shader è stato toccato. Verificato numericamente contro l'inversa esatta dell'omografia (`src/lib/warp.ts`, `src/engine/warpGeometry.ts`)
+- [x] **Curvatura dei 4 bordi separata** (patch di Coons): ogni lato è una Bézier cubica con 2 handle, definiti in spazio unitario come scostamento dal bordo dritto — a zero la patch è l'identità esatta, quindi senza curvatura la mesh resta a 4 vertici. Suddivisione 24×24 solo quando serve. Toggle "curvatura" e "azzera curvatura" nella toolbar del canvas
+- [x] **Selezione del lato**: cliccando la maniglia a rombo fra due pin (o i 4 pulsanti nella toolbar) le frecce e il drag muovono i due angoli insieme. `uiStore.selectedCorner` → `mappingSelection` (all | corner | edge)
+- [x] **Reticolo di nodi NxM** (3×3 → 5×5 nodi trascinabili, i "pin point a piacere"): terza modalità di `warp`, alternativa alle Bézier e memorizzata in parallelo. Interpolazione Catmull-Rom bicubica con nodi fantasma **estrapolati** e non clampati, altrimenti la superficie si affloscia ai bordi anche a reticolo fermo. Cambiare densità riposiziona i nodi sulla superficie attuale (nodi esatti, curva fra i nodi approssimata). Le maniglie di selezione del lato spariscono in questa modalità: a 3×3 finivano esattamente sotto i nodi di bordo
+- [x] **Keystone numerico H/V**: pulsanti ⌃K / ⌐K in toolbar, agiscono sui corner come rotazione e scala (nessuno stato parallelo che entrerebbe in conflitto col drag delle maniglie)
+- [x] **Correzione dell'obiettivo** (barile/cuscino): slider nel pannello Move, deformazione radiale che lascia fermi i 4 angoli. Limite ±0.5 perché sotto la mappa si ripiega e la mesh si sovrappone a sé stessa vicino agli angoli
+- [x] **Soft edge sul perimetro** (`uEdgeFeather` + `edgeFeather` per-layer): sfuma il bordo della proiezione seguendo il warp, perché la uv è già lo spazio del quad
+- [x] **Undo/redo del mapping** (⌘Z / ⇧⌘Z + pulsanti): cronologia da 80 voci in `patchActiveMapping`, con accorpamento delle raffiche entro 500 ms così un trascinamento è un solo passo
+- [x] ~~Input numerico dei corner + preset di mapping~~ — implementati e poi **rimossi su richiesta dell'utente**. La versione IndexedDB resta a 6: la 5 aveva lo store `mappingPresets`, non si può scendere di versione, quindi la 6 lo elimina dove esiste
 - [ ] Definire la palette colori dell'app (rimandata: per ora tema neutro shadcn dark)
 - [ ] Drag diretto dell'immagine sul canvas in modalità MOVE (ora il pan è solo da pad direzionale / trascinamento del quad corner-pin)
 - [x] Toolbar di mapping sul canvas (in basso a sinistra): spostamento fine da tastiera sull'angolo selezionato (passo fine/medio/grande, Shift ×5), rotazione ±90° e ±1°, scala non uniforme, flip H/V, raddrizza, lucchetto del mapping, griglia con snap, test pattern di calibrazione visibile anche in Output. Rotazione/scala/flip agiscono sui corner (`src/lib/mappingGeometry.ts`), non su `Transform`: nessuna modifica a shader, persistence e sync
@@ -53,6 +62,11 @@ Spuntare gli step completati; aggiungere nuovi step quando emergono. Tenere alli
 - [x] 10 shader "Liquid" sulla scia di 3D Surface Morph Spirals (file liquid*.glsl, source-driven con morph da luminanza e uniform colore)
 - [x] Generatore casuale di palette (bottone "Palette casuale" nel pannello Palette: 5 colori HSL armonici scuro→acceso, attiva la palette)
 - [ ] Palette memorizzata per-shader (ora è per-layer) + salvataggio di palette custom dell'utente
+- [x] Famiglie di effetti (Psy/Morph/Halo/Liquid/SD/Audio/Altri) dedotte dal prefisso del file, con pulsanti di filtro e conteggi sopra la lista degli effetti (`src/lib/shaderCategories.ts` + `ShaderPicker`)
+- [x] Frecce ◀ ▶ e ⌥A/⌥S scorrono dentro la sola famiglia filtrata: il filtro è passato da stato locale del picker a `uiStore.shaderCategory`, che `cycleActiveShader` consulta
+- [x] Interruttore rapido della palette accanto a "Colori casuali" (pannello Shader), che spegne anche il loop dei colori — altrimenti il loop la riaccendeva al primo tick. Stessa correzione applicata al toggle del pannello Palette
+- [x] Pulsante "Reset" accanto a "Random": riporta uniform e colori dell'effetto attivo ai default dichiarati nel `.glsl` (non tocca Size, palette e controlli globali del layer)
+- [x] Due effetti da riferimenti visivi dell'utente: `Wire Network` (maglia di nodi/segmenti con scaglie scure, stile data-sculpture) e `Liquid Zebra Flow` (bande bianco/nere avvolte in vortici, domain warping). Libreria a 103 effetti
 - [ ] Anteprime/thumbnail degli shader nella libreria (come i preset nello screenshot MAPSHROOM) — il motore esiste già: `src/engine/effectThumbnail.ts` (usato dalle card della playlist)
 - [ ] Export/import progetto come file JSON (backup portabile tra macchine)
 - [ ] PWA: icone reali (pwa-192x192.png, pwa-512x512.png mancanti in public/) e test offline
@@ -97,17 +111,50 @@ Modello: scena = pila di Layer indipendenti; ogni layer ha contenuto (img/gif/vi
 - [ ] **SDF precalcolato dall'alpha** (distance transform all'upload dell'immagine, texture ausiliaria negli uniform): sblocca il neon morbido a distanza arbitraria e le **onde che si propagano dal bordo verso l'interno**, che il campionamento a raggio limitato di `sdEdgePulse` non può rendere (oltre ~20 texel degenera in un riempimento). Tocca engine, store e persistenza
 - [ ] Contorni vettoriali (marching squares → polilinee con coordinata di lunghezza d'arco): abilita la **cometa che corre lungo il perimetro** a velocità costante, non ottenibile né con il gradiente né con l'SDF
 - [ ] Editor maschera manuale di rifinitura (per bordi imperfetti)
+- [x] Blend mode completi (13): ai quattro risolti dal blending hardware si aggiungono Overlay, Soft Light, Hard Light, Difference, Exclusion, Darken, Lighten, Color Burn e Color Dodge, calcolati nello shader leggendo una copia del backdrop (`src/engine/backdrop.ts`)
 - [ ] Opzione "tratta il nero come trasparente" (luminance key) per immagini senza canale alpha
 - [ ] Warp proiettivo vero (omografia nello shader o mesh suddivisa) — il warp attuale a 2 triangoli può creare una piega diagonale con deformazioni estreme
 - [ ] Rimozione sfondo automatica (client-side ML o servizio esterno — decisione rimandata, per ora si caricano PNG già scontornati)
 
 ## Fase 3 — Live performance
 
-- [ ] Audio reactive: Web Audio API (microfono + FFT → uniform negli shader)
+- [x] Ingresso video live (webcam / cam USB / capture card HDMI) come sorgente di un layer: `MediaType 'camera'` + `deviceId`, stream condivisi per device con refcount (`src/lib/cameraSources.ts`), texture live in `mediaTexture.ts`, pannello `CameraPicker` con select dei device, riavvio della sorgente e "Nuovo strato" per impilare più effetti sulla stessa ripresa. L'Output riceve solo il deviceId e apre il device per conto suo
+- [ ] Mirror orizzontale dedicato per la camera (oggi si usa "Specchia in orizzontale" della toolbar di mapping, che però tocca i corner e non funziona a mapping bloccato)
+- [ ] Selezione di risoluzione/frame rate della camera (oggi si chiede sempre il massimo fino a 1080p)
+- [ ] Condivisione schermo (`getDisplayMedia`) come sorgente di layer: stesso percorso della camera, sorgente diversa
+- [x] Ingresso audio minimale + primo shader audio-reattivo: `AnalyserNode` → forma d'onda in una texture 256×1 (`src/engine/audioInput.ts`), esposta a QUALSIASI shader dal wrapper con `easyvj_wave()`/`easyvj_level()` (onda sintetica di riserva a ingresso spento). Shader `Audio Oscilloscope` con 14 parametri + 2 colori; pannello di attivazione solo per gli effetti che leggono l'audio; la finestra Output apre l'ingresso da sé (`use-audio-autostart.ts`)
+- [x] Forme dell'oscilloscopio + preset rapidi: parametro `shape` (traccia / cerchio / rosa / poligono / piano XY) con morphing continuo, dove il suono increspa il contorno invece di scuotere una linea; sei preset a un click nel pannello dell'effetto e da tastiera con ⌥1…⌥6 (attivi solo quando il layer usa l'oscilloscopio)
+- [ ] Audio reactive esteso: FFT a bande (bassi/medi/alti) e beat detection come uniform, per rendere reattivi anche gli altri shader della libreria
+- [ ] Scelta del dispositivo di ingresso audio (oggi si usa quello predefinito di sistema; per il live serve poter puntare la scheda audio o un loopback invece del microfono)
 - [ ] BPM sync / tap tempo
 - [ ] MIDI controller (Web MIDI API) con mapping parametri
 - [ ] Bridge OSC/DMX (richiede servizio Node locale: il browser non parla UDP)
 - [ ] Multi-output / più superfici indipendenti nella stessa scena
+- [x] Barra playlist a prova di live: il clip non è più cliccabile (un click accidentale mandava l'effetto in onda), le azioni compaiono in hover — tre puntini per l'editor, cestino per togliere il clip dalla sola playlist
+- [x] Toggle "Playlist" nella barra in alto (fra Progetti e Output) per mostrare/nascondere la barra, persistito; nascosta con `display:none` per non fermare la riproduzione in corso
+
+## Qualità dell'immagine proiettata
+
+- [x] **Fix colore**: le texture di contenuto erano marcate `SRGBColorSpace` e venivano linearizzate dall'hardware senza mai essere ri-codificate in uscita (i nostri `ShaderMaterial` non includono il chunk `colorspace_fragment`). Misurato: un grigio 128 nel file arrivava a schermo come **55**. Ora `SOURCE_COLOR_SPACE = NoColorSpace`: pipeline tutta in spazio gamma, coerente con shader, palette e blend mode
+- [x] **Compositore di output** (`OutputComposer.tsx`): la scena passa per un buffer interno con passaggio finale, che rende possibili supersampling, precisione HDR, dither e grana
+- [x] Supersampling 1×/1.25×/1.5×/2× sulla sola finestra Output (l'anteprima non deve rubare GPU al proiettore), con riduzione a 4 prelievi per i rapporti non interi. È l'unico antialiasing che agisce sui contorni disegnati dagli shader: il MSAA del canvas lavorava solo sui lati del quad, che con un PNG scontornato sono trasparenti
+- [x] Buffer interno a mezza precisione float: i blend Add/Screen non vengono più tagliati a 1.0
+- [x] Dither finale (verificato: colonna a valore costante alterna 76/77 con dither, tutti 77 senza) e grana opzionale
+- [x] **Sfondamento morbido**: l'eccesso oltre il fondo scala vira verso il bianco invece di far scivolare la tinta. Riscritto dopo che il cartello di prova ha mostrato il bianco pieno a 239 invece di 255 con la curva di compressione della prima versione
+- [x] Anisotropia delle texture (`textureQuality.ts`): mai impostata prima, quindi ferma a 1, con perdita di dettaglio sui lati inclinati dal corner-pin. Registro delle texture per applicarla anche a quelle create prima che il renderer esista
+- [x] Nitidezza del bordo della sagoma per-layer (`edgeSharp`): comprime la rampa dell'alpha senza spostarla, così il mapping non si muove
+- [x] `backdrop.ts` adattato al buffer interno: dimensioni dal bersaglio legato (non dal canvas) e tipo della copia uguale a quello del bersaglio — copiare un buffer float in una texture a byte non è consentito
+- [x] Pannello diagnostico sulla finestra Output (tasto S): pixel reali, buffer interno, supersampling, precisione, fps, avviso se la finestra non copre lo schermo
+- [x] Cartello di prova (tasto C): righe da un pixel, rampa, barre sature, gradini di nero e bianco. Non si ricorda mai acceso fra le sessioni
+- [x] Impostazioni di resa in uno store dedicato (`renderStore`), su localStorage e sincronizzate con un messaggio proprio che passa **sempre**, Live compreso: non sono la scena, sono il modo di disegnarla
+- [x] Finestra Output aperta sullo schermo secondario (Window Management API) invece che 1280×720 sopra il pannello; pieno schermo con F o doppio click, con avviso a schermo quando il browser lo nega — verificato che può fallire **in silenzio**, senza rifiutare la promise
+- [x] Verifica sul proiettore reale: qualità nettamente migliorata (riscontro dell'utente)
+- [x] `README.md` aggiornato: sezione "Qualità dell'immagine proiettata", sottosezione tecnica "Pipeline di output", scorciatoie della finestra di proiezione, novità v4 e roadmap
+- [x] Default del supersampling alzato a **2×**: misurato che a 1080p non costa nulla (126 fps contro 124 a 1×, entrambi limitati dal vsync)
+- [x] Scala estesa a 3× e 4×, poi **rimossi**: provati sul proiettore non danno alcun miglioramento visibile (oltre il 2× il limite è l'ottica, non l'aliasing) mentre 4× dimezza gli fps già con un solo layer. Motivazione e avvertenza per un'eventuale riapertura nel commento di `SUPER_SAMPLE_STEPS`
+- [x] Tetto di memoria video sul buffer interno (256 MB) oltre a quello sul lato massimo delle texture, e **fattore effettivo mostrato nel pannello** quando la riduzione scatta: prima il clamp era silenzioso
+- [ ] Valutare l'estensione della maschera-immagine e dell'`edgeSharp` alle sorgenti video/camera (oggi l'anisotropia non le tocca: sono senza mipmap, rigenerarle a ogni frame costerebbe più di quanto renda)
+- [ ] Valutare il rilevamento automatico del calo di fps con proposta di abbassare il supersampling (oggi l'avviso sotto i 50 fps è solo informativo)
 
 ## Manutenzione / debito tecnico
 

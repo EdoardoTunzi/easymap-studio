@@ -71,6 +71,26 @@ export function straightenCorners(corners: Corners): Corners {
   ]
 }
 
+/**
+ * Keystone: la correzione trapezoidale di un proiettore fuori asse. `kx` allarga il lato destro
+ * e stringe il sinistro (in altezza), `ky` allarga quello alto e stringe quello basso (in
+ * larghezza); segno negativo per l'inverso.
+ *
+ * Agisce sui corner come le altre operazioni della toolbar, e non come valore memorizzato: il
+ * keystone è già interamente esprimibile dai 4 angoli, e uno stato parallelo entrerebbe in
+ * conflitto col trascinamento diretto delle maniglie.
+ */
+export function keystoneCorners(corners: Corners, kx: number, ky: number): Corners {
+  const c = cornersCentroid(corners)
+  // corners è TL, TR, BL, BR: i primi due sono i "alti", il primo e il terzo i "sinistri"
+  const isTop = [true, true, false, false]
+  const isRight = [false, true, false, true]
+  return mapCorners(corners, (p) => p).map((p, i) => ({
+    x: c.x + (p.x - c.x) * (1 + (isTop[i] ? ky : -ky)),
+    y: c.y + (p.y - c.y) * (1 + (isRight[i] ? kx : -kx)),
+  })) as Corners
+}
+
 /** Aggancia un valore mondo al multiplo di `step` più vicino. */
 export function snapValue(value: number, step: number): number {
   if (step <= 0) return value

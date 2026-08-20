@@ -22,7 +22,12 @@ function truncateName(name: string): string {
 
 export function MediaUploader() {
   const inputRef = useRef<HTMLInputElement>(null);
-  const media = useLayersStore((s) => s.layers.find((l) => l.id === s.activeLayerId)?.media ?? null);
+  // le sorgenti live hanno il loro pannello (CameraPicker): qui il pulsante resta "vuoto",
+  // così è chiaro che caricare un file sostituirebbe la camera
+  const media = useLayersStore((s) => {
+    const current = s.layers.find((l) => l.id === s.activeLayerId)?.media ?? null;
+    return current?.type === "camera" ? null : current;
+  });
   const setMedia = useLayersStore((s) => s.setActiveMedia);
   const setLumaKey = useLayersStore((s) => s.setActiveLumaKey);
   const requestFit = useLayersStore((s) => s.requestFit);

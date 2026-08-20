@@ -4,7 +4,16 @@ import { useFrame } from '@react-three/fiber'
 import { useLayersStore, type BlendMode, type Layer } from '../store/layersStore'
 import { useEffectsStore } from '../store/effectsStore'
 import type { ParsedShader } from './isfParser'
-import { createMediaTexture, FALLBACK_TEXTURE, type MediaTextureController } from './mediaTexture'
+import {
+  createMediaTexture,
+  FALLBACK_TEXTURE,
+  SOURCE_COLOR_SPACE,
+  type MediaTextureController,
+} from './mediaTexture'
+import { releaseTexture, trackTexture } from './textureQuality'
+import { getAudioLevel, getAudioTexture, isAudioActive } from './audioInput'
+import { captureBackdrop, getBackdropSize, getBackdropTexture } from './backdrop'
+import { createWarpGeometry, updateWarpGeometry, warpSegments } from './warpGeometry'
 
 const NOOP_CONTROLLER: MediaTextureController = {
   getTexture: () => FALLBACK_TEXTURE,
@@ -12,13 +21,34 @@ const NOOP_CONTROLLER: MediaTextureController = {
   dispose: () => {},
 }
 
-// Fattori di CustomBlending per ogni blend mode, con output premoltiplicato dallo shader.
-// equation = Add per tutti. Vedi isfParser: gl_FragColor = vec4(rgb*a, a).
-const BLEND_FACTORS: Record<BlendMode, { src: THREE.BlendingSrcFactor; dst: THREE.BlendingDstFactor }> = {
+// Fattori di CustomBlending per i blend mode che il blending hardware sa calcolare, con output
+// premoltiplicato dallo shader. equation = Add per tutti. Vedi isfParser: gl_FragColor = vec4(rgb*a, a).
+const BLEND_FACTORS: Partial<
+  Record<BlendMode, { src: THREE.BlendingSrcFactor; dst: THREE.BlendingDstFactor }>
+> = {
   normal: { src: THREE.OneFactor, dst: THREE.OneMinusSrcAlphaFactor },
   add: { src: THREE.OneFactor, dst: THREE.OneFactor },
   screen: { src: THREE.OneFactor, dst: THREE.OneMinusSrcColorFactor },
   multiply: { src: THREE.DstColorFactor, dst: THREE.OneMinusSrcAlphaFactor },
+}
+
+/** Sostituzione pura: usata dai blend calcolati nello shader, che scrive il colore già composto. */
+const REPLACE_BLEND = { src: THREE.OneFactor, dst: THREE.ZeroFactor } as const
+
+/**
+ * Blend mode risolti nello shader perché richiedono la lettura del colore sottostante (vedi
+ * `backdrop.ts`). Il numero è l'id passato a `uBlendMode` e atteso da `easyvj_blend`.
+ */
+const SHADER_BLEND: Partial<Record<BlendMode, number>> = {
+  overlay: 1,
+  softLight: 2,
+  hardLight: 3,
+  difference: 4,
+  exclusion: 5,
+  darken: 6,
+  lighten: 7,
+  colorBurn: 8,
+  colorDodge: 9,
 }
 
 const MASK_SLOTS = 8
@@ -46,6 +76,8 @@ export function buildUniforms(shader: ParsedShader | undefined): Record<string, 
     uResolution: { value: new THREE.Vector2(1, 1) },
     uScale: { value: 1 },
     uLumaKey: { value: 0 },
+    uEdgeSharp: { value: 0 },
+    uEdgeFeather: { value: 0 },
     uOpacity: { value: 1 },
     uPalette: { value: Array.from({ length: 5 }, () => new THREE.Vector3(0, 0, 0)) },
     uPaletteCount: { value: 5 },
@@ -61,6 +93,15 @@ export function buildUniforms(shader: ParsedShader | undefined): Record<string, 
     uMaskTex: { value: FALLBACK_TEXTURE },
     uMaskTexOn: { value: 0 },
     uQuadAspect: { value: 1 },
+    // blend calcolati nello shader: 0 = ci pensa l'hardware (nessuna copia dello schermo)
+    uBackdrop: { value: FALLBACK_TEXTURE },
+    uScreenSize: { value: new THREE.Vector2(1, 1) },
+    uBlendMode: { value: 0 },
+    // ingresso audio: la texture esiste sempre (a silenzio) così gli shader audio-reattivi
+    // compilano e renderizzano anche senza microfono aperto
+    uAudio: { value: getAudioTexture() },
+    uAudioLevel: { value: 0 },
+    uAudioOn: { value: 0 },
     // controlli globali del layer: default neutri (nessuna alterazione)
     uFxSpeed: { value: 1 },
     uFxRotation: { value: 0 },
@@ -175,6 +216,9 @@ function EffectPass({ layerId, variant, source, renderOrder, geometry, controlle
     u.uScale.value = fx.size
     u.uQuadAspect.value = quadAspect(l.corners)
     u.uLumaKey.value = l.lumaKey
+    // ?? 0: i progetti salvati prima di questo controllo non hanno il campo
+    u.uEdgeSharp.value = l.edgeSharp ?? 0
+    u.uEdgeFeather.value = l.edgeFeather ?? 0
     // il peso della scena scala l'opacità: è così che le due scene si dissolvono l'una nell'altra
     u.uOpacity.value = fx.opacity * sceneWeight(storeState, source)
     // controlli globali: proprietà del layer, valgono per qualunque shader
@@ -222,6 +266,17 @@ function EffectPass({ layerId, variant, source, renderOrder, geometry, controlle
     // maschera-immagine
     u.uMaskTexOn.value = l.maskImage ? 1 : 0
     u.uMaskTex.value = maskTexRef.current
+    // blend avanzato: la copia del backdrop è già stata fatta da onBeforeRender di questa mesh
+    const blendId = SHADER_BLEND[l.blendMode] ?? 0
+    u.uBlendMode.value = blendId
+    if (blendId > 0) {
+      u.uBackdrop.value = getBackdropTexture()
+      ;(u.uScreenSize.value as THREE.Vector2).copy(getBackdropSize())
+    }
+    // ingresso audio (il campionamento vero avviene una volta per frame, vedi AudioSampler)
+    u.uAudio.value = getAudioTexture()
+    u.uAudioLevel.value = getAudioLevel()
+    u.uAudioOn.value = isAudioActive() ? 1 : 0
     // texture del contenuto (riassegnata ogni frame: sopravvive al rimontaggio del materiale)
     u.uTexture.value = controllerRef.current.getTexture()
     for (const control of shader.controls) {
@@ -239,10 +294,18 @@ function EffectPass({ layerId, variant, source, renderOrder, geometry, controlle
 
   if (!layer || !shader || !layer.visible) return null
 
-  const blend = BLEND_FACTORS[layer.blendMode]
+  const shaderBlend = SHADER_BLEND[layer.blendMode] ?? 0
+  // i blend calcolati nello shader scrivono il colore già composto: qui il materiale sostituisce
+  const blend = shaderBlend > 0 ? REPLACE_BLEND : (BLEND_FACTORS[layer.blendMode] ?? BLEND_FACTORS.normal!)
 
   return (
-    <mesh geometry={geometry} renderOrder={renderOrder}>
+    <mesh
+      geometry={geometry}
+      renderOrder={renderOrder}
+      // la copia dello schermo va fatta immediatamente prima di disegnare QUESTA mesh: solo così
+      // il backdrop contiene i layer sottostanti già composti, e nient'altro
+      onBeforeRender={shaderBlend > 0 ? (renderer) => captureBackdrop(renderer) : undefined}
+    >
       <shaderMaterial
         // shader.id (non il nome): un visual generativo rigenerato mantiene il nome ma cambia
         // sorgente, e senza ricreare il materiale Three riuserebbe il programma GLSL già compilato
@@ -276,38 +339,33 @@ function LayerMesh({
 }) {
   const layer = useLayersStore((s) => findLayer(s, layerId, source))
 
-  // geometria a 4 vertici, warpata in base ai corner-pin (condivisa dai passaggi main/ghost)
-  const geometry = useMemo(() => {
-    const geo = new THREE.PlaneGeometry(1, 1, 1, 1)
-    geo.setAttribute(
-      'uv',
-      new THREE.Float32BufferAttribute([0, 1, 1, 1, 0, 0, 1, 0], 2),
-    )
-    return geo
-  }, [])
-
+  // geometria warpata dai corner-pin (condivisa dai passaggi main/ghost): 4 vertici quando i bordi
+  // sono dritti, griglia suddivisa quando c'è curvatura da rappresentare
   const corners = layer?.corners
+  const warp = layer?.warp
+  const segments = warpSegments(warp)
+  const geometry = useMemo(() => createWarpGeometry(segments), [segments])
+  useEffect(() => () => geometry.dispose(), [geometry])
+
   useEffect(() => {
     if (!corners) return
-    const posAttr = geometry.getAttribute('position') as THREE.BufferAttribute
-    // ordine vertici di PlaneGeometry(1,1,1,1) e di corners: TL, TR, BL, BR
-    posAttr.setXYZ(0, corners[0].x, corners[0].y, 0)
-    posAttr.setXYZ(1, corners[1].x, corners[1].y, 0)
-    posAttr.setXYZ(2, corners[2].x, corners[2].y, 0)
-    posAttr.setXYZ(3, corners[3].x, corners[3].y, 0)
-    posAttr.needsUpdate = true
-  }, [geometry, corners])
+    updateWarpGeometry(geometry, corners, warp)
+  }, [geometry, corners, warp])
 
   // Controller della texture del contenuto (immagine/video/gif), ricreato al cambio media.
   const controllerRef = useRef<MediaTextureController>(NOOP_CONTROLLER)
   const mediaUrl = layer?.media?.url
   const mediaType = layer?.media?.type
+  // le sorgenti live non hanno url: le identificano il device e l'id dell'asset (che cambia a
+  // ogni riattivazione, ed è così che il riavvio manuale della camera ricrea il controller)
+  const mediaDeviceId = layer?.media?.deviceId
+  const mediaId = layer?.media?.id
   const media = layer?.media
   useEffect(() => {
     controllerRef.current = media ? createMediaTexture(media) : NOOP_CONTROLLER
     return () => controllerRef.current.dispose()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mediaUrl, mediaType])
+  }, [mediaUrl, mediaType, mediaDeviceId, mediaId])
 
   // Texture della maschera-immagine (stencil), caricata dall'url quando cambia.
   const maskTexRef = useRef<THREE.Texture>(FALLBACK_TEXTURE)
@@ -320,12 +378,23 @@ function LayerMesh({
     const loader = new THREE.TextureLoader()
     let disposed = false
     loader.load(maskImageUrl, (tex) => {
-      if (disposed) return
-      tex.colorSpace = THREE.SRGBColorSpace
-      maskTexRef.current = tex
+      if (disposed) {
+        tex.dispose()
+        return
+      }
+      // stesso ragionamento delle sorgenti (vedi SOURCE_COLOR_SPACE): qui conta la luminanza dello
+      // stencil, e linearizzarla chiudeva la maschera molto più di quanto mostrasse il file
+      tex.colorSpace = SOURCE_COLOR_SPACE
+      maskTexRef.current = trackTexture(tex)
     })
     return () => {
       disposed = true
+      const previous = maskTexRef.current
+      if (previous !== FALLBACK_TEXTURE) {
+        releaseTexture(previous)
+        previous.dispose()
+      }
+      maskTexRef.current = FALLBACK_TEXTURE
     }
   }, [maskImageUrl])
 

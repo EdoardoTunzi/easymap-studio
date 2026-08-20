@@ -12,12 +12,36 @@ import {
   Crosshair,
   ChevronsLeftRight,
   ChevronsUpDown,
+  PanelTop,
+  PanelBottom,
+  PanelLeft,
+  PanelRight,
+  Spline,
+  Eraser,
+  Grid2x2,
+  Undo2,
+  Redo2,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Separator } from '@/components/ui/separator'
 import { cn } from '@/lib/utils'
 import { useLayersStore } from '@/store/layersStore'
-import { useUiStore, NUDGE_STEPS, type CornerSelection } from '@/store/uiStore'
+import {
+  useUiStore,
+  NUDGE_STEPS,
+  sameSelection,
+  selectionCornerIndices,
+  type MappingSelection,
+} from '@/store/uiStore'
+import {
+  isWarpActive,
+  warpMode,
+  GRID_MIN_CELLS,
+  GRID_MAX_CELLS,
+  GRID_DEFAULT_CELLS,
+  WARP_EDGE_LABELS,
+  type WarpEdgeId,
+} from '@/lib/warp'
 
 /** Rotazione applicata dai pulsanti ±90°. */
 const QUARTER_TURN = Math.PI / 2
@@ -25,13 +49,29 @@ const QUARTER_TURN = Math.PI / 2
 const FINE_ROTATION = Math.PI / 180
 /** Fattore di scala per click sui pulsanti larghezza/altezza. */
 const SCALE_STEP = 1.02
+/** Passo del keystone per click: la stessa grana fine della rotazione da 1°. */
+const KEYSTONE_STEP = 0.015
 
-const CORNER_OPTIONS: { value: CornerSelection; label: string; title: string }[] = [
-  { value: null, label: 'Tutti', title: 'Le frecce spostano tutta la proiezione' },
-  { value: 0, label: 'TL', title: 'Angolo in alto a sinistra' },
-  { value: 1, label: 'TR', title: 'Angolo in alto a destra' },
-  { value: 2, label: 'BL', title: 'Angolo in basso a sinistra' },
-  { value: 3, label: 'BR', title: 'Angolo in basso a destra' },
+/** Celle per asse selezionabili per il reticolo (2 celle = 3×3 nodi). */
+const GRID_SIZES = Array.from(
+  { length: GRID_MAX_CELLS - GRID_MIN_CELLS + 1 },
+  (_, i) => GRID_MIN_CELLS + i,
+)
+
+const SELECTION_OPTIONS: { value: MappingSelection; label: string; title: string }[] = [
+  { value: { kind: 'all' }, label: 'Tutti', title: 'Le frecce spostano tutta la proiezione' },
+  { value: { kind: 'corner', index: 0 }, label: 'TL', title: 'Angolo in alto a sinistra' },
+  { value: { kind: 'corner', index: 1 }, label: 'TR', title: 'Angolo in alto a destra' },
+  { value: { kind: 'corner', index: 2 }, label: 'BL', title: 'Angolo in basso a sinistra' },
+  { value: { kind: 'corner', index: 3 }, label: 'BR', title: 'Angolo in basso a destra' },
+]
+
+/** Selezione di un intero lato: le frecce muovono insieme i due angoli che lo delimitano. */
+const EDGE_OPTIONS: { edge: WarpEdgeId; Icon: typeof PanelTop }[] = [
+  { edge: 'top', Icon: PanelTop },
+  { edge: 'bottom', Icon: PanelBottom },
+  { edge: 'left', Icon: PanelLeft },
+  { edge: 'right', Icon: PanelRight },
 ]
 
 /**
@@ -42,26 +82,36 @@ const CORNER_OPTIONS: { value: CornerSelection; label: string; title: string }[]
 function useNudgeKeys() {
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
-      const key = e.key
-      if (key !== 'ArrowUp' && key !== 'ArrowDown' && key !== 'ArrowLeft' && key !== 'ArrowRight') {
-        return
-      }
-      // non rubare le frecce a chi sta scrivendo in un campo o regolando uno slider
+      // non rubare i tasti a chi sta scrivendo in un campo o regolando uno slider
       const target = e.target as HTMLElement | null
       const tag = target?.tagName
       if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || target?.isContentEditable) {
         return
       }
-      if (target?.closest('[role="slider"]')) return
+      if (typeof target?.closest === 'function' && target.closest('[role="slider"]')) return
 
-      const { selectedCorner, nudgeStep } = useUiStore.getState()
+      // annulla/ripeti del mapping: ⌘Z su macOS, Ctrl+Z altrove
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'z') {
+        e.preventDefault()
+        const store = useLayersStore.getState()
+        if (e.shiftKey) store.redoMapping()
+        else store.undoMapping()
+        return
+      }
+
+      const key = e.key
+      if (key !== 'ArrowUp' && key !== 'ArrowDown' && key !== 'ArrowLeft' && key !== 'ArrowRight') {
+        return
+      }
+
+      const { mappingSelection, nudgeStep } = useUiStore.getState()
       const base = NUDGE_STEPS.find((s) => s.id === nudgeStep)?.value ?? 0.01
       const step = e.shiftKey ? base * 5 : base
       const dx = key === 'ArrowLeft' ? -step : key === 'ArrowRight' ? step : 0
       const dy = key === 'ArrowDown' ? -step : key === 'ArrowUp' ? step : 0
 
       e.preventDefault()
-      useLayersStore.getState().nudgeActiveCorners(dx, dy, selectedCorner)
+      useLayersStore.getState().nudgeActiveCorners(dx, dy, selectionCornerIndices(mappingSelection))
     }
 
     window.addEventListener('keydown', onKeyDown)
@@ -87,8 +137,23 @@ export function MappingControls() {
   const testPattern = useLayersStore((s) => s.testPattern)
   const setTestPattern = useLayersStore((s) => s.setTestPattern)
 
-  const selectedCorner = useUiStore((s) => s.selectedCorner)
-  const setSelectedCorner = useUiStore((s) => s.setSelectedCorner)
+  const warp = useLayersStore((s) => s.layers.find((l) => l.id === s.activeLayerId)?.warp)
+  const warpActive = isWarpActive(warp)
+  const mode = warpMode(warp)
+  const gridCells = warp?.grid?.cols ?? GRID_DEFAULT_CELLS
+  const resetWarp = useLayersStore((s) => s.resetActiveWarp)
+  const setWarpMode = useLayersStore((s) => s.setActiveWarpMode)
+  const setGridSize = useLayersStore((s) => s.setActiveGridSize)
+  const keystone = useLayersStore((s) => s.keystoneActiveCorners)
+  const undoMapping = useLayersStore((s) => s.undoMapping)
+  const redoMapping = useLayersStore((s) => s.redoMapping)
+  const canUndo = useLayersStore((s) => s.mappingPast.length > 0)
+  const canRedo = useLayersStore((s) => s.mappingFuture.length > 0)
+
+  const selection = useUiStore((s) => s.mappingSelection)
+  const setSelection = useUiStore((s) => s.setMappingSelection)
+  const editingWarp = useUiStore((s) => s.warpMode)
+  const toggleWarpMode = useUiStore((s) => s.toggleWarpMode)
   const nudgeStep = useUiStore((s) => s.nudgeStep)
   const setNudgeStep = useUiStore((s) => s.setNudgeStep)
   const gridVisible = useUiStore((s) => s.gridVisible)
@@ -101,15 +166,15 @@ export function MappingControls() {
       {/* riga 1: bersaglio delle frecce e passo dello spostamento */}
       <div className="flex items-center gap-1">
         <Crosshair className="mx-0.5 size-3.5 shrink-0 text-white/40" />
-        {CORNER_OPTIONS.map((opt) => (
+        {SELECTION_OPTIONS.map((opt) => (
           <button
-            key={String(opt.value)}
+            key={opt.label}
             type="button"
             title={opt.title}
-            onClick={() => setSelectedCorner(opt.value)}
+            onClick={() => setSelection(opt.value)}
             className={cn(
               'min-w-8 rounded px-1.5 py-1 text-[11px] font-medium tabular-nums transition-colors',
-              selectedCorner === opt.value
+              sameSelection(selection, opt.value)
                 ? 'bg-purple-500 text-white'
                 : 'text-white/60 hover:bg-white/10 hover:text-white',
             )}
@@ -117,6 +182,28 @@ export function MappingControls() {
             {opt.label}
           </button>
         ))}
+
+        {/* lati interi: le frecce muovono insieme i due angoli. Sul canvas si ottiene lo stesso
+            cliccando la maniglia a rombo al centro del lato */}
+        {EDGE_OPTIONS.map(({ edge, Icon }) => {
+          const value: MappingSelection = { kind: 'edge', edge }
+          return (
+            <button
+              key={edge}
+              type="button"
+              title={`${WARP_EDGE_LABELS[edge]}: le frecce muovono i due angoli insieme`}
+              onClick={() => setSelection(value)}
+              className={cn(
+                'rounded p-1 transition-colors',
+                sameSelection(selection, value)
+                  ? 'bg-purple-500 text-white'
+                  : 'text-white/60 hover:bg-white/10 hover:text-white',
+              )}
+            >
+              <Icon className="size-3.5" />
+            </button>
+          )
+        })}
 
         <Separator orientation="vertical" className="mx-0.5 h-5 bg-white/15" />
 
@@ -205,6 +292,29 @@ export function MappingControls() {
 
         <Separator orientation="vertical" className="mx-0.5 h-5 bg-white/15" />
 
+        {/* keystone: la correzione trapezoidale del proiettore fuori asse. Agisce sui corner
+            come rotazione e scala, quindi resta compatibile col trascinamento delle maniglie */}
+        <button
+          type="button"
+          title="Keystone verticale: allarga il lato alto. Alt+click per il basso"
+          disabled={locked}
+          onClick={(e) => keystone(0, e.altKey ? -KEYSTONE_STEP : KEYSTONE_STEP)}
+          className="rounded px-1 py-1 text-[11px] text-white/60 transition-colors hover:bg-white/10 hover:text-white disabled:opacity-40"
+        >
+          ⌃K
+        </button>
+        <button
+          type="button"
+          title="Keystone orizzontale: allunga il lato destro. Alt+click per il sinistro"
+          disabled={locked}
+          onClick={(e) => keystone(e.altKey ? -KEYSTONE_STEP : KEYSTONE_STEP, 0)}
+          className="rounded px-1 py-1 text-[11px] text-white/60 transition-colors hover:bg-white/10 hover:text-white disabled:opacity-40"
+        >
+          ⌐K
+        </button>
+
+        <Separator orientation="vertical" className="mx-0.5 h-5 bg-white/15" />
+
         <Button
           type="button"
           variant="ghost"
@@ -234,6 +344,109 @@ export function MappingControls() {
           onClick={straighten}
         >
           <Square className="size-3.5" />
+        </Button>
+
+        <Separator orientation="vertical" className="mx-0.5 h-5 bg-white/15" />
+
+        {/* deformazione: le maniglie compaiono sul canvas solo a modalità accesa, ma la
+            deformazione già impostata resta applicata anche spegnendola */}
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon-xs"
+          title="Deforma la superficie: mostra le maniglie sul canvas (per statue, colonne, archi)"
+          aria-pressed={editingWarp}
+          onClick={toggleWarpMode}
+          className={cn(editingWarp && 'text-cyan-400 hover:text-cyan-300')}
+        >
+          {mode === 'grid' ? <Grid2x2 className="size-3.5" /> : <Spline className="size-3.5" />}
+        </Button>
+
+        {/* scelta della modalità e, per il reticolo, della sua densità: visibili solo mentre si
+            deforma, altrimenti la toolbar del live si allunga per niente */}
+        {editingWarp && (
+          <>
+            <button
+              type="button"
+              title="Curvatura dei bordi: 2 maniglie per lato, curve morbide"
+              onClick={() => setWarpMode('bezier')}
+              className={cn(
+                'rounded px-1.5 py-1 text-[11px] font-medium transition-colors',
+                mode === 'bezier'
+                  ? 'bg-cyan-500 text-white'
+                  : 'text-white/60 hover:bg-white/10 hover:text-white',
+              )}
+            >
+              Bordi
+            </button>
+            <button
+              type="button"
+              title="Reticolo: nodi trascinabili anche all'interno della superficie"
+              onClick={() => setWarpMode('grid')}
+              className={cn(
+                'rounded px-1.5 py-1 text-[11px] font-medium transition-colors',
+                mode === 'grid'
+                  ? 'bg-cyan-500 text-white'
+                  : 'text-white/60 hover:bg-white/10 hover:text-white',
+              )}
+            >
+              Reticolo
+            </button>
+            {mode === 'grid' &&
+              GRID_SIZES.map((cells) => (
+                <button
+                  key={cells}
+                  type="button"
+                  title={`Reticolo ${cells + 1}×${cells + 1} nodi (la forma già data viene conservata)`}
+                  disabled={locked}
+                  onClick={() => setGridSize(cells, cells)}
+                  className={cn(
+                    'rounded px-1.5 py-1 text-[11px] font-medium tabular-nums transition-colors disabled:opacity-40',
+                    gridCells === cells
+                      ? 'bg-white/20 text-white'
+                      : 'text-white/60 hover:bg-white/10 hover:text-white',
+                  )}
+                >
+                  {cells + 1}²
+                </button>
+              ))}
+          </>
+        )}
+
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon-xs"
+          title="Azzera la deformazione della modalità attiva e la correzione dell'obiettivo (corner e posizione restano)"
+          disabled={locked || !warpActive}
+          onClick={resetWarp}
+        >
+          <Eraser className="size-3.5" />
+        </Button>
+
+        <Separator orientation="vertical" className="mx-0.5 h-5 bg-white/15" />
+
+        {/* annulla/ripeti del solo mapping: allineare è lento e delicato, e fino a ora un drag
+            sbagliato non si poteva disfare */}
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon-xs"
+          title="Annulla l'ultima modifica di mapping (⌘Z / Ctrl+Z)"
+          disabled={!canUndo}
+          onClick={undoMapping}
+        >
+          <Undo2 className="size-3.5" />
+        </Button>
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon-xs"
+          title="Ripeti la modifica annullata (⇧⌘Z / Ctrl+Shift+Z)"
+          disabled={!canRedo}
+          onClick={redoMapping}
+        >
+          <Redo2 className="size-3.5" />
         </Button>
 
         <Separator orientation="vertical" className="mx-0.5 h-5 bg-white/15" />

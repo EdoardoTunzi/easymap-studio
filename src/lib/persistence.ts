@@ -23,7 +23,10 @@ interface StoredMedia {
   type: MediaType
   width: number
   height: number
-  blob: Blob
+  /** Assente per le sorgenti live: non c'è nessun file da salvare. */
+  blob?: Blob
+  /** Solo `camera`: device da riaprire al ripristino del progetto. */
+  deviceId?: string
 }
 
 /** Un layer serializzato: media e maschera-immagine ridotti al solo blob; niente stato transiente. */
@@ -70,36 +73,54 @@ interface EasyVjDB extends DBSchema {
 let dbPromise: Promise<IDBPDatabase<EasyVjDB>> | null = null
 
 function getDb() {
-  dbPromise ??= openDB<EasyVjDB>('easyvj', 4, {
+  dbPromise ??= openDB<EasyVjDB>('easyvj', 6, {
     upgrade(db, oldVersion) {
       if (oldVersion < 1) db.createObjectStore('projects', { keyPath: 'id' })
       if (oldVersion < 2) db.createObjectStore('effectPresets', { keyPath: 'id' })
       // v3: i progetti passano da stato piatto a array di layer. Gli oggetti vecchi
       // sono incompatibili col nuovo formato: si svuota lo store dei progetti.
       if (oldVersion > 0 && oldVersion < 3) db.clear('projects')
+      // v5 aveva uno store `mappingPresets`, poi tolto. Non si può tornare alla 4 (IndexedDB non
+      // scende di versione), quindi si sale alla 6 e si elimina lo store orfano dove esiste.
+      if (db.objectStoreNames.contains('mappingPresets' as never)) {
+        db.deleteObjectStore('mappingPresets' as never)
+      }
     },
   })
   return dbPromise
 }
 
 function serializeMedia(media: MediaAsset | null): StoredMedia | null {
-  return media?.blob != null
+  if (!media) return null
+  // sorgente live: si salva il riferimento al device, il flusso video ovviamente no
+  if (media.type === 'camera') {
+    return {
+      name: media.name,
+      type: media.type,
+      width: media.width,
+      height: media.height,
+      deviceId: media.deviceId,
+    }
+  }
+  return media.blob != null
     ? { name: media.name, type: media.type, width: media.width, height: media.height, blob: media.blob }
     : null
 }
 
 function deserializeMedia(stored: StoredMedia | null): MediaAsset | null {
-  return stored
-    ? {
-        id: crypto.randomUUID(),
-        name: stored.name,
-        type: stored.type ?? 'image',
-        url: URL.createObjectURL(stored.blob),
-        width: stored.width,
-        height: stored.height,
-        blob: stored.blob,
-      }
-    : null
+  if (!stored) return null
+  const base = {
+    id: crypto.randomUUID(),
+    name: stored.name,
+    type: stored.type ?? 'image',
+    width: stored.width,
+    height: stored.height,
+  }
+  // la camera riparte da sola: il controller riapre il device al montaggio del layer (se non è
+  // più collegato la texture resta vuota, senza rompere il resto della scena)
+  if (stored.type === 'camera') return { ...base, url: '', deviceId: stored.deviceId }
+  if (!stored.blob) return null
+  return { ...base, url: URL.createObjectURL(stored.blob), blob: stored.blob }
 }
 
 /** Serializza un layer per la persistenza (media/maschera → solo blob, url rigenerato al load). */

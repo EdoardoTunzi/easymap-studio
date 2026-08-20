@@ -1,4 +1,6 @@
 import { create } from 'zustand'
+import type { ShaderCategoryId } from '../lib/shaderCategories'
+import { WARP_EDGE_CORNERS, type WarpEdgeId } from '../lib/warp'
 
 /**
  * Sezioni della sidebar SINISTRA: riguardano il look e il progetto, non il singolo layer.
@@ -25,6 +27,17 @@ function loadSections(): Record<LayerSection, boolean> {
     return raw ? { ...DEFAULT_SECTIONS, ...JSON.parse(raw) } : { ...DEFAULT_SECTIONS }
   } catch {
     return { ...DEFAULT_SECTIONS }
+  }
+}
+
+const PLAYLIST_VISIBLE_KEY = 'easyvj-playlist-visible'
+
+function loadPlaylistVisible(): boolean {
+  if (typeof window === 'undefined') return true
+  try {
+    return window.localStorage.getItem(PLAYLIST_VISIBLE_KEY) !== '0'
+  } catch {
+    return true
   }
 }
 
@@ -60,8 +73,30 @@ function clamp(value: number, min: number, max: number) {
   return Math.min(max, Math.max(min, value))
 }
 
-/** Angolo del corner-pin bersaglio delle frecce: indice TL/TR/BL/BR, oppure null = tutti insieme. */
-export type CornerSelection = 0 | 1 | 2 | 3 | null
+/**
+ * Cosa stanno pilotando le frecce e il drag sul canvas: tutta la proiezione, un singolo angolo,
+ * oppure un intero lato (i due angoli che lo delimitano, mossi insieme).
+ */
+export type MappingSelection =
+  | { kind: 'all' }
+  | { kind: 'corner'; index: 0 | 1 | 2 | 3 }
+  | { kind: 'edge'; edge: WarpEdgeId }
+
+export const SELECT_ALL: MappingSelection = { kind: 'all' }
+
+/** Indici dei corner interessati dalla selezione; null = tutti e quattro. */
+export function selectionCornerIndices(selection: MappingSelection): readonly number[] | null {
+  if (selection.kind === 'all') return null
+  if (selection.kind === 'corner') return [selection.index]
+  return WARP_EDGE_CORNERS[selection.edge]
+}
+
+export function sameSelection(a: MappingSelection, b: MappingSelection): boolean {
+  if (a.kind !== b.kind) return false
+  if (a.kind === 'corner' && b.kind === 'corner') return a.index === b.index
+  if (a.kind === 'edge' && b.kind === 'edge') return a.edge === b.edge
+  return true
+}
 
 /**
  * Passo di spostamento in unità mondo (il frustum è alto 2 unità): "fine" vale circa un pixel
@@ -85,6 +120,13 @@ interface UiState {
   /** Colonna destra (ispettore del layer selezionato): apribile/richiudibile come la sidebar sinistra. */
   rightSidebarOpen: boolean
   toggleRightSidebar: () => void
+  /**
+   * Barra playlist in fondo alla Control: nascondendola il canvas si riprende lo spazio.
+   * È solo visibilità: la barra resta montata (display:none), così la riproduzione in corso
+   * non si interrompe quando la si chiude.
+   */
+  playlistVisible: boolean
+  togglePlaylist: () => void
   /** Blocchi aperti nella colonna destra, ricordati tra le sessioni. */
   sectionsOpen: Record<LayerSection, boolean>
   toggleSection: (section: LayerSection) => void
@@ -95,9 +137,16 @@ interface UiState {
    */
   overlaysVisible: boolean
   toggleOverlays: () => void
-  /** Angolo bersaglio delle frecce da tastiera e della toolbar di mapping. */
-  selectedCorner: CornerSelection
-  setSelectedCorner: (corner: CornerSelection) => void
+  /** Bersaglio delle frecce da tastiera e della toolbar di mapping (tutto / angolo / lato). */
+  mappingSelection: MappingSelection
+  setMappingSelection: (selection: MappingSelection) => void
+  /**
+   * Modalità curvatura: mostra sul canvas gli handle Bézier dei 4 bordi. Sta fuori dalla scena
+   * perché è un modo di lavorare, non una proprietà del mapping: l'Output non ne sa nulla e la
+   * curvatura impostata resta applicata anche a modalità spenta.
+   */
+  warpMode: boolean
+  toggleWarpMode: () => void
   /** Passo corrente dello spostamento fine. */
   nudgeStep: NudgeStepId
   setNudgeStep: (step: NudgeStepId) => void
@@ -121,6 +170,12 @@ interface UiState {
    */
   paletteLoopLayerIds: string[]
   togglePaletteLoopFor: (layerId: string) => void
+  /**
+   * Spegne il loop di un layer senza invertirlo. Serve a chi disattiva la palette: lasciandolo
+   * acceso continuerebbe a generare colori, e al primo tick la palette si riaccenderebbe da sé
+   * (il loop la riabilita quando scrive). Idempotente: su un layer senza loop non fa nulla.
+   */
+  stopPaletteLoopFor: (layerId: string) => void
   /** Toglie dal loop i layer che non esistono più (eliminati o sostituiti dal caricamento). */
   prunePaletteLoopLayers: (existingIds: string[]) => void
   /**
@@ -135,6 +190,15 @@ interface UiState {
   setPaletteLoopIntervalFor: (layerId: string, seconds: number) => void
   /** Tempo di partenza per i loop accesi da qui in avanti: è l'ultimo impostato, e si ricorda. */
   paletteLoopInterval: number
+  /**
+   * Famiglia di effetti selezionata nella libreria ('all' = nessun filtro).
+   *
+   * Sta qui e non dentro il picker perché non governa solo quali voci si vedono: anche le frecce
+   * ◀ ▶ e le scorciatoie ⌥A/⌥S scorrono dentro la famiglia filtrata, e quei comandi vivono
+   * altrove. Con un filtro attivo, un'unica lista è "dove ci si trova".
+   */
+  shaderCategory: ShaderCategoryId | 'all'
+  setShaderCategory: (category: ShaderCategoryId | 'all') => void
   view: ViewTransform
   setViewZoom: (zoom: number) => void
   zoomViewBy: (factor: number) => void
@@ -147,6 +211,17 @@ export const useUiStore = create<UiState>((set) => ({
   setActivePanel: (activePanel) => set({ activePanel }),
   rightSidebarOpen: true,
   toggleRightSidebar: () => set((s) => ({ rightSidebarOpen: !s.rightSidebarOpen })),
+  playlistVisible: loadPlaylistVisible(),
+  togglePlaylist: () =>
+    set((s) => {
+      const playlistVisible = !s.playlistVisible
+      try {
+        window.localStorage.setItem(PLAYLIST_VISIBLE_KEY, playlistVisible ? '1' : '0')
+      } catch {
+        // storage pieno o disabilitato: lo stato resta valido per la sessione corrente
+      }
+      return { playlistVisible }
+    }),
   sectionsOpen: loadSections(),
   toggleSection: (section) =>
     set((s) => {
@@ -160,8 +235,10 @@ export const useUiStore = create<UiState>((set) => ({
     }),
   overlaysVisible: true,
   toggleOverlays: () => set((s) => ({ overlaysVisible: !s.overlaysVisible })),
-  selectedCorner: null,
-  setSelectedCorner: (selectedCorner) => set({ selectedCorner }),
+  mappingSelection: SELECT_ALL,
+  setMappingSelection: (mappingSelection) => set({ mappingSelection }),
+  warpMode: false,
+  toggleWarpMode: () => set((s) => ({ warpMode: !s.warpMode })),
   nudgeStep: 'medium',
   setNudgeStep: (nudgeStep) => set({ nudgeStep }),
   gridVisible: false,
@@ -184,6 +261,12 @@ export const useUiStore = create<UiState>((set) => ({
             : { ...s.paletteLoopIntervals, [layerId]: s.paletteLoopInterval },
       }
     }),
+  stopPaletteLoopFor: (layerId) =>
+    set((s) =>
+      s.paletteLoopLayerIds.includes(layerId)
+        ? { paletteLoopLayerIds: s.paletteLoopLayerIds.filter((id) => id !== layerId) }
+        : s,
+    ),
   prunePaletteLoopLayers: (existingIds) =>
     set((s) => {
       const paletteLoopLayerIds = s.paletteLoopLayerIds.filter((id) => existingIds.includes(id))
@@ -215,6 +298,8 @@ export const useUiStore = create<UiState>((set) => ({
     }))
   },
   paletteLoopInterval: loadPaletteLoopInterval(),
+  shaderCategory: 'all',
+  setShaderCategory: (shaderCategory) => set({ shaderCategory }),
   view: DEFAULT_VIEW,
   setViewZoom: (zoom) =>
     set((s) => ({ view: { ...s.view, zoom: clamp(zoom, MIN_VIEW_ZOOM, MAX_VIEW_ZOOM) } })),
