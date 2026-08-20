@@ -130,6 +130,8 @@ Modello: scena = pila di Layer indipendenti; ogni layer ha contenuto (img/gif/vi
 - [ ] MIDI controller (Web MIDI API) con mapping parametri
 - [ ] Bridge OSC/DMX (richiede servizio Node locale: il browser non parla UDP)
 - [ ] Multi-output / più superfici indipendenti nella stessa scena
+- [x] Barra playlist a prova di live: il clip non è più cliccabile (un click accidentale mandava l'effetto in onda), le azioni compaiono in hover — tre puntini per l'editor, cestino per togliere il clip dalla sola playlist
+- [x] Toggle "Playlist" nella barra in alto (fra Progetti e Output) per mostrare/nascondere la barra, persistito; nascosta con `display:none` per non fermare la riproduzione in corso
 
 ## Qualità dell'immagine proiettata
 

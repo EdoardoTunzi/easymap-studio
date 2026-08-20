@@ -30,6 +30,17 @@ function loadSections(): Record<LayerSection, boolean> {
   }
 }
 
+const PLAYLIST_VISIBLE_KEY = 'easyvj-playlist-visible'
+
+function loadPlaylistVisible(): boolean {
+  if (typeof window === 'undefined') return true
+  try {
+    return window.localStorage.getItem(PLAYLIST_VISIBLE_KEY) !== '0'
+  } catch {
+    return true
+  }
+}
+
 const PALETTE_LOOP_STORAGE_KEY = 'easyvj-palette-loop-interval'
 
 export const MIN_PALETTE_LOOP_INTERVAL = 0.5
@@ -109,6 +120,13 @@ interface UiState {
   /** Colonna destra (ispettore del layer selezionato): apribile/richiudibile come la sidebar sinistra. */
   rightSidebarOpen: boolean
   toggleRightSidebar: () => void
+  /**
+   * Barra playlist in fondo alla Control: nascondendola il canvas si riprende lo spazio.
+   * È solo visibilità: la barra resta montata (display:none), così la riproduzione in corso
+   * non si interrompe quando la si chiude.
+   */
+  playlistVisible: boolean
+  togglePlaylist: () => void
   /** Blocchi aperti nella colonna destra, ricordati tra le sessioni. */
   sectionsOpen: Record<LayerSection, boolean>
   toggleSection: (section: LayerSection) => void
@@ -193,6 +211,17 @@ export const useUiStore = create<UiState>((set) => ({
   setActivePanel: (activePanel) => set({ activePanel }),
   rightSidebarOpen: true,
   toggleRightSidebar: () => set((s) => ({ rightSidebarOpen: !s.rightSidebarOpen })),
+  playlistVisible: loadPlaylistVisible(),
+  togglePlaylist: () =>
+    set((s) => {
+      const playlistVisible = !s.playlistVisible
+      try {
+        window.localStorage.setItem(PLAYLIST_VISIBLE_KEY, playlistVisible ? '1' : '0')
+      } catch {
+        // storage pieno o disabilitato: lo stato resta valido per la sessione corrente
+      }
+      return { playlistVisible }
+    }),
   sectionsOpen: loadSections(),
   toggleSection: (section) =>
     set((s) => {

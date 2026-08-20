@@ -9,6 +9,7 @@ import {
   Blend,
   Camera,
   Copy,
+  MoreHorizontal,
   Pause,
   Play,
   Plus,
@@ -32,6 +33,7 @@ import {
   MIN_CLIP_DURATION,
   type PlaylistClip,
 } from '@/store/playlistStore'
+import { useUiStore } from '@/store/uiStore'
 import { listEffectPresets, type EffectPreset } from '@/lib/persistence'
 import { effectThumbnail } from '@/engine/effectThumbnail'
 
@@ -344,6 +346,7 @@ function ClipBlock({
   const editingClipId = usePlaylistStore((s) => s.editingClipId)
   const setEditingClip = usePlaylistStore((s) => s.setEditingClip)
   const updateClip = usePlaylistStore((s) => s.updateClip)
+  const removeClip = usePlaylistStore((s) => s.removeClip)
 
   const isCurrent = index === currentIndex
   const isEditing = editingClipId === clip.id
@@ -374,72 +377,100 @@ function ClipBlock({
   }
 
   return (
-    <Popover
-      open={isEditing}
-      onOpenChange={(open) => {
-        setEditingClip(open ? clip.id : null)
-        // aprire l'editor mostra subito il look del clip sul layer (anteprima)
-        if (open) applyClip(clip, false)
+    <div
+      draggable
+      onDragStart={onDragStart}
+      onDragOver={(e) => {
+        e.preventDefault()
+        onDragOverIndex()
       }}
+      onDrop={onDrop}
+      onDragEnd={onDragEnd}
+      style={{ width: Math.max(clip.duration * PX_PER_SEC, MIN_CLIP_PX) }}
+      className={cn(
+        // il clip non è più cliccabile: l'editor si apre solo dai tre puntini, così il
+        // click accidentale non applica l'effetto al layer durante un live
+        'group relative flex h-full shrink-0 cursor-grab select-none flex-col justify-between overflow-hidden rounded-md border bg-card px-2 py-1.5 text-left transition-colors active:cursor-grabbing',
+        isCurrent ? 'border-primary/70' : 'border-border hover:border-foreground/30',
+        isEditing && 'ring-2 ring-ring/60',
+        isDragOver && 'border-l-4 border-l-primary',
+      )}
     >
-      <PopoverTrigger asChild>
+      {/* playhead: riempimento dell'avanzamento nel clip corrente */}
+      {isCurrent && (playing || clipProgress > 0) && (
         <div
-          role="button"
-          tabIndex={0}
-          draggable
-          onDragStart={onDragStart}
-          onDragOver={(e) => {
-            e.preventDefault()
-            onDragOverIndex()
+          className="pointer-events-none absolute inset-y-0 left-0 bg-primary/15"
+          style={{ width: `${clipProgress * 100}%` }}
+        />
+      )}
+      <span className="relative truncate text-xs font-medium text-foreground">{clip.name}</span>
+      {/* preview dell'effetto (frame statico renderizzato dallo shader del clip) */}
+      {thumb && (
+        <img
+          src={thumb}
+          alt=""
+          draggable={false}
+          className="pointer-events-none relative my-0.5 min-h-0 w-full flex-1 rounded-sm object-cover"
+        />
+      )}
+      <div className="relative flex items-center justify-between gap-1">
+        <span className="truncate text-[10px] text-muted-foreground">{clip.shaderName}</span>
+        <span className="shrink-0 text-[10px] tabular-nums text-muted-foreground">
+          {clip.duration.toFixed(1)}s
+        </span>
+      </div>
+
+      {/* azioni in hover: opzioni (tre puntini) e rimozione dalla playlist */}
+      <div
+        draggable={false}
+        onDragStart={(e) => e.stopPropagation()}
+        className={cn(
+          'absolute right-2.5 top-1 z-10 flex items-center gap-0.5 rounded-md bg-card/90 p-0.5 opacity-0 shadow-sm backdrop-blur-sm transition-opacity',
+          'group-hover:opacity-100 focus-within:opacity-100',
+          isEditing && 'opacity-100',
+        )}
+      >
+        <Popover
+          open={isEditing}
+          onOpenChange={(open) => {
+            setEditingClip(open ? clip.id : null)
+            // aprire l'editor mostra subito il look del clip sul layer (anteprima)
+            if (open) applyClip(clip, false)
           }}
-          onDrop={onDrop}
-          onDragEnd={onDragEnd}
-          style={{ width: Math.max(clip.duration * PX_PER_SEC, MIN_CLIP_PX) }}
-          className={cn(
-            'group relative flex h-full shrink-0 cursor-pointer select-none flex-col justify-between overflow-hidden rounded-md border bg-card px-2 py-1.5 text-left transition-colors',
-            isCurrent ? 'border-primary/70' : 'border-border hover:border-foreground/30',
-            isEditing && 'ring-2 ring-ring/60',
-            isDragOver && 'border-l-4 border-l-primary',
-          )}
         >
-          {/* playhead: riempimento dell'avanzamento nel clip corrente */}
-          {isCurrent && (playing || clipProgress > 0) && (
-            <div
-              className="pointer-events-none absolute inset-y-0 left-0 bg-primary/15"
-              style={{ width: `${clipProgress * 100}%` }}
-            />
-          )}
-          <span className="relative truncate text-xs font-medium text-foreground">
-            {clip.name}
-          </span>
-          {/* preview dell'effetto (frame statico renderizzato dallo shader del clip) */}
-          {thumb && (
-            <img
-              src={thumb}
-              alt=""
-              draggable={false}
-              className="pointer-events-none relative my-0.5 min-h-0 w-full flex-1 rounded-sm object-cover"
-            />
-          )}
-          <div className="relative flex items-center justify-between gap-1">
-            <span className="truncate text-[10px] text-muted-foreground">{clip.shaderName}</span>
-            <span className="shrink-0 text-[10px] tabular-nums text-muted-foreground">
-              {clip.duration.toFixed(1)}s
-            </span>
-          </div>
-          {/* maniglia di resize della durata (bordo destro) */}
-          <div
-            draggable={false}
-            onPointerDown={handleResizeStart}
-            onClick={(e) => e.stopPropagation()}
-            className="absolute inset-y-0 right-0 w-2 cursor-ew-resize bg-transparent transition-colors hover:bg-primary/40 group-hover:bg-foreground/10"
-          />
-        </div>
-      </PopoverTrigger>
-      <PopoverContent side="top" align="start" className="w-72">
-        <ClipEditor clip={clip} />
-      </PopoverContent>
-    </Popover>
+          <PopoverTrigger asChild>
+            <button
+              type="button"
+              aria-label="Opzioni clip"
+              title="Opzioni clip"
+              className="flex size-5 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+            >
+              <MoreHorizontal className="size-3.5" />
+            </button>
+          </PopoverTrigger>
+          <PopoverContent side="top" align="start" className="w-72">
+            <ClipEditor clip={clip} />
+          </PopoverContent>
+        </Popover>
+        <button
+          type="button"
+          aria-label="Rimuovi dalla playlist"
+          title="Rimuovi dalla playlist (l'effetto resta nella libreria)"
+          onClick={() => removeClip(clip.id)}
+          className="flex size-5 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-destructive/15 hover:text-destructive"
+        >
+          <Trash2 className="size-3.5" />
+        </button>
+      </div>
+
+      {/* maniglia di resize della durata (bordo destro) */}
+      <div
+        draggable={false}
+        onPointerDown={handleResizeStart}
+        onClick={(e) => e.stopPropagation()}
+        className="absolute inset-y-0 right-0 w-2 cursor-ew-resize bg-transparent transition-colors hover:bg-primary/40 group-hover:bg-foreground/10"
+      />
+    </div>
   )
 }
 
@@ -538,6 +569,7 @@ export function PlaylistBar() {
   const transitionDuration = usePlaylistStore((s) => s.transitionDuration)
   const setTransitionDuration = usePlaylistStore((s) => s.setTransitionDuration)
   const reorderClips = usePlaylistStore((s) => s.reorderClips)
+  const playlistVisible = useUiStore((s) => s.playlistVisible)
 
   const dragIndex = useRef<number | null>(null)
   const [dragOver, setDragOver] = useState<number | null>(null)
@@ -598,7 +630,12 @@ export function PlaylistBar() {
   return (
     <div
       style={{ height: barHeight }}
-      className="relative flex shrink-0 items-stretch gap-3 border-t border-sidebar-border bg-sidebar px-3 py-2.5"
+      className={cn(
+        'relative flex shrink-0 items-stretch gap-3 border-t border-sidebar-border bg-sidebar px-3 py-2.5',
+        // nascosta ma montata: il motore di riproduzione (usePlaylistPlayback) vive qui
+        // e smontarlo fermerebbe la sequenza in corso
+        !playlistVisible && 'hidden',
+      )}
     >
       {/* maniglia di resize dell'altezza (bordo superiore) */}
       <div
@@ -670,7 +707,7 @@ export function PlaylistBar() {
         {clips.length === 0 ? (
           <p className="self-center text-xs text-muted-foreground">
             Aggiungi effetti alla sequenza con il pulsante +. Trascina il bordo destro di un clip
-            per cambiarne la durata, cliccaci sopra per modificarlo.
+            per cambiarne la durata, passaci sopra e usa i tre puntini per modificarlo.
           </p>
         ) : (
           clips.map((clip, i) => (

@@ -2,6 +2,23 @@
 
 Ogni modifica al progetto va registrata qui con data, descrizione e motivazione. Le voci più recenti in alto dentro ogni giornata.
 
+## 2026-08-20 — Barra playlist: azioni in hover sui clip e toggle di visibilità
+
+### Il clip non è più cliccabile (`PlaylistBar.tsx`)
+
+Prima l'intero blocco del clip era il trigger del popover, e aprire l'editor applica il look al layer come anteprima: durante un live un click accidentale mandava in onda l'effetto sbagliato. Ora il blocco è solo trascinabile (riordino) e in hover compaiono due icone in alto a destra:
+
+- **tre puntini** (`MoreHorizontal`) → apre lo stesso pannello editor di prima (con l'anteprima sul layer, che ora è una scelta esplicita);
+- **cestino** (`Trash2`) → `removeClip`, che toglie il clip **solo dalla playlist**: shader e preset restano nella libreria.
+
+Le icone restano visibili anche con l'editor aperto (`focus-within` + stato `isEditing`), e il contenitore ha `draggable={false}` per non far partire il drag del clip dal pulsante.
+
+### Toggle "Playlist" nella barra in alto (`TopToolbar.tsx`, `uiStore.ts`)
+
+Nuovo bottone fra *Progetti* e *Output* che mostra/nasconde la barra playlist (`playlistVisible`, persistito in `localStorage` con chiave `easyvj-playlist-visible`). Non è un `Panel` della sidebar, quindi la nav è divisa in due gruppi con il bottone in mezzo.
+
+La barra viene nascosta con `hidden` (display:none) e **non smontata**: il motore di riproduzione (`usePlaylistPlayback`) vive dentro `PlaylistBar`, smontarlo fermerebbe la sequenza in corso.
+
 ## 2026-08-20 — Mapping, seconda parte: reticolo, keystone, correzione obiettivo, soft edge, undo/redo
 
 Completate le voci rimaste dal brainstorming sul canvas di mapping. Tutta la matematica nuova è stata verificata in browser importando i moduli veri, non a occhio.
