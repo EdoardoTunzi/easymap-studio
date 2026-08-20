@@ -14,6 +14,7 @@ Spuntare gli step completati; aggiungere nuovi step quando emergono. Tenere alli
 - [x] Corner-pin: 4 maniglie trascinabili + pan del poligono
 - [x] Fit automatico dell'immagine al viewport (su upload e reset)
 - [x] Persistenza IndexedDB: autosave + progetti con nome (salva/carica/elimina)
+- [x] Pannello Progetti: pulsante "Nuovo progetto" (scena azzerata a un solo layer vuoto) con dialog di conferma salva/non salvare/annulla prima di procedere
 - [x] Installare shadcn/ui (Vite + Tailwind v4) e ricostruire i pannelli di controllo
 - [x] Ristrutturare il layout ispirato allo screenshot MAPSHROOM (top toolbar MOVE/SHADER/ASSETS/OUTPUT + pannello sinistro a sezioni + canvas)
 - [x] Controller MOVE: transform globale (zoom + pan) su store/mesh/sync/persistence + pannello con pad direzionale e slider zoom; corner-pin overlay che segue il transform

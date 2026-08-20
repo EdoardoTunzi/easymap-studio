@@ -2,6 +2,14 @@
 
 Ogni modifica al progetto va registrata qui con data, descrizione e motivazione. Le voci più recenti in alto dentro ogni giornata.
 
+## 2026-08-20 — Pannello Progetti: pulsante "Nuovo progetto" con conferma di salvataggio
+
+Prima si poteva solo salvare/caricare/eliminare progetti già esistenti: non c'era modo di ripartire da zero senza ricaricare la pagina (che perde comunque lo stato solo se non c'è autosave).
+
+- **`newProject()`** in `persistence.ts`: azzera la scena a un solo layer vuoto (`createLayer` + `setScene`) e resetta la playlist (`setPlaylistData(undefined)`), senza toccare i progetti già salvati su IndexedDB.
+- **`AlertDialog`** (`src/components/ui/alert-dialog.tsx`): nuovo wrapper su `radix-ui`'s `AlertDialog` primitive, sullo stesso modello di `sheet.tsx`. Primo dialog modale del progetto — prima esisteva solo lo `Sheet` (drawer laterale).
+- **`ProjectsPanel.tsx`**: il tasto "Nuovo progetto" apre il dialog con tre azioni — *Annulla*, *Non salvare* (chiama `newProject()` diretto), *Salva e nuovo* (disabilitato finché non c'è un nome nel campo dedicato del dialog, poi `saveProject` + `newProject`). Non esiste un dirty-flag nello store: il dialog compare sempre al click, non solo quando ci sono modifiche non salvate (scelta deliberata, coerente con l'assenza di tracking esistente — vedi `isSceneEmpty()` in `persistence.ts`, che è un'euristica per l'autosave, non un vero dirty flag).
+
 ## 2026-08-20 — Barra playlist: azioni in hover sui clip e toggle di visibilità
 
 ### Il clip non è più cliccabile (`PlaylistBar.tsx`)

@@ -168,6 +168,13 @@ function isSceneEmpty(): boolean {
   return layers.length === 1 && layers[0].media == null
 }
 
+/** Azzera la scena a un progetto vuoto con un solo layer, senza toccare i progetti salvati su disco. */
+export function newProject(): void {
+  const layer = createLayer({ name: 'Layer 1' })
+  useLayersStore.getState().setScene([layer], layer.id)
+  usePlaylistStore.getState().setPlaylistData(undefined)
+}
+
 export async function saveProject(name: string): Promise<string> {
   const id = crypto.randomUUID()
   const db = await getDb()
