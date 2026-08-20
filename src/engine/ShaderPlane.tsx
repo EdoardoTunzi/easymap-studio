@@ -13,6 +13,7 @@ import {
 import { releaseTexture, trackTexture } from './textureQuality'
 import { getAudioLevel, getAudioTexture, isAudioActive } from './audioInput'
 import { captureBackdrop, getBackdropSize, getBackdropTexture } from './backdrop'
+import { createWarpGeometry, updateWarpGeometry, warpSegments } from './warpGeometry'
 
 const NOOP_CONTROLLER: MediaTextureController = {
   getTexture: () => FALLBACK_TEXTURE,
@@ -336,27 +337,18 @@ function LayerMesh({
 }) {
   const layer = useLayersStore((s) => findLayer(s, layerId, source))
 
-  // geometria a 4 vertici, warpata in base ai corner-pin (condivisa dai passaggi main/ghost)
-  const geometry = useMemo(() => {
-    const geo = new THREE.PlaneGeometry(1, 1, 1, 1)
-    geo.setAttribute(
-      'uv',
-      new THREE.Float32BufferAttribute([0, 1, 1, 1, 0, 0, 1, 0], 2),
-    )
-    return geo
-  }, [])
-
+  // geometria warpata dai corner-pin (condivisa dai passaggi main/ghost): 4 vertici quando i bordi
+  // sono dritti, griglia suddivisa quando c'è curvatura da rappresentare
   const corners = layer?.corners
+  const warp = layer?.warp
+  const segments = warpSegments(warp)
+  const geometry = useMemo(() => createWarpGeometry(segments), [segments])
+  useEffect(() => () => geometry.dispose(), [geometry])
+
   useEffect(() => {
     if (!corners) return
-    const posAttr = geometry.getAttribute('position') as THREE.BufferAttribute
-    // ordine vertici di PlaneGeometry(1,1,1,1) e di corners: TL, TR, BL, BR
-    posAttr.setXYZ(0, corners[0].x, corners[0].y, 0)
-    posAttr.setXYZ(1, corners[1].x, corners[1].y, 0)
-    posAttr.setXYZ(2, corners[2].x, corners[2].y, 0)
-    posAttr.setXYZ(3, corners[3].x, corners[3].y, 0)
-    posAttr.needsUpdate = true
-  }, [geometry, corners])
+    updateWarpGeometry(geometry, corners, warp)
+  }, [geometry, corners, warp])
 
   // Controller della texture del contenuto (immagine/video/gif), ricreato al cambio media.
   const controllerRef = useRef<MediaTextureController>(NOOP_CONTROLLER)

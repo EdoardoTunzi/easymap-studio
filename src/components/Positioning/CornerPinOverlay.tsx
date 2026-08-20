@@ -1,8 +1,29 @@
-import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react'
-import type { Transform } from '../../store/projectStore'
+import { useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react'
+import type { Corner, Transform } from '../../store/projectStore'
 import { useLayersStore } from '../../store/layersStore'
-import { useUiStore, GRID_STEP, type ViewTransform } from '../../store/uiStore'
+import {
+  useUiStore,
+  GRID_STEP,
+  SELECT_ALL,
+  sameSelection,
+  type ViewTransform,
+} from '../../store/uiStore'
 import { snapCorner } from '../../lib/mappingGeometry'
+import {
+  applyHomographyPoint,
+  cornersHomography,
+  edgeHandleBase,
+  invertHomography,
+  isWarpActive,
+  warpCurves,
+  warpOutline,
+  warpPoint,
+  WARP_EDGES,
+  WARP_EDGE_CORNERS,
+  WARP_EDGE_LABELS,
+  type Warp,
+  type WarpEdgeId,
+} from '../../lib/warp'
 import { cn } from '../../lib/utils'
 
 // stesse formule usate dalla camera ortografica in StageCanvas, includendo lo zoom/pan di anteprima
@@ -52,12 +73,16 @@ export function CornerPinOverlay() {
   const activeLayer = useLayersStore((s) => s.layers.find((l) => l.id === s.activeLayerId))
   const setCorner = useLayersStore((s) => s.setActiveCorner)
   const moveCorners = useLayersStore((s) => s.moveActiveCorners)
+  const nudgeCorners = useLayersStore((s) => s.nudgeActiveCorners)
+  const setWarpHandle = useLayersStore((s) => s.setActiveWarpHandle)
   const corners = activeLayer?.corners
+  const warp = activeLayer?.warp
   const transform = activeLayer?.transform
   const locked = activeLayer?.locked ?? false
   const view = useUiStore((s) => s.view)
-  const selectedCorner = useUiStore((s) => s.selectedCorner)
-  const setSelectedCorner = useUiStore((s) => s.setSelectedCorner)
+  const selection = useUiStore((s) => s.mappingSelection)
+  const setSelection = useUiStore((s) => s.setMappingSelection)
+  const warpMode = useUiStore((s) => s.warpMode)
   const snapEnabled = useUiStore((s) => s.snapEnabled)
 
   useEffect(() => {
@@ -73,12 +98,34 @@ export function CornerPinOverlay() {
 
   const { width, height } = size
 
+  // omografia del quad e sua inversa: servono a disegnare gli handle (unitario → mondo) e a
+  // riconvertire il trascinamento (mondo → unitario), dove la curvatura è definita
+  const homography = useMemo(() => (corners ? cornersHomography(corners) : null), [corners])
+  const inverse = useMemo(() => (homography ? invertHomography(homography) : null), [homography])
+  const curves = useMemo(() => warpCurves(warp), [warp])
+
+  /** Punto in spazio unitario → pixel dell'overlay (curvatura + omografia + transform + vista). */
+  const unitToScreen = (u: number, v: number) => {
+    if (!homography || !transform) return { x: 0, y: 0 }
+    const w = warpPoint(curves, homography, u, v)
+    const r = applyTransform(w.x, w.y, transform)
+    return worldToScreen(r.x, r.y, width, height, view)
+  }
+
+  /** Punto unitario "puro" (senza curvatura): posizione degli handle Bézier, che vivono lì. */
+  const controlToScreen = (p: Corner) => {
+    if (!homography || !transform) return { x: 0, y: 0 }
+    const w = applyHomographyPoint(homography, p.x, p.y)
+    const r = applyTransform(w.x, w.y, transform)
+    return worldToScreen(r.x, r.y, width, height, view)
+  }
+
   const handleCornerDrag =
     (index: 0 | 1 | 2 | 3) => (e: ReactPointerEvent<HTMLDivElement>) => {
       e.preventDefault()
       e.stopPropagation()
       // il click seleziona comunque l'angolo, così le frecce agiscono su quello appena toccato
-      setSelectedCorner(index)
+      setSelection({ kind: 'corner', index })
       if (!transform || locked) return
       const rect = containerRef.current!.getBoundingClientRect()
 
@@ -99,8 +146,76 @@ export function CornerPinOverlay() {
       window.addEventListener('pointerup', onUp)
     }
 
+  /**
+   * Trascinamento di un intero lato: i due angoli che lo delimitano si muovono insieme, mantenendo
+   * la loro distanza. È il gesto per alzare/abbassare un bordo intero senza rifare due angoli.
+   */
+  const handleEdgeDrag = (edge: WarpEdgeId) => (e: ReactPointerEvent<HTMLDivElement>) => {
+    e.preventDefault()
+    e.stopPropagation()
+    setSelection({ kind: 'edge', edge })
+    if (!transform || locked) return
+    const { left, right, top, bottom } = frustum(width, height, view)
+    const indices = WARP_EDGE_CORNERS[edge]
+    let lastX = e.clientX
+    let lastY = e.clientY
+
+    const onMove = (ev: PointerEvent) => {
+      const dxScreen = ev.clientX - lastX
+      const dyScreen = ev.clientY - lastY
+      lastX = ev.clientX
+      lastY = ev.clientY
+      nudgeCorners(
+        ((dxScreen / width) * (right - left)) / transform.zoom,
+        (-(dyScreen / height) * (top - bottom)) / transform.zoom,
+        indices,
+      )
+    }
+    const onUp = () => {
+      window.removeEventListener('pointermove', onMove)
+      window.removeEventListener('pointerup', onUp)
+    }
+    window.addEventListener('pointermove', onMove)
+    window.addEventListener('pointerup', onUp)
+  }
+
+  /**
+   * Trascinamento di un punto di controllo Bézier. Lo schermo si riporta in spazio unitario con
+   * l'inversa dell'omografia: così l'handle segue il puntatore anche su un quad in forte keystone,
+   * dove un pixel in alto vale molto più mondo di un pixel in basso.
+   */
+  const handleWarpDrag =
+    (edge: WarpEdgeId, index: 0 | 1) => (e: ReactPointerEvent<HTMLDivElement>) => {
+      e.preventDefault()
+      e.stopPropagation()
+      setSelection({ kind: 'edge', edge })
+      if (!transform || locked || !inverse) return
+      const rect = containerRef.current!.getBoundingClientRect()
+      const base = edgeHandleBase(edge, index)
+
+      const onMove = (ev: PointerEvent) => {
+        const world = screenToWorld(
+          ev.clientX - rect.left,
+          ev.clientY - rect.top,
+          width,
+          height,
+          view,
+        )
+        const local = invertTransform(world.x, world.y, transform)
+        const unit = applyHomographyPoint(inverse, local.x, local.y)
+        setWarpHandle(edge, index, { x: unit.x - base.x, y: unit.y - base.y })
+      }
+      const onUp = () => {
+        window.removeEventListener('pointermove', onMove)
+        window.removeEventListener('pointerup', onUp)
+      }
+      window.addEventListener('pointermove', onMove)
+      window.addEventListener('pointerup', onUp)
+    }
+
   const handlePanStart = (e: ReactPointerEvent<SVGPolygonElement>) => {
     e.preventDefault()
+    setSelection(SELECT_ALL)
     if (!transform || locked) return
     const { left, right, top, bottom } = frustum(width, height, view)
     let lastX = e.clientX
@@ -129,14 +244,28 @@ export function CornerPinOverlay() {
     return <div ref={containerRef} className="pointer-events-none absolute inset-0" />
   }
 
+  const warped = isWarpActive(warp)
+  // contorno reale della proiezione: coi bordi dritti sono i 4 angoli, con la curvatura è il
+  // perimetro campionato lungo le Bézier
+  const outlinePoints = (
+    warped
+      ? warpOutline(corners, warp).map((p) => {
+          const r = applyTransform(p.x, p.y, transform)
+          return worldToScreen(r.x, r.y, width, height, view)
+        })
+      : // TL, TR, BR, BL: ordine di perimetro (corners è TL, TR, BL, BR)
+        [corners[0], corners[1], corners[3], corners[2]].map((c) => {
+          const r = applyTransform(c.x, c.y, transform)
+          return worldToScreen(r.x, r.y, width, height, view)
+        })
+  )
+    .map((c) => `${c.x},${c.y}`)
+    .join(' ')
+
   const screenCorners = corners.map((c) => {
     const r = applyTransform(c.x, c.y, transform)
     return worldToScreen(r.x, r.y, width, height, view)
   })
-  // corners sono TL,TR,BL,BR: il poligono va tracciato in ordine di perimetro TL,TR,BR,BL
-  const polygonPoints = [screenCorners[0], screenCorners[1], screenCorners[3], screenCorners[2]]
-    .map((c) => `${c.x},${c.y}`)
-    .join(' ')
 
   // bloccato = ambra e non trascinabile, così lo stato è leggibile a colpo d'occhio durante il live
   const stroke = locked ? 'rgba(251, 191, 36, 0.75)' : 'rgba(168, 85, 247, 0.6)'
@@ -146,7 +275,7 @@ export function CornerPinOverlay() {
     <div ref={containerRef} className="absolute inset-0">
       <svg className="absolute inset-0 h-full w-full">
         <polygon
-          points={polygonPoints}
+          points={outlinePoints}
           fill={fill}
           stroke={stroke}
           strokeWidth={1.5}
@@ -154,9 +283,69 @@ export function CornerPinOverlay() {
           style={{ pointerEvents: 'auto', cursor: locked ? 'not-allowed' : 'move' }}
           onPointerDown={handlePanStart}
         />
+        {/* steli degli handle Bézier: legano il punto di controllo al bordo che curva */}
+        {warpMode &&
+          WARP_EDGES.flatMap((edge) =>
+            ([0, 1] as const).map((i) => {
+              const anchor = unitToScreen(...edgeAnchor(edge, i))
+              const handle = controlToScreen(currentControl(edge, i, warp))
+              return (
+                <line
+                  key={`${edge}-${i}-stem`}
+                  x1={anchor.x}
+                  y1={anchor.y}
+                  x2={handle.x}
+                  y2={handle.y}
+                  stroke="rgba(34, 211, 238, 0.5)"
+                  strokeWidth={1}
+                  strokeDasharray="3 3"
+                />
+              )
+            }),
+          )}
       </svg>
+
+      {/* maniglie centro-lato: selezionano il lato e muovono i suoi due angoli insieme */}
+      {WARP_EDGES.map((edge) => {
+        const p = unitToScreen(...edgeAnchorMid(edge))
+        const isSelected = sameSelection(selection, { kind: 'edge', edge })
+        return (
+          <div
+            key={`${edge}-mid`}
+            title={`${WARP_EDGE_LABELS[edge]}: trascina per muovere i due angoli insieme`}
+            onPointerDown={handleEdgeDrag(edge)}
+            className={cn(
+              'absolute -translate-x-1/2 -translate-y-1/2 rotate-45 border-2 border-white transition-[height,width]',
+              isSelected ? 'h-4 w-4 ring-2 ring-white/70' : 'h-3 w-3',
+              locked ? 'cursor-not-allowed bg-amber-500' : 'cursor-grab bg-purple-400 active:cursor-grabbing',
+            )}
+            style={{ left: p.x, top: p.y, pointerEvents: 'auto' }}
+          />
+        )
+      })}
+
+      {/* punti di controllo Bézier: solo in modalità curvatura, per non affollare il canvas */}
+      {warpMode &&
+        WARP_EDGES.flatMap((edge) =>
+          ([0, 1] as const).map((i) => {
+            const p = controlToScreen(currentControl(edge, i, warp))
+            return (
+              <div
+                key={`${edge}-${i}-cp`}
+                title={`${WARP_EDGE_LABELS[edge]}: curvatura (punto ${i + 1})`}
+                onPointerDown={handleWarpDrag(edge, i)}
+                className={cn(
+                  'absolute -translate-x-1/2 -translate-y-1/2 h-3.5 w-3.5 rounded-full border-2 border-white',
+                  locked ? 'cursor-not-allowed bg-amber-400' : 'cursor-grab bg-cyan-400 active:cursor-grabbing',
+                )}
+                style={{ left: p.x, top: p.y, pointerEvents: 'auto' }}
+              />
+            )
+          }),
+        )}
+
       {screenCorners.map((c, i) => {
-        const isSelected = selectedCorner === i
+        const isSelected = sameSelection(selection, { kind: 'corner', index: i as 0 | 1 | 2 | 3 })
         return (
           <div
             key={i}
@@ -173,4 +362,40 @@ export function CornerPinOverlay() {
       })}
     </div>
   )
+}
+
+/** Punto sul bordo (spazio unitario) a cui aggancia lo stelo dell'handle: t = 1/3 e 2/3. */
+function edgeAnchor(edge: WarpEdgeId, index: 0 | 1): [number, number] {
+  const t = index === 0 ? 1 / 3 : 2 / 3
+  switch (edge) {
+    case 'top':
+      return [t, 1]
+    case 'bottom':
+      return [t, 0]
+    case 'left':
+      return [0, t]
+    case 'right':
+      return [1, t]
+  }
+}
+
+/** Centro del bordo in spazio unitario: posizione della maniglia di selezione del lato. */
+function edgeAnchorMid(edge: WarpEdgeId): [number, number] {
+  switch (edge) {
+    case 'top':
+      return [0.5, 1]
+    case 'bottom':
+      return [0.5, 0]
+    case 'left':
+      return [0, 0.5]
+    case 'right':
+      return [1, 0.5]
+  }
+}
+
+/** Posizione corrente del punto di controllo: base del bordo dritto + scostamento salvato. */
+function currentControl(edge: WarpEdgeId, index: 0 | 1, warp: Warp | undefined): Corner {
+  const base = edgeHandleBase(edge, index)
+  const h = warp?.[edge]?.[index]
+  return { x: base.x + (h?.x ?? 0), y: base.y + (h?.y ?? 0) }
 }

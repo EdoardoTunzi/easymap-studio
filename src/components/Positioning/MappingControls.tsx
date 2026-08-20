@@ -12,12 +12,25 @@ import {
   Crosshair,
   ChevronsLeftRight,
   ChevronsUpDown,
+  PanelTop,
+  PanelBottom,
+  PanelLeft,
+  PanelRight,
+  Spline,
+  Eraser,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Separator } from '@/components/ui/separator'
 import { cn } from '@/lib/utils'
 import { useLayersStore } from '@/store/layersStore'
-import { useUiStore, NUDGE_STEPS, type CornerSelection } from '@/store/uiStore'
+import {
+  useUiStore,
+  NUDGE_STEPS,
+  sameSelection,
+  selectionCornerIndices,
+  type MappingSelection,
+} from '@/store/uiStore'
+import { isWarpActive, WARP_EDGE_LABELS, type WarpEdgeId } from '@/lib/warp'
 
 /** Rotazione applicata dai pulsanti ±90°. */
 const QUARTER_TURN = Math.PI / 2
@@ -26,12 +39,20 @@ const FINE_ROTATION = Math.PI / 180
 /** Fattore di scala per click sui pulsanti larghezza/altezza. */
 const SCALE_STEP = 1.02
 
-const CORNER_OPTIONS: { value: CornerSelection; label: string; title: string }[] = [
-  { value: null, label: 'Tutti', title: 'Le frecce spostano tutta la proiezione' },
-  { value: 0, label: 'TL', title: 'Angolo in alto a sinistra' },
-  { value: 1, label: 'TR', title: 'Angolo in alto a destra' },
-  { value: 2, label: 'BL', title: 'Angolo in basso a sinistra' },
-  { value: 3, label: 'BR', title: 'Angolo in basso a destra' },
+const SELECTION_OPTIONS: { value: MappingSelection; label: string; title: string }[] = [
+  { value: { kind: 'all' }, label: 'Tutti', title: 'Le frecce spostano tutta la proiezione' },
+  { value: { kind: 'corner', index: 0 }, label: 'TL', title: 'Angolo in alto a sinistra' },
+  { value: { kind: 'corner', index: 1 }, label: 'TR', title: 'Angolo in alto a destra' },
+  { value: { kind: 'corner', index: 2 }, label: 'BL', title: 'Angolo in basso a sinistra' },
+  { value: { kind: 'corner', index: 3 }, label: 'BR', title: 'Angolo in basso a destra' },
+]
+
+/** Selezione di un intero lato: le frecce muovono insieme i due angoli che lo delimitano. */
+const EDGE_OPTIONS: { edge: WarpEdgeId; Icon: typeof PanelTop }[] = [
+  { edge: 'top', Icon: PanelTop },
+  { edge: 'bottom', Icon: PanelBottom },
+  { edge: 'left', Icon: PanelLeft },
+  { edge: 'right', Icon: PanelRight },
 ]
 
 /**
@@ -54,14 +75,14 @@ function useNudgeKeys() {
       }
       if (target?.closest('[role="slider"]')) return
 
-      const { selectedCorner, nudgeStep } = useUiStore.getState()
+      const { mappingSelection, nudgeStep } = useUiStore.getState()
       const base = NUDGE_STEPS.find((s) => s.id === nudgeStep)?.value ?? 0.01
       const step = e.shiftKey ? base * 5 : base
       const dx = key === 'ArrowLeft' ? -step : key === 'ArrowRight' ? step : 0
       const dy = key === 'ArrowDown' ? -step : key === 'ArrowUp' ? step : 0
 
       e.preventDefault()
-      useLayersStore.getState().nudgeActiveCorners(dx, dy, selectedCorner)
+      useLayersStore.getState().nudgeActiveCorners(dx, dy, selectionCornerIndices(mappingSelection))
     }
 
     window.addEventListener('keydown', onKeyDown)
@@ -87,8 +108,15 @@ export function MappingControls() {
   const testPattern = useLayersStore((s) => s.testPattern)
   const setTestPattern = useLayersStore((s) => s.setTestPattern)
 
-  const selectedCorner = useUiStore((s) => s.selectedCorner)
-  const setSelectedCorner = useUiStore((s) => s.setSelectedCorner)
+  const warpActive = useLayersStore((s) =>
+    isWarpActive(s.layers.find((l) => l.id === s.activeLayerId)?.warp),
+  )
+  const resetWarp = useLayersStore((s) => s.resetActiveWarp)
+
+  const selection = useUiStore((s) => s.mappingSelection)
+  const setSelection = useUiStore((s) => s.setMappingSelection)
+  const warpMode = useUiStore((s) => s.warpMode)
+  const toggleWarpMode = useUiStore((s) => s.toggleWarpMode)
   const nudgeStep = useUiStore((s) => s.nudgeStep)
   const setNudgeStep = useUiStore((s) => s.setNudgeStep)
   const gridVisible = useUiStore((s) => s.gridVisible)
@@ -101,15 +129,15 @@ export function MappingControls() {
       {/* riga 1: bersaglio delle frecce e passo dello spostamento */}
       <div className="flex items-center gap-1">
         <Crosshair className="mx-0.5 size-3.5 shrink-0 text-white/40" />
-        {CORNER_OPTIONS.map((opt) => (
+        {SELECTION_OPTIONS.map((opt) => (
           <button
-            key={String(opt.value)}
+            key={opt.label}
             type="button"
             title={opt.title}
-            onClick={() => setSelectedCorner(opt.value)}
+            onClick={() => setSelection(opt.value)}
             className={cn(
               'min-w-8 rounded px-1.5 py-1 text-[11px] font-medium tabular-nums transition-colors',
-              selectedCorner === opt.value
+              sameSelection(selection, opt.value)
                 ? 'bg-purple-500 text-white'
                 : 'text-white/60 hover:bg-white/10 hover:text-white',
             )}
@@ -117,6 +145,28 @@ export function MappingControls() {
             {opt.label}
           </button>
         ))}
+
+        {/* lati interi: le frecce muovono insieme i due angoli. Sul canvas si ottiene lo stesso
+            cliccando la maniglia a rombo al centro del lato */}
+        {EDGE_OPTIONS.map(({ edge, Icon }) => {
+          const value: MappingSelection = { kind: 'edge', edge }
+          return (
+            <button
+              key={edge}
+              type="button"
+              title={`${WARP_EDGE_LABELS[edge]}: le frecce muovono i due angoli insieme`}
+              onClick={() => setSelection(value)}
+              className={cn(
+                'rounded p-1 transition-colors',
+                sameSelection(selection, value)
+                  ? 'bg-purple-500 text-white'
+                  : 'text-white/60 hover:bg-white/10 hover:text-white',
+              )}
+            >
+              <Icon className="size-3.5" />
+            </button>
+          )
+        })}
 
         <Separator orientation="vertical" className="mx-0.5 h-5 bg-white/15" />
 
@@ -234,6 +284,32 @@ export function MappingControls() {
           onClick={straighten}
         >
           <Square className="size-3.5" />
+        </Button>
+
+        <Separator orientation="vertical" className="mx-0.5 h-5 bg-white/15" />
+
+        {/* curvatura dei bordi: gli handle Bézier compaiono sul canvas solo a modalità accesa,
+            ma la curvatura già impostata resta applicata anche spegnendola */}
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon-xs"
+          title="Curvatura dei bordi: mostra i punti di controllo dei 4 lati (per statue, colonne, archi)"
+          aria-pressed={warpMode}
+          onClick={toggleWarpMode}
+          className={cn(warpMode && 'text-cyan-400 hover:text-cyan-300')}
+        >
+          <Spline className="size-3.5" />
+        </Button>
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon-xs"
+          title="Azzera la curvatura: riporta i 4 bordi dritti (corner e posizione restano)"
+          disabled={locked || !warpActive}
+          onClick={resetWarp}
+        >
+          <Eraser className="size-3.5" />
         </Button>
 
         <Separator orientation="vertical" className="mx-0.5 h-5 bg-white/15" />

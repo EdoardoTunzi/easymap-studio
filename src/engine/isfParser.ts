@@ -45,10 +45,18 @@ const VEC3_RE =
   /uniform\s+vec3\s+(\w+)\s*;\s*\/\/[^\n]*@default\s+(-?[\d.]+)\s*,\s*(-?[\d.]+)\s*,\s*(-?[\d.]+)/g
 
 const VERTEX_SHADER = `
-varying vec2 vUv;
+// Peso prospettico del vertice (1/W dell'omografia del corner-pin, vedi engine/warpGeometry.ts).
+// La camera è ortografica, quindi gl_Position.w vale 1 e la GPU interpolerebbe le uv linearmente
+// in schermo: la texture si spezzerebbe lungo la diagonale del quad a ogni keystone. Portando
+// (uv*k, k) e dividendo nel fragment si ottiene l'interpolazione proiettiva esatta.
+attribute float aPersp;
+varying vec3 vUvW;
 varying vec2 vPos;
 void main() {
-  vUv = uv;
+  // 0 = attributo non fornito (default WebGL): succede alle miniature, che disegnano un quad
+  // dritto a schermo intero e non hanno bisogno di correzione.
+  float k = aPersp <= 0.0 ? 1.0 : aPersp;
+  vUvW = vec3(uv * k, k);
   // posizione base (pre-transform, spazio dei corner): usata dalle maschere per forma,
   // così seguono il warp del corner-pin del layer.
   vPos = position.xy;
@@ -106,7 +114,10 @@ uniform float uFxBrightness;
 uniform float uFxSaturation;
 uniform float uFxPosterize;          // 0 = off, altrimenti livelli per canale
 uniform float uFxInvert;             // 0..1 miscela col negativo
-varying vec2 vUv;
+// vUv arriva divisa per il peso prospettico (vedi VERTEX_SHADER): la macro fa la divisione al
+// momento dell'uso, così i file .glsl continuano a scrivere vUv come se fosse un varying vec2.
+varying vec3 vUvW;
+#define vUv (vUvW.xy / vUvW.z)
 varying vec2 vPos;
 
 // Fattore di visibilità dalle maschere del layer (1 = pieno, 0 = nascosto).

@@ -21,6 +21,15 @@ import {
   flipCorners,
   straightenCorners,
 } from '../lib/mappingGeometry'
+import {
+  clampHandle,
+  cloneWarp,
+  createWarp,
+  flipWarp,
+  type Warp,
+  type WarpEdgeId,
+  type WarpHandle,
+} from '../lib/warp'
 import { useUiStore } from './uiStore'
 import {
   type Palette,
@@ -203,6 +212,13 @@ export interface Layer {
   maskImage: MediaAsset | null
   /** Corner-pin in coordinate mondo (TL, TR, BL, BR). */
   corners: Corners
+  /**
+   * Curvatura dei 4 bordi del quad (2 handle Bézier per lato, in spazio unitario). Serve alle
+   * superfici curve — statue, colonne, archi — dove i soli 4 angoli lasciano il contenuto piatto
+   * sui fianchi. Opzionale in lettura: i progetti salvati prima non ce l'hanno, e assente vale
+   * quanto azzerata (quad dritto, mesh a 4 vertici come prima).
+   */
+  warp?: Warp
   /** Transform (zoom + pan) applicato sopra il corner-pin. */
   transform: Transform
   /**
@@ -389,10 +405,16 @@ interface LayersState {
   /** Riporta i corner a un rettangolo, conservando centro e dimensioni. */
   straightenActiveCorners: () => void
   /**
-   * Sposta di (dx, dy) un singolo corner, oppure tutti e quattro se `index` è null.
-   * È il gesto dell'allineamento fine da tastiera.
+   * Sposta di (dx, dy) i corner indicati, oppure tutti e quattro se `indices` è null.
+   * È il gesto dell'allineamento fine da tastiera; con due indici muove un intero lato.
    */
-  nudgeActiveCorners: (dx: number, dy: number, index: 0 | 1 | 2 | 3 | null) => void
+  nudgeActiveCorners: (dx: number, dy: number, indices: readonly number[] | null) => void
+
+  // curvatura dei bordi (warp Bézier, vedi lib/warp.ts)
+  /** Sposta un punto di controllo di un bordo (scostamento in spazio unitario). */
+  setActiveWarpHandle: (edge: WarpEdgeId, index: 0 | 1, handle: WarpHandle) => void
+  /** Riporta tutti i bordi a dritti, senza toccare corner e transform. */
+  resetActiveWarp: () => void
   /** Blocca/sblocca il mapping di un layer (corner e transform diventano immutabili). */
   setLayerLocked: (id: string, locked: boolean) => void
   toggleActiveLocked: () => void
@@ -543,6 +565,7 @@ export const useLayersStore = create<LayersState>((set, get) => {
           masks: src.masks.map((m) => ({ ...m, id: crypto.randomUUID() })),
           maskImage: src.maskImage ? { ...src.maskImage } : null,
           corners: cloneCorners(src.corners),
+          warp: src.warp ? cloneWarp(src.warp) : undefined,
           transform: { ...src.transform },
           transition: null,
         }
@@ -695,17 +718,31 @@ export const useLayersStore = create<LayersState>((set, get) => {
       patchActiveMapping((l) => ({ corners: scaleCorners(l.corners, sx, sy) })),
 
     flipActiveCorners: (axis) =>
-      patchActiveMapping((l) => ({ corners: flipCorners(l.corners, axis) })),
+      patchActiveMapping((l) => ({
+        corners: flipCorners(l.corners, axis),
+        // scambiare i corner ribalta l'omografia: il warp va ribaltato con essa, altrimenti la
+        // curvatura salta dall'altro lato e la sagoma proiettata cambia forma
+        warp: l.warp ? flipWarp(l.warp, axis) : undefined,
+      })),
 
     straightenActiveCorners: () =>
       patchActiveMapping((l) => ({ corners: straightenCorners(l.corners) })),
 
-    nudgeActiveCorners: (dx, dy, index) =>
+    nudgeActiveCorners: (dx, dy, indices) =>
       patchActiveMapping((l) => ({
         corners: l.corners.map((c, i) =>
-          index === null || i === index ? { x: c.x + dx, y: c.y + dy } : c,
+          indices === null || indices.includes(i) ? { x: c.x + dx, y: c.y + dy } : c,
         ) as Corners,
       })),
+
+    setActiveWarpHandle: (edge, index, handle) =>
+      patchActiveMapping((l) => {
+        const warp = l.warp ? cloneWarp(l.warp) : createWarp()
+        warp[edge][index] = clampHandle(handle)
+        return { warp }
+      }),
+
+    resetActiveWarp: () => patchActiveMapping(() => ({ warp: createWarp() })),
 
     setLayerLocked: (id, locked) =>
       set((state) => ({

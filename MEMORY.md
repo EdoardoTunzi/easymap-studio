@@ -2,6 +2,46 @@
 
 Ogni modifica al progetto va registrata qui con data, descrizione e motivazione. Le voci più recenti in alto dentro ogni giornata.
 
+## 2026-08-20 — Mapping: corner-pin proiettivamente corretto + curvatura dei 4 bordi
+
+L'utente ha chiesto di aggiungere al canvas di mapping solo le opzioni strettamente necessarie che mancavano: prospettiva, curvatura separata dei lati, punti di controllo aggiuntivi, selezione di un lato cliccando fra due pin. Fatte le prime due fasi delle tre concordate (la terza — griglia NxM di nodi — resta aperta).
+
+### Il difetto trovato: il corner-pin non aveva prospettiva
+
+La mesh del layer era una `PlaneGeometry(1,1,1,1)`: **4 vertici, 2 triangoli, uv interpolate in modo affine**. Appena i 4 corner non formano un parallelogramma — cioè in qualunque keystone su una statua o un palco — i due triangoli si deformano indipendentemente e la texture si spezza **lungo la diagonale**, con la classica piega a "V". Non era un'opzione mancante: era un difetto presente su ogni mapping non frontale.
+
+**Correzione** (`src/lib/warp.ts` + `src/engine/warpGeometry.ts`): si calcola l'omografia quadrato-unitario → quad (algoritmo di Heckbert, con caso affine separato per i parallelogrammi, dove il denominatore si annullerebbe). Ogni vertice porta l'attributo `aPersp` = 1/W; il wrapper GLSL trasporta `vec3(uv*k, k)` e il fragment ricostruisce `vUv` dividendo.
+
+Il trucco che ha evitato di toccare i 103 shader della libreria: nel fragment `vUv` non è più un varying ma una **macro** — `#define vUv (vUvW.xy / vUvW.z)`. I file `.glsl` continuano a scrivere `vUv` come prima. (Verificato prima che nessuno shader dichiari un proprio `varying vUv`: nessuno lo fa.)
+
+**Verificato numericamente in browser**, simulando l'interpolazione baricentrica della GPU su un quad in forte keystone e confrontandola con l'inversa esatta dell'omografia: uv corretta `0.198496, 0.413534` = uv esatta alle 6 cifre; l'interpolazione affine di prima dava `0.200000, 0.500000`, **sbagliata di 0.087 in v** (8.7% dell'altezza della texture in quel punto).
+
+Nota per i progetti già allineati: il contenuto si ridistribuisce (correttamente) rispetto a prima, quindi un mapping tarato sul palco con keystone forte va rivisto.
+
+### Curvatura dei bordi (patch di Coons)
+
+I 4 bordi sono Bézier cubiche definite **in spazio unitario**, non in coordinate mondo: così la curvatura resta indipendente da posizione, rotazione e scala del quad (che vivono nei corner) e sopravvive a qualunque spostamento del mapping. La superficie è una patch di Coons fra i 4 bordi.
+
+La scelta che ha tenuto il codice senza casi speciali: gli handle memorizzano lo **scostamento** dalla posizione a bordo dritto (t = 1/3 e 2/3). A scostamento zero le Bézier sono rette e la patch degenera **esattamente** nell'identità — verificato, errore massimo 6.7e-16. Quindi "nessun warp" = mesh a 4 vertici e comportamento identico a prima, senza un ramo `if` nel rendering: la suddivisione (24×24) si accende sola quando `isWarpActive` è vero.
+
+Altre invarianti verificate in browser: i 4 angoli restano ancorati anche con curvatura forte (errore 0), il bordo segue esattamente la sua Bézier (errore 0), `flipWarp` andata/ritorno è esatto.
+
+`flipWarp` è servito perché `flipCorners` scambia i corner senza spostare il quad: l'omografia si ribalta, e senza ribaltare anche il warp la curvatura sarebbe saltata dall'altro lato cambiando la sagoma proiettata.
+
+### Selezione del lato
+
+`uiStore.selectedCorner` (indice o null) è diventato `mappingSelection`: `all` | `corner` | `edge`. Con un lato selezionato le frecce muovono **i due angoli insieme**; sul canvas lo stesso si ottiene dalla maniglia a rombo al centro del lato. `nudgeActiveCorners` accetta ora una lista di indici invece di un indice singolo. Verificato col drag della maniglia centro-lato: TL e TR si spostano del delta esatto, BL e BR di zero.
+
+### Dove tocca
+
+- `src/lib/warp.ts` (nuovo): omografia, Coons, handle, `flipWarp`, contorno campionato.
+- `src/engine/warpGeometry.ts` (nuovo): costruzione/aggiornamento della mesh, attributo `aPersp`, `computeBoundingSphere` (senza, il frustum culling avrebbe usato la sfera della PlaneGeometry originale e a mapping molto spostati la mesh sarebbe sparita). Qui viene anche disposta la geometria, che prima restava appesa.
+- `src/engine/isfParser.ts`: vertex shader con `aPersp`, macro `vUv` nel fragment.
+- `src/engine/TestPattern.tsx`: stessa geometria e stessa correzione — è la griglia con cui si legge la deformazione, dev'essere mappata come il contenuto.
+- `src/store/layersStore.ts`: campo `warp?` (opzionale come `edgeSharp`, i progetti salvati prima non ce l'hanno e assente = bordi dritti), `setActiveWarpHandle`, `resetActiveWarp`. Persistenza e sync viaggiano già per layer intero: nessuna modifica lì.
+- `src/components/Positioning/CornerPinOverlay.tsx`: contorno curvo campionato, maniglie centro-lato, handle Bézier con stelo (solo in modalità curvatura, per non affollare il canvas durante il live).
+- `src/components/Positioning/MappingControls.tsx`: 4 pulsanti di selezione lato, toggle curvatura, azzera curvatura.
+
 ## 2026-08-19 — Qualità dell'immagine proiettata: compositore di output, colore, supersampling, diagnostica
 
 L'utente ha chiesto se la finestra Output avesse limiti di qualità propri o se dipendesse tutto dal proiettore (un Full HD), notando che un video HD sullo stesso proiettore si vede molto meglio dei visual. Sono emersi **due difetti veri nel nostro codice**, entrambi misurati, più una serie di leve mancanti.

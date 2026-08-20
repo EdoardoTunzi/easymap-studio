@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import type { ShaderCategoryId } from '../lib/shaderCategories'
+import { WARP_EDGE_CORNERS, type WarpEdgeId } from '../lib/warp'
 
 /**
  * Sezioni della sidebar SINISTRA: riguardano il look e il progetto, non il singolo layer.
@@ -61,8 +62,30 @@ function clamp(value: number, min: number, max: number) {
   return Math.min(max, Math.max(min, value))
 }
 
-/** Angolo del corner-pin bersaglio delle frecce: indice TL/TR/BL/BR, oppure null = tutti insieme. */
-export type CornerSelection = 0 | 1 | 2 | 3 | null
+/**
+ * Cosa stanno pilotando le frecce e il drag sul canvas: tutta la proiezione, un singolo angolo,
+ * oppure un intero lato (i due angoli che lo delimitano, mossi insieme).
+ */
+export type MappingSelection =
+  | { kind: 'all' }
+  | { kind: 'corner'; index: 0 | 1 | 2 | 3 }
+  | { kind: 'edge'; edge: WarpEdgeId }
+
+export const SELECT_ALL: MappingSelection = { kind: 'all' }
+
+/** Indici dei corner interessati dalla selezione; null = tutti e quattro. */
+export function selectionCornerIndices(selection: MappingSelection): readonly number[] | null {
+  if (selection.kind === 'all') return null
+  if (selection.kind === 'corner') return [selection.index]
+  return WARP_EDGE_CORNERS[selection.edge]
+}
+
+export function sameSelection(a: MappingSelection, b: MappingSelection): boolean {
+  if (a.kind !== b.kind) return false
+  if (a.kind === 'corner' && b.kind === 'corner') return a.index === b.index
+  if (a.kind === 'edge' && b.kind === 'edge') return a.edge === b.edge
+  return true
+}
 
 /**
  * Passo di spostamento in unità mondo (il frustum è alto 2 unità): "fine" vale circa un pixel
@@ -96,9 +119,16 @@ interface UiState {
    */
   overlaysVisible: boolean
   toggleOverlays: () => void
-  /** Angolo bersaglio delle frecce da tastiera e della toolbar di mapping. */
-  selectedCorner: CornerSelection
-  setSelectedCorner: (corner: CornerSelection) => void
+  /** Bersaglio delle frecce da tastiera e della toolbar di mapping (tutto / angolo / lato). */
+  mappingSelection: MappingSelection
+  setMappingSelection: (selection: MappingSelection) => void
+  /**
+   * Modalità curvatura: mostra sul canvas gli handle Bézier dei 4 bordi. Sta fuori dalla scena
+   * perché è un modo di lavorare, non una proprietà del mapping: l'Output non ne sa nulla e la
+   * curvatura impostata resta applicata anche a modalità spenta.
+   */
+  warpMode: boolean
+  toggleWarpMode: () => void
   /** Passo corrente dello spostamento fine. */
   nudgeStep: NudgeStepId
   setNudgeStep: (step: NudgeStepId) => void
@@ -176,8 +206,10 @@ export const useUiStore = create<UiState>((set) => ({
     }),
   overlaysVisible: true,
   toggleOverlays: () => set((s) => ({ overlaysVisible: !s.overlaysVisible })),
-  selectedCorner: null,
-  setSelectedCorner: (selectedCorner) => set({ selectedCorner }),
+  mappingSelection: SELECT_ALL,
+  setMappingSelection: (mappingSelection) => set({ mappingSelection }),
+  warpMode: false,
+  toggleWarpMode: () => set((s) => ({ warpMode: !s.warpMode })),
   nudgeStep: 'medium',
   setNudgeStep: (nudgeStep) => set({ nudgeStep }),
   gridVisible: false,
