@@ -137,7 +137,11 @@ Modello: scena = pila di Layer indipendenti; ogni layer ha contenuto (img/gif/vi
 - [x] Cartello di prova (tasto C): righe da un pixel, rampa, barre sature, gradini di nero e bianco. Non si ricorda mai acceso fra le sessioni
 - [x] Impostazioni di resa in uno store dedicato (`renderStore`), su localStorage e sincronizzate con un messaggio proprio che passa **sempre**, Live compreso: non sono la scena, sono il modo di disegnarla
 - [x] Finestra Output aperta sullo schermo secondario (Window Management API) invece che 1280×720 sopra il pannello; pieno schermo con F o doppio click, con avviso a schermo quando il browser lo nega — verificato che può fallire **in silenzio**, senza rifiutare la promise
-- [ ] Verificare sul proiettore reale il guadagno del supersampling 2× e scegliere il default definitivo (ora 1×: alzarlo di default significa quadruplicare i pixel su macchine che non conosciamo)
+- [x] Verifica sul proiettore reale: qualità nettamente migliorata (riscontro dell'utente)
+- [x] `README.md` aggiornato: sezione "Qualità dell'immagine proiettata", sottosezione tecnica "Pipeline di output", scorciatoie della finestra di proiezione, novità v4 e roadmap
+- [x] Default del supersampling alzato a **2×**: misurato che a 1080p non costa nulla (126 fps contro 124 a 1×, entrambi limitati dal vsync)
+- [x] Scala estesa a 3× e 4×, poi **rimossi**: provati sul proiettore non danno alcun miglioramento visibile (oltre il 2× il limite è l'ottica, non l'aliasing) mentre 4× dimezza gli fps già con un solo layer. Motivazione e avvertenza per un'eventuale riapertura nel commento di `SUPER_SAMPLE_STEPS`
+- [x] Tetto di memoria video sul buffer interno (256 MB) oltre a quello sul lato massimo delle texture, e **fattore effettivo mostrato nel pannello** quando la riduzione scatta: prima il clamp era silenzioso
 - [ ] Valutare l'estensione della maschera-immagine e dell'`edgeSharp` alle sorgenti video/camera (oggi l'anisotropia non le tocca: sono senza mipmap, rigenerarle a ogni frame costerebbe più di quanto renda)
 - [ ] Valutare il rilevamento automatico del calo di fps con proposta di abbassare il supersampling (oggi l'avviso sotto i 50 fps è solo informativo)
 

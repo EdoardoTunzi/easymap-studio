@@ -122,7 +122,7 @@ export function OutputLauncher() {
       <SettingRow
         label="Supersampling"
         value={`${render.superSample}×`}
-        hint="Disegna più grande di quanto proietta e riduce: è l'unico antialiasing che agisce sui contorni disegnati dagli shader e sul bordo della sagoma. Il costo cresce col quadrato: 2× significa quattro volte i pixel. Vale solo per la finestra Output, non per questa anteprima."
+        hint="Disegna più grande di quanto proietta e riduce: è l'unico antialiasing che agisce sui contorni disegnati dagli shader e sul bordo della sagoma. Il costo cresce col quadrato (2× sono quattro volte i pixel), ma sul vsync non si sente. La scala si ferma a 2× perché oltre, provato sul proiettore, la nitidezza non migliora: lì il limite è l'ottica. Vale solo per la finestra Output, non per questa anteprima."
       >
         <ToggleGroup
           type="single"

@@ -16,6 +16,17 @@ function formatScale(stats: RenderStats): string {
   return `${ratio.toFixed(2)}× pixel`
 }
 
+/** Il fattore chiesto non è stato concesso per intero (lato massimo texture o tetto di memoria). */
+function isCapped(stats: RenderStats): boolean {
+  return stats.superSample - stats.superSampleEffective > 0.05
+}
+
+/** Memoria del solo buffer interno: 8 byte per pixel a mezza precisione float, 4 senza. */
+function bufferMemory(stats: RenderStats): string {
+  const bytes = stats.renderWidth * stats.renderHeight * (stats.hdr ? 8 : 4)
+  return `${Math.round(bytes / (1024 * 1024))} MB`
+}
+
 /** Quanto dello schermo stiamo davvero usando: sotto il 100% si proietta meno di quel che si può. */
 function screenUsage(stats: RenderStats): number | null {
   if (!stats.screenWidth || !stats.bufferWidth) return null
@@ -44,6 +55,7 @@ export function OutputStats() {
 
   const usage = screenUsage(stats)
   const fpsLow = stats.fps > 0 && stats.fps < 50
+  const capped = isCapped(stats)
 
   return (
     <div className="pointer-events-none absolute left-4 top-4 z-50 select-none rounded-lg border border-white/10 bg-black/75 px-3.5 py-3 font-mono text-[11px] leading-relaxed backdrop-blur-sm">
@@ -63,11 +75,18 @@ export function OutputStats() {
           value={stats.fullscreen ? 'sì' : 'NO'}
           tone={stats.fullscreen ? 'ok' : 'warn'}
         />
-        <Row label="Buffer interno" value={`${stats.renderWidth}×${stats.renderHeight}`} />
+        <Row
+          label="Buffer interno"
+          value={`${stats.renderWidth}×${stats.renderHeight} · ${bufferMemory(stats)}`}
+        />
         <Row
           label="Supersampling"
-          value={`${stats.superSample}× (${formatScale(stats)})`}
-          tone={stats.superSample > 1 ? 'ok' : undefined}
+          value={
+            capped
+              ? `${stats.superSample}× → ${stats.superSampleEffective.toFixed(2)}×`
+              : `${stats.superSample}× (${formatScale(stats)})`
+          }
+          tone={capped ? 'warn' : stats.superSample > 1 ? 'ok' : undefined}
         />
         <Row label="Precisione" value={stats.hdr ? 'half-float' : '8 bit'} />
         <Row label="Pixel ratio" value={stats.dpr.toFixed(2)} />
@@ -76,6 +95,12 @@ export function OutputStats() {
       {!stats.fullscreen && (
         <p className="mt-2 max-w-[15rem] text-[10px] leading-snug text-amber-300/80">
           La finestra non copre lo schermo: premi F. Ogni pixel non usato è risoluzione buttata.
+        </p>
+      )}
+      {capped && (
+        <p className="mt-2 max-w-[15rem] text-[10px] leading-snug text-amber-300/80">
+          Supersampling ridotto d'ufficio: il buffer superava il limite delle texture o della
+          memoria video. Oltre questo fattore non si ottiene nulla di più.
         </p>
       )}
       {fpsLow && (

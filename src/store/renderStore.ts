@@ -14,12 +14,24 @@ import { create } from 'zustand'
 
 const STORAGE_KEY = 'easyvj-render-settings'
 
-/** Fattori di supersampling proposti. Il costo in fill rate è il quadrato del fattore. */
+/**
+ * Fattori di supersampling proposti. Il costo in fill rate (e in memoria video) è il **quadrato**
+ * del fattore: 2× sono quattro volte i pixel.
+ *
+ * **La scala si ferma a 2×, e non per prudenza: oltre non si guadagna niente.** 3× e 4× erano
+ * stati aggiunti e provati sul proiettore reale, senza alcun miglioramento visibile — a quel punto
+ * il limite della nitidezza non è più l'aliasing ma l'ottica: messa a fuoco, contrasto, dimensione
+ * del pixel proiettato. Il prezzo invece si paga tutto (4× dimezza gli fps già con un solo layer).
+ * Tenerli in elenco avrebbe solo offerto un modo di peggiorare la serata con un click.
+ *
+ * Se un giorno si volesse riaprire la questione, il confronto va fatto **sul proiettore**: a
+ * monitor la differenza fra 2× e 4× si vede, ed è esattamente ciò che rende ingannevole la prova.
+ */
 export const SUPER_SAMPLE_STEPS = [
   { value: 1, label: '1×', hint: 'Nessun supersampling: la GPU disegna esattamente i pixel del proiettore.' },
   { value: 1.25, label: '1.25×', hint: 'Costo +56%. Ammorbidisce le scalettature più evidenti.' },
-  { value: 1.5, label: '1.5×', hint: 'Costo +125%. Il miglior compromesso su macchine normali.' },
-  { value: 2, label: '2×', hint: 'Costo +300%. Bordi puliti come su un monitor 4K, se la GPU regge.' },
+  { value: 1.5, label: '1.5×', hint: 'Costo +125%. Buon compromesso su macchine modeste.' },
+  { value: 2, label: '2×', hint: 'Costo ×4, ma sul vsync non si sente. È qui che si vede il salto di nitidezza — oltre, provato, non cambia nulla.' },
 ] as const
 
 export interface RenderSettings {
@@ -43,7 +55,11 @@ export interface RenderSettings {
 }
 
 export const DEFAULT_RENDER: RenderSettings = {
-  superSample: 1,
+  // 2× di default perché misurando non costa nulla: su un canvas da 1080p con una scena normale
+  // gli fps sono gli stessi di 1× (in entrambi i casi il limite è il vsync, non la GPU), mentre il
+  // salto di nitidezza sul proiettore è quello che si vede. Chi ha una macchina modesta lo abbassa
+  // con un click, e il pannello diagnostico avvisa da sé se gli fps calano.
+  superSample: 2,
   hdr: true,
   rolloff: 0.35,
   dither: true,

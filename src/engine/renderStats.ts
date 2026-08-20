@@ -21,7 +21,14 @@ export interface RenderStats {
   renderHeight: number
   /** devicePixelRatio effettivo del canvas. */
   dpr: number
+  /** Fattore chiesto nel pannello. */
   superSample: number
+  /**
+   * Fattore realmente applicato: più basso di quello chiesto quando il buffer sfonda il lato
+   * massimo delle texture o il tetto di memoria video. Se i due numeri differiscono il pannello
+   * lo dice — credere di proiettare a 4× mentre si è a 2.1× è peggio che saperlo.
+   */
+  superSampleEffective: number
   /** Buffer interno a mezza precisione float attivo. */
   hdr: boolean
   fps: number
@@ -39,6 +46,7 @@ const EMPTY: RenderStats = {
   renderHeight: 0,
   dpr: 1,
   superSample: 1,
+  superSampleEffective: 1,
   hdr: false,
   fps: 0,
   fullscreen: false,

@@ -114,6 +114,28 @@ function maxBufferSide(gl: THREE.WebGLRenderer): number {
   return Math.min(gl.capabilities.maxTextureSize, 8192)
 }
 
+/**
+ * Tetto di memoria video per il buffer interno.
+ *
+ * A mezza precisione float un pixel costa 8 byte, e i blend avanzati ne allocano un secondo grande
+ * uguale per la copia del backdrop: il consumo reale è quindi il doppio di questo numero. Mezzo
+ * giga complessivo è già molto da chiedere a una GPU integrata, e un'allocazione fallita non dà
+ * un errore leggibile — dà uno schermo nero, che a metà set è il modo peggiore di scoprirlo.
+ */
+const MAX_BUFFER_BYTES = 256 * 1024 * 1024
+
+/**
+ * Fattore di supersampling realmente applicabile: quello chiesto, ridotto se il buffer sfonda il
+ * lato massimo delle texture o il tetto di memoria. Viene pubblicato nelle statistiche, perché una
+ * riduzione silenziosa farebbe credere di star proiettando a una qualità che non si ha.
+ */
+function usableSuperSample(gl: THREE.WebGLRenderer, requested: number, outW: number, outH: number): number {
+  const bySide = maxBufferSide(gl) / Math.max(outW, outH)
+  const bytesPerPixel = 8
+  const byMemory = Math.sqrt(MAX_BUFFER_BYTES / (outW * outH * bytesPerPixel))
+  return Math.max(1, Math.min(requested, bySide, byMemory))
+}
+
 export function OutputComposer({ role = 'output' }: { role?: 'control' | 'output' }) {
   const gl = useThree((s) => s.gl)
   const scene = useThree((s) => s.scene)
@@ -174,8 +196,7 @@ export function OutputComposer({ role = 'output' }: { role?: 'control' | 'output
   useEffect(() => {
     const outW = Math.max(1, Math.floor(size.width * dpr))
     const outH = Math.max(1, Math.floor(size.height * dpr))
-    const limit = maxBufferSide(gl)
-    const scale = Math.min(superSample, limit / Math.max(outW, outH))
+    const scale = usableSuperSample(gl, superSample, outW, outH)
     const width = Math.max(1, Math.floor(outW * scale))
     const height = Math.max(1, Math.floor(outH * scale))
 
@@ -246,6 +267,9 @@ export function OutputComposer({ role = 'output' }: { role?: 'control' | 'output
         renderHeight: target.height,
         dpr,
         superSample,
+        // letto dal bersaglio davvero allocato, non dal valore chiesto: è l'unico modo di
+        // accorgersi che il tetto di memoria o quello delle texture è entrato in gioco
+        superSampleEffective: buffer.x > 0 ? target.width / buffer.x : 1,
         hdr: target.texture.type === THREE.HalfFloatType,
         fps: Math.round(fpsRef.current),
         // "a tutto schermo" comprende sia il fullscreen vero sia una finestra che copre lo

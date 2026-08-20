@@ -57,6 +57,36 @@ Si apre sullo schermo secondario quando il browser espone la Window Management A
 
 **Il pieno schermo può fallire in silenzio**: provato nel pannello di anteprima, la promise non viene rifiutata e lo stato non cambia. Si controlla quindi `document.fullscreenElement` dopo la richiesta, non l'esito della promise, e si scrive a schermo cosa fare al suo posto. Un tasto che sul palco non fa niente e non dice niente è il modo peggiore di fallire.
 
+### 3× e 4× rimossi dopo la prova sul proiettore (la scala si ferma a 2×)
+
+Provati sul proiettore reale: **nessun miglioramento visibile oltre il 2×**, come previsto dalla teoria ma ora verificato. A quel punto il limite della nitidezza non è più l'aliasing, è l'ottica — messa a fuoco, contrasto, dimensione del pixel proiettato — e il supersampling in più si paga senza ricevere niente.
+
+Tolti dall'elenco. Un'opzione che non migliora nulla ma dimezza gli fps, in un'app che si usa dal vivo, non è una scelta in più: è un modo di rovinarsi la serata con un click. La motivazione è scritta nel commento di `SUPER_SAMPLE_STEPS`, insieme all'avvertenza per chi volesse riaprire la questione — **il confronto va fatto sul proiettore**, perché a monitor la differenza fra 2× e 4× si vede, ed è proprio questo che rende ingannevole la prova.
+
+I valori già salvati si sistemano da soli: `sanitizeRender` accetta solo i fattori in elenco, quindi chi avesse 3× o 4× in localStorage (o lo ricevesse via BroadcastChannel) torna al default.
+
+**Restano** il tetto di memoria video e il fattore effettivo nel pannello, nati per gestire i fattori alti ma utili comunque: su un display 4K anche il 2× arriva a sfiorare il limite, e una riduzione silenziosa resterebbe invisibile.
+
+### Scala del supersampling estesa a 3× e 4× (poi rimossa, vedi sopra), default alzato a 2×
+
+L'utente ha girato il set a 2× ("molto più nitido da proiettore") e ha chiesto se avesse senso arrivare a 4×. Misurato invece che stimato, su un canvas da 2,03 MP — cioè praticamente un 1080p (2,07 MP), quindi i numeri valgono direttamente per il caso reale — con un layer e uno shader:
+
+| Fattore | Buffer | Memoria | FPS |
+| ------- | ------ | ------- | --- |
+| 1× | 1336×1522 | 16 MB | 124 |
+| 2× | 2672×3044 | 62 MB | 126 |
+| 3× | 4008×4566 | 140 MB | 93 |
+| 4× | 5344×6088 | 248 MB | 56 |
+
+- **A 2× il costo è nullo**: 126 fps contro 124, cioè entrambi limitati dal vsync e non dalla GPU. Da qui la decisione di **alzare il default a 2×** — chiude il punto lasciato aperto ieri, che aspettava solo il riscontro sul proiettore. Su una macchina modesta si abbassa con un click, e il pannello avvisa da sé sotto i 50 fps.
+- **3× e 4× aggiunti ma marcati "oltre il punto di resa"**, con avviso in pannello: il guadagno cala (da 4 a 16 campioni per pixel si vede poco, e su un 1080p il limite diventa l'ottica del proiettore) mentre il costo continua a crescere col quadrato. I numeri qui sopra sono con **un solo layer**: in una scena da tre o quattro, a 4× si scende sotto la soglia utile.
+- **Tetto di memoria video** (`MAX_BUFFER_BYTES`, 256 MB) accanto a quello già presente sul lato massimo delle texture: a mezza precisione un pixel costa 8 byte e i blend avanzati allocano un secondo buffer grande uguale, quindi il consumo reale raddoppia. Un'allocazione fallita non dà un errore leggibile, dà uno schermo nero — a metà set, il modo peggiore di scoprirlo.
+- **La riduzione non è più silenziosa**: il pannello pubblica il fattore *effettivo* letto dal bersaglio allocato accanto a quello chiesto, e quando differiscono mostra `4× → 2.10×` con la spiegazione. Prima il clamp c'era già ma nessuno lo vedeva: si sarebbe creduto di proiettare a una qualità che non si ha.
+
+### Esito e documentazione
+
+Provato dall'utente sul proiettore reale: **qualità aumentata molto**. `README.md` aggiornato di conseguenza — nuova sezione "Qualità dell'immagine proiettata" fra le funzionalità, sottosezione tecnica "Pipeline di output", tabella delle scorciatoie della finestra di proiezione (F/S/C), voce in cima alle novità v4 e roadmap di Fase 3. Nel README è documentato anche il fix del colore: chi conosceva l'app nelle versioni precedenti deve sapere che le immagini ora appaiono più chiare **perché prima erano sbagliate**, non perché siano state schiarite.
+
 ### Cosa resta al proiettore e al sistema (fuori dal nostro codice)
 
 Il Full HD non è il limite. Contano molto di più: **keystone digitale del proiettore da spegnere** (ricampiona e distrugge la nitidezza — la deformazione la fa il nostro corner-pin), risoluzione del display **nativa e non "scalata"** in macOS, modalità immagine del proiettore su Standard/Cinema con sharpness a zero, ed evitare i fade a bassa opacità su nero (un proiettore somma luce: Add/Screen leggono molto meglio).

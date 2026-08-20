@@ -20,6 +20,7 @@ Progetto solista, sviluppato in modo iterativo con un ciclo di lavoro rigoroso (
 
 ## Novità della versione 4
 
+- **Qualità dell'immagine proiettata** — un pannello di controlli dedicato a quanto bene l'immagine arriva sul proiettore, più gli strumenti per misurarlo invece di andare a tentativi. **Supersampling** fino a 2× (l'unico antialiasing che agisce sui contorni disegnati dagli shader e sul bordo della sagoma), **buffer interno a mezza precisione float** perché i blend Add/Screen non vengano tagliati sul bianco, **dithering** contro il banding dei gradienti — che al buio è la cosa che più fa sembrare "povera" una proiezione — e **grana** opzionale. Sulla finestra di proiezione: `S` apre un **pannello diagnostico** con i pixel realmente disegnati, gli fps e l'avviso quando la finestra non copre lo schermo; `C` accende un **cartello di prova** (righe da un pixel, rampa, barre sature, gradini di nero e bianco) per capire in dieci secondi se il limite è l'app, il proiettore o il sistema. Corretto anche un difetto nella gestione del colore delle sorgenti: le immagini venivano linearizzate senza essere ri-codificate, e un grigio 128 nel file arrivava a schermo come 55 — **foto, video e riprese live ora hanno la luminosità giusta**, con le mezze luci al loro posto.
 - **Ingresso video live (webcam, cam USB, capture card HDMI)** — un layer può avere come contenuto una **ripresa dal vivo** invece di un file: si riprende il DJ, il pubblico o il palco e lo si proietta effettato in tempo reale. La sorgente si comporta come qualunque altro media — shader, palette, maschere, corner-pin, blend e opacità valgono senza differenze — e il pulsante **"Nuovo strato"** duplica il feed su un layer sopra, già allineato e in Screen, per impilare più effetti sulla stessa ripresa. Il device resta aperto **una volta sola** qualunque sia il numero di strati. Sul proiettore la ripresa arriva senza latenza aggiunta, perché la finestra Output apre la camera per conto proprio. Se la cam si scollega o viene presa da un altro programma il layer si riaggancia da solo; restano comunque un pulsante di riavvio della sorgente e una diagnostica che spiega perché un'attivazione non riesce (permesso bloccato, pagina non sicura, device occupato).
 - **Loop delle palette casuali** — accanto a "Genera" c'è ora un interruttore **Loop**: la palette si rigenera da sola a intervalli regolari (**0,5–60 secondi**, preimpostati a 5) e **si dissolve** da una all'altra invece di cambiare di scatto. Basta accenderlo per avere un colore che evolve per conto suo mentre ci si occupa di mapping, layer o playlist. Se durante il loop tocchi "Genera", il numero di colori o un color picker, la dissolvenza successiva riparte da quello che c'è sullo schermo, senza stacchi.
 - **Cambio effetto rapido e Random dei controlli** — frecce accanto alla lista degli effetti e scorciatoie `⌥A` / `⌥S` per scorrere la libreria senza aprire il menu, più un pulsante che estrae valori casuali per tutti i parametri dell'effetto attivo.
@@ -35,8 +36,9 @@ Progetto solista, sviluppato in modo iterativo con un ciclo di lavoro rigoroso (
 4. Regoli l'effetto con i **controlli globali** (velocità, rotazione, kaleidoscopio, mirror, pixelate, colore): funzionano su qualsiasi shader, senza doverne conoscere i parametri.
 5. Componi più layer indipendenti (immagine, video, GIF o **ripresa live** da webcam/capture card), ciascuno con la propria maschera, il proprio effetto, opacità e blend mode.
 6. Costruisci una **playlist di effetti** con transizioni a crossfade, per sequenze automatizzate durante il live.
-7. Apri la finestra **Output** (su un secondo monitor/proiettore) che riceve lo stato in tempo reale via `BroadcastChannel`, con una modalità **Live** per decidere manualmente quando "mandare in onda" le modifiche.
-8. Il progetto si salva da solo in locale (IndexedDB) e funziona anche offline (PWA), utile a bordo palco senza rete.
+7. Apri la finestra **Output** (che nasce da sola sul secondo monitor/proiettore, se il browser lo consente) che riceve lo stato in tempo reale via `BroadcastChannel`, con una modalità **Live** per decidere manualmente quando "mandare in onda" le modifiche.
+8. Tari la **qualità di resa** sul proiettore che hai davanti — supersampling, dithering, grana — usando il cartello di prova e il pannello diagnostico per vedere cosa sta arrivando davvero sullo schermo.
+9. Il progetto si salva da solo in locale (IndexedDB) e funziona anche offline (PWA), utile a bordo palco senza rete.
 
 ---
 
@@ -52,6 +54,7 @@ Tutto quello che puoi fare dall'editor, pannello per pannello.
 - **Zoom e pan della vista di anteprima**, indipendenti dall'output: utile per raggiungere le maniglie del corner-pin quando l'asset è ingrandito oltre i bordi del canvas.
 - **Riferimenti di mapping nascondibili** (pulsante a forma di occhio sul canvas): cornice e maniglie servono a posizionare, ma coprono l'effetto quando lo vuoi valutare davvero. L'Output non li ha mai disegnati.
 - **Maschere per-layer**: forme rettangolo/ellisse (con sfumatura bordo, rotazione, inversione), più forme sommabili, oppure maschera da immagine PNG (stencil).
+- **Nitidezza del bordo** della sagoma: il contorno di un PNG è largo pochi pixel e il corner-pin lo ingrandisce fino a decine di pixel di proiettore, dove si legge come un alone sfocato. Il controllo restringe quella rampa **senza spostarla**, così il mapping non si muove — utile quando l'effetto deve fermarsi esattamente sullo spigolo dell'oggetto. Con il luma key attivo toglie anche il pulviscolo di pixel semitrasparenti attorno al soggetto.
 - **Sincronizzazione effetto** tra i layer che scegli: le modifiche a shader, parametri, size, palette e controlli globali del layer attivo si propagano subito a quelli spuntati.
 
 ### Effetti e palette colori
@@ -78,12 +81,39 @@ Tutto quello che puoi fare dall'editor, pannello per pannello.
 
 ### Output e modalità Live
 
-- Finestra **Output** dedicata (da trascinare su un secondo monitor/proiettore), sincronizzata in tempo reale con l'editor via `BroadcastChannel`.
+- Finestra **Output** dedicata, sincronizzata in tempo reale con l'editor via `BroadcastChannel`. Si apre **direttamente sullo schermo secondario** quando il browser espone la Window Management API, altrimenti va trascinata a mano; pieno schermo con `F` o doppio click.
 - Modalità **Live**: le modifiche restano "in prova" nell'editor di controllo e vengono inviate all'Output solo quando premi esplicitamente "Esegui in output" — utile per sperimentare senza disturbare la proiezione dal vivo. Il pulsante segnala con un pallino quando ci sono modifiche in sospeso, e l'invio si comanda anche con la **barra spaziatrice**.
+
+### Qualità dell'immagine proiettata _(novità v4)_
+
+Un proiettore perdona molto meno di un monitor: la sala non è mai completamente buia, il contrasto è quello che è, e i difetti che a schermo non si notano lì diventano evidenti. Questi controlli stanno nel pannello **Output** e agiscono sulla sola finestra di proiezione, così l'anteprima non ruba GPU al proiettore durante un set.
+
+- **Supersampling** 1× / 1.25× / 1.5× / 2×, preimpostato a **2×**: la scena viene disegnata più grande di quanto verrà proiettata e poi ridotta. È l'unico antialiasing che agisce su ciò che si vede davvero — i contorni disegnati dal fragment shader e il bordo della sagoma — perché il multisampling classico lavora solo sui lati del quad, che con un PNG scontornato sono trasparenti e quindi invisibili.
+
+  **La scala si ferma a 2×, e la ragione è misurata, non prudenziale.** Il costo cresce col quadrato del fattore, il guadagno no. Su un canvas da 1080p con un layer:
+
+  | Fattore | Buffer interno | Memoria | FPS |
+  | ------- | -------------- | ------- | --- |
+  | 1×      | 1336×1522      | 16 MB   | 124 |
+  | 2×      | 2672×3044      | 62 MB   | 126 |
+  | 3×      | 4008×4566      | 140 MB  | 93  |
+  | 4×      | 5344×6088      | 248 MB  | 56  |
+
+  A 2× il costo è **nullo** — 126 fps contro 124, in entrambi i casi il limite è il vsync e non la GPU — ed è per questo che è il default. 3× e 4× sono stati implementati e provati **sul proiettore**: nessun miglioramento visibile, perché a quel punto il limite della nitidezza non è più l'aliasing ma l'ottica (messa a fuoco, contrasto, dimensione del pixel proiettato). Sono stati quindi rimossi: un'opzione che non migliora nulla ma dimezza gli fps, in un'app che si usa dal vivo, è solo un modo di sbagliare in serata. Restano invece le protezioni che quel lavoro ha prodotto — tetto di memoria video sul buffer interno e **fattore effettivo mostrato nel pannello** quando una riduzione automatica scatta, perché credere di proiettare a una qualità che non si ha è peggio che saperlo.
+- **Buffer interno a mezza precisione float**: i blend Add e Screen possono superare il fondo scala invece di essere tagliati subito.
+- **Sfondamento morbido**: quando un colore supera il fondo scala, l'eccesso vira verso il bianco invece di far scivolare la tinta (senza, un rosso che sfonda diventa giallo). Non tocca nulla che stia già dentro il range — su un proiettore il bianco pieno è luce che si paga in lumen, e non si regala a una curva.
+- **Dithering**: distribuisce l'errore di quantizzazione sugli 8 bit finali. È ciò che toglie le strisce dai gradienti larghi degli shader generativi, che al buio sono la cosa che più fa sembrare "povera" una proiezione.
+- **Grana** regolabile: un video ha dettaglio ad alta frequenza ovunque, uno shader generativo no — ed è anche per questo che sullo stesso proiettore un video "sembra migliore" a parità di pixel. Un filo di grana riavvicina le due cose.
+- **Pannello diagnostico** (`S` sulla finestra di proiezione): pixel realmente disegnati dal canvas, dimensione del buffer interno, supersampling effettivo, precisione, fps, e l'avviso quando la finestra non copre tutto lo schermo — ogni pixel non usato è risoluzione buttata.
+- **Cartello di prova** (`C`): righe da un pixel, rampa continua, barre sature, gradini di nero e di bianco. Dice in dieci secondi dove sta il limite. Se le righe da un pixel non si leggono nette **non stai proiettando alla risoluzione nativa**, e nessuna impostazione dell'app può rimediare: quasi sempre è il keystone digitale del proiettore acceso (ricampiona l'immagine — la deformazione va lasciata al corner-pin) o la risoluzione del sistema impostata su "scalata" invece che nativa. Se le barre sature sembrano slavate è la modalità immagine del proiettore, perché qui escono a fondo scala per costruzione.
+
+Le impostazioni di resa vivono nel browser e non dentro i progetti: dipendono dalla macchina e dal proiettore, non dal lavoro. Per la stessa ragione raggiungono la finestra di proiezione **sempre**, modalità Live compresa — non sono la scena, sono il modo di disegnarla, e durante un set devono avere effetto subito.
 
 ### Scorciatoie da tastiera
 
 Pensate per il palco: le operazioni che si ripetono di continuo durante una performance non devono passare dal mouse.
+
+Nell'**editor di controllo**:
 
 | Tasto               | Azione                                                                                 |
 | ------------------- | -------------------------------------------------------------------------------------- |
@@ -94,6 +124,14 @@ Pensate per il palco: le operazioni che si ripetono di continuo durante una perf
 | Rotellina           | Zoom della vista di anteprima                                                          |
 | `Alt` + click       | Sui pulsanti larghezza/altezza della toolbar di mapping: restringe invece di allargare |
 | `⌘B` / `Ctrl+B`     | Mostra/nasconde il pannello laterale                                                   |
+
+Sulla **finestra di proiezione** (comandi locali, perché il pieno schermo il browser lo concede solo a chi ha ricevuto un gesto nella finestra che lo chiede):
+
+| Tasto                | Azione                                                          |
+| -------------------- | --------------------------------------------------------------- |
+| `F` o doppio click   | Pieno schermo                                                    |
+| `S`                  | Pannello diagnostico (risoluzione reale, buffer interno, fps)     |
+| `C`                  | Cartello di prova — chi tara la proiezione sta davanti al proiettore, non al portatile |
 
 Fuori dalla modalità Live la barra spaziatrice resta interamente al pan della vista; nei campi di testo nessuna scorciatoia ruba i tasti.
 
@@ -122,6 +160,14 @@ Fuori dalla modalità Live la barra spaziatrice resta interamente al pan della v
 - **Maschera automatica per canale alpha**, con **luma key** opzionale (rilevata automaticamente all'upload) per le immagini con sfondo nero opaco anziché trasparente.
 - Palette colori con 7 preset fluorescenti, editor a 5 colori, generatore di **palette casuali** a numero di stop variabile con cinque schemi di armonia, e colori assegnabili ai singoli parametri `vec3` di ogni shader.
 - **Loop delle palette** con dissolvenza calcolata **in HSL anziché in RGB**: interpolando i canali RGB, due tinte opposte si incontrano a metà strada su un grigio slavato, mentre ruotando la tinta sul percorso più corto la palette resta satura per tutta la transizione. Il motore vive in un `requestAnimationFrame` montato sulla pagina di controllo e smette di riscrivere la palette a dissolvenza conclusa, per non tenere occupati sync e autosave a ogni frame.
+
+### Pipeline di output
+
+- **Compositore a due passaggi**: la scena non va diritta a schermo ma dentro un buffer interno (`WebGLRenderTarget` a mezza precisione float), seguito da un passaggio finale che riduce, gestisce lo sfondamento delle alte luci, applica dither e grana. È ciò che rende possibile il supersampling con un filtro di riduzione controllato da noi — a 4 prelievi quando il rapporto fra le due risoluzioni non è intero (1.25×, 1.5×), dove un prelievo solo lascerebbe fuori dei texel.
+- **Nessun MSAA sul buffer interno, di proposito**: un framebuffer multisample non si può copiare con `copyTexSubImage2D`, e la copia del backdrop per i blend avanzati avviene proprio mentre quel buffer è legato. Visto che il multisampling salverebbe soltanto i lati del quad — trasparenti con un PNG scontornato, quindi invisibili — l'antialiasing lo fa interamente il supersampling.
+- **Spazio colore uniforme in gamma**: le texture di contenuto non vengono linearizzate. Marcarle sRGB le farebbe caricare in un formato che l'hardware linearizza a ogni prelievo, ma la conversione inversa in uscita Three la inserisce **solo** nei materiali che includono il chunk `colorspace_fragment` — e i nostri sono `ShaderMaterial` con sorgente scritta a mano. Mezza conversione, a senso unico: un grigio 128 nel file arrivava a schermo come 55, con le mezze luci schiacciate verso il nero. Lavorare tutti in spazio gamma è anche coerente con lo spazio in cui sono pensati gli shader della libreria, le palette prese dai color picker e le formule dei blend mode, che come in Photoshop sono definite su valori non lineari.
+- **Filtro anisotropico** sulle texture di contenuto: nel projection mapping il quad è sempre guardato di sbieco, ed è il caso in cui il mip-mapping isotropo sfoca i lati inclinati molto prima di quelli frontali. Il valore massimo lo conosce solo il renderer, che nasce col canvas — cioè dopo che qualche texture può già esistere: le texture si registrano e vengono aggiornate a ritroso.
+- **Diagnostica fuori da React**: i numeri del rendering vengono pubblicati dal ciclo di disegno tramite un modulo con sottoscrittori, non da uno store. Far ripartire il reconciler sessanta volte al secondo per scrivere un contatore di fps sarebbe esattamente il tipo di costo che quel pannello dovrebbe aiutare a scovare.
 
 ### Multi-layer (stile Resolume/MadMapper)
 
@@ -169,6 +215,7 @@ Fuori dalla modalità Live la barra spaziatrice resta interamente al pan della v
 - **Shader "ISF-like"**: uniform `float`/`vec3` con commenti `@min @max @default` letti a build-time (`import.meta.glob`) → slider e color picker generati automaticamente in UI.
 - **Sorgenti live tra le due finestre**: un `MediaStream` non è serializzabile, quindi sul canale di sincronizzazione viaggia **solo l'identificativo del device** e la finestra Output apre la camera per conto suo. Niente inoltro di frame tra finestre (che aggiungerebbe latenza e un canale WebRTC da mantenere), a costo di dover consentire l'accesso alla camera anche lì.
 - **Controlli globali nel wrapper**: essendo applicati attorno a `processColor`, ogni nuovo shader li eredita automaticamente — l'autore dell'effetto non deve prevederli.
+- **Due canali di sincronizzazione con ruoli diversi**: la scena viaggia sul payload di stato e in modalità Live resta ferma finché non la si manda in onda; le impostazioni di resa e i tick del loop palette hanno messaggi propri che passano **sempre**. La distinzione non è tecnica ma di significato — congelare la scena serve a non mostrare un lavoro in corso, congelare la qualità di rendering vorrebbe solo dire non poterla correggere durante un set.
 
 ---
 
@@ -196,7 +243,7 @@ Il progetto segue una roadmap tracciata in dettaglio in `TODO.md`. Macro-fasi:
 
 - ✅ **Fase 1 — MVP core**: upload, corner-pin, libreria shader, palette colori, preset, persistenza, layout UI.
 - ✅ **Fase 2 — Multi-layer**: layer indipendenti, maschere, media dinamici (video/GIF), modalità Live, playlist con transizioni, controlli globali validi per qualsiasi effetto.
-- ⏳ **Fase 3 — Live performance**: ingresso video live da webcam/capture card ✅, poi audio-reactive (Web Audio API + FFT), BPM sync, controller MIDI, bridge OSC/DMX, multi-output.
+- ⏳ **Fase 3 — Live performance**: ingresso video live da webcam/capture card ✅, pipeline di output ad alta qualità con supersampling, dithering e strumenti di taratura del proiettore ✅, poi audio-reactive (Web Audio API + FFT), BPM sync, controller MIDI, bridge OSC/DMX, multi-output.
 - 🔭 **Oltre**: motore particellare 3D GPU-instanced (point cloud reali con profondità e camera) e feedback buffer per le scie accumulate — i due passi che avvicinerebbero davvero l'estetica delle _data sculpture_.
 
 ---
