@@ -2,6 +2,146 @@
 
 Ogni modifica al progetto va registrata qui con data, descrizione e motivazione. Le voci più recenti in alto dentro ogni giornata.
 
+## 2026-08-21 — Intestazione della colonna destra: allineata ai ruoli tipografici del resto della UI
+
+Ripresa l'intestazione a due righe aggiunta a mano ("Layer Inspector" + "Layer selezionato: <nome>"),
+lasciandone i testi e sistemandone la forma.
+
+- Il titolo era `uppercase text-[0.875rem]`: un maiuscoletto da 14px, il testo più grande della colonna,
+  che sovrastava il nome del layer. Ora usa `.ui-eyebrow` (11px/600), lo stesso di LAYERS, PROPRIETÀ,
+  SORGENTE — verificato a runtime che corpo, peso, colore e tracking coincidano.
+- Mancava il `px-4`: era l'unico testo appoggiato al bordo mentre tutta la colonna rientra di 16px.
+- I tre span erano tutti `text-sidebar-foreground`, quindi senza gerarchia. Ora sono tre livelli (§15,
+  peso + corpo + colore come insieme): etichetta indietro (12px/500 muted), nome del layer avanti
+  (15px/600, pieno, `tracking -0.011em` come vuole il testo grande), conteggio in coda (11px muted).
+- `<Separator />` sostituito dalla hairline `border-sidebar-border/60` usata negli altri divisori della
+  colonna: quello pieno pesava più del titolo che stava separando.
+- `h-12` fissa tolta (con un nome lungo il contenuto andava a capo e sfondava) e aggiunto `min-w-0` al
+  contenitore, senza il quale `truncate` non ha effetto: verificato che un nome molto lungo tronchi
+  invece di allargare la colonna.
+- Tolti i due punti dopo "Layer selezionato": con l'etichetta muted e il nome in grassetto non servono.
+
+## 2026-08-21 — "Sorgente" resta il posto del media: i suoi due cursori passano in "Proprietà"
+
+`Rimuovi sfondo scuro` (luma key) e `Nitidezza bordo` erano proprietà del layer finite in mezzo al
+caricamento del media. Spostati in "Proprietà" subito sotto Opacità, con le rispettive note passate nel
+tooltip "?" come per gli altri cursori. `BackgroundKeyPanel.tsx` resta vuoto e viene **eliminato**.
+
+Ordine della sezione: Nome layer → Blend mode → Dimensione (+Reset) → Opacità → **Rimuovi sfondo scuro →
+Nitidezza bordo** → Curvatura obiettivo → Sfumatura bordi.
+
+### "Adatta al preview" rimosso
+Via il pulsante "Adatta immagine" e la sua informativa; `PositioningPanel.tsx` conteneva solo quelli ed è
+stato **eliminato**. `requestFit()` continua a essere chiamato da solo dove serve davvero — al caricamento
+di un media (`MediaUploader`), all'accensione della camera (`CameraPicker`) e sull'asset di default
+(`lib/defaultAsset.ts`); quello che sparisce è la possibilità di **richiederlo di nuovo a mano** dopo aver
+spostato o deformato la proiezione.
+
+"Sorgente" ora contiene solo ciò che riguarda il media: caricamento file e ingresso video live.
+
+Verificato in browser: ordine delle otto etichette, cinque tooltip agganciati, i due cursori spostati
+scrivono nello store (riportati a "off" dopo la prova), pulsante e informativa spariti. `npm run build`
+verde.
+
+## 2026-08-21 — Via la sezione "Posizione": i suoi controlli continui passano in "Proprietà"
+
+Il pad direzionale spostava la proiezione a passi di 0.05 — il modo lento di fare una cosa che il gesto
+diretto sul canvas fa meglio (§2 della skill `apple-design`, la manipolazione diretta batte il comando a
+scatti). Eliminato insieme all'intera sezione. Quel che restava erano tre valori continui, che ora vivono
+in "Proprietà" insieme all'opacità.
+
+### Ordine finale della sezione Proprietà
+Nome layer → Blend mode → **Dimensione (+Reset) → Opacità → Curvatura obiettivo → Sfumatura bordi**:
+l'opacità è scesa sotto la select insieme agli altri, così i controlli continui stanno tutti di seguito
+invece di essere separati da una tendina. "Obiettivo" si chiama **Curvatura obiettivo**, che dice cosa fa
+lo slider invece di nominare solo l'oggetto su cui agisce.
+
+### File
+- `LayerProperties.tsx` riscritto: accoglie i quattro cursori con un sotto-componente `ControlRow`
+  (etichetta, valore sulla stessa riga, comando sotto) — uno solo per tutte le righe, così ciò che si
+  somiglia si comporta uguale (§16 Craft).
+- **Eliminati** `MovePanel.tsx` e `MappingOpticsPanel.tsx` (non più referenziati), voce `'move'` tolta da
+  `LayerSection` e da `DEFAULT_SECTIONS` in `uiStore.ts` — `loadSections` fa merge sui default, quindi le
+  chiavi rimaste nel localStorage sono innocue.
+
+### Le note lunghe sono diventate tooltip
+Curvatura obiettivo e Sfumatura bordi si portavano dietro 3-4 righe di spiegazione ciascuna: in "Proprietà"
+avrebbero occupato più spazio dei controlli. Ora stanno dietro un "?" accanto all'etichetta, con il
+**Tooltip nativo di shadcn** usato direttamente (`Tooltip`/`TooltipTrigger`/`TooltipContent`, provider già
+globale in `main.tsx`) — nessun componente wrapper. Il trigger è un `button`, quindi la spiegazione si
+raggiunge anche da tastiera.
+
+### Il Reset ora tocca solo la Dimensione, e una conseguenza da conoscere
+`resetActiveTransform` azzerava pan **e** zoom; sotto l'etichetta "Dimensione" avrebbe annullato anche il
+posizionamento fatto sul canvas. Ora riporta solo `zoom` a 1.
+
+Conseguenza: `transform.offsetX/offsetY` era scrivibile **soltanto** da quel pad, quindi da oggi nessun
+controllo lo modifica più (il pan sul canvas muove i `corners`, che sono un'altra cosa; il "Pan X/Y" dei
+Controlli globali agisce sullo shader dentro il quad, un'altra ancora). Un progetto salvato prima con un
+offset ≠ 0 sarebbe rimasto spostato senza via d'uscita: per questo compare un "Ricentra la proiezione"
+**solo** quando l'offset non è zero — sui progetti nuovi la riga non si vede mai.
+
+Verificato in browser: sezione Posizione sparita, Reset che porta la dimensione a 1.00× e si disabilita a
+default lasciando intatti opacità e obiettivo, tooltip che si apre col testo giusto, "Ricentra" invisibile
+a offset zero. `npm run build` verde.
+
+## 2026-08-21 — Skill `apple-design` installata nel progetto e applicata alla sidebar destra
+
+Installata `.claude/skills/apple-design/SKILL.md` (da github.com/emilkowalski/skills, file singolo, scaricato
+non modificato). Vale solo per questo progetto. Poi usata per rifare la colonna destra.
+
+### Fondamenta condivise (`src/index.css`)
+- Token di motion in un posto solo: `--ease-fluid` (`cubic-bezier(.32,.72,0,1)`, spring criticamente
+  smorzato — nessun rimbalzo), `--ease-out`, e tre durate (`--dur-press` 100ms, `--dur-fast` 180ms,
+  `--dur-base` 320ms). Le durate si azzerano sotto `prefers-reduced-motion: reduce`, quindi ogni
+  componente che le usa eredita il comportamento senza doverlo gestire.
+- Ruoli tipografici con tracking specifico per dimensione: `.ui-eyebrow` (maiuscoletto 11px, solo per i
+  titoli di sezione), `.ui-sublabel` (12px maiuscolo iniziale, dentro le sezioni), `.ui-label`, `.ui-value`.
+- Utility `.press` (scala 0.96 su `:active`) e `.row-action` (azioni di riga attenuate che si accendono
+  in hover, piene dove l'hover non esiste).
+
+### Gerarchia tipografica: 13 etichette che gridavano più del titolo che le conteneva
+Le sotto-etichette dei pannelli erano `text-xs uppercase` (12px), i titoli di sezione 11px: le figlie erano
+più grandi delle madri, e la colonna era una parete di maiuscoletto tutta sullo stesso piano. Ora il
+maiuscoletto resta ai soli titoli di sezione; dentro si torna al maiuscolo iniziale (`.ui-sublabel`) in
+`MediaUploader`, `CameraPicker`, `BackgroundKeyPanel`, `PositioningPanel`, `MaskPanel`, `MovePanel`,
+`MappingOpticsPanel`.
+
+### `CollapsibleSection.tsx`
+Apertura animata con `grid-template-rows: 0fr → 1fr` invece di `{open && ...}`: il contenuto entra ed esce
+lungo lo stesso percorso. `overflow: hidden` **solo durante** la transizione — a riposo torna `visible`,
+altrimenti taglierebbe i popover ancorati ai controlli interni.
+
+### `LayerInspector.tsx`
+- L'intestazione porta il **nome del layer attivo** e il conteggio, non più la parola "Layer" che la lista
+  sotto ripeteva già.
+- Titoli di sezione più diretti: Asset → **Sorgente**, Mask → **Maschere**, Move → **Posizione** (e via il
+  misto italiano/inglese).
+- Sfumatura in cima all'area di scorrimento al posto del bordo fisso da 1px, visibile solo quando c'è
+  davvero del contenuto nascosto sopra.
+
+### `LayerList.tsx` — riordino con Pointer Events al posto dell'HTML5 drag & drop
+L'HTML5 DnD dà solo un fantasma disegnato dal browser e nessun controllo sul movimento intermedio. Ora la
+riga resta incollata al puntatore 1:1, le vicine scivolano per fare spazio, e ai bordi della lista la
+resistenza cresce (rubber-band) invece di bloccarsi di colpo. Al rilascio la riga si posa sullo slot scelto
+e **solo dopo** l'ordine cambia davvero, così non si vede alcun salto fra animazione e nuovo layout.
+
+**La presa sta sulla maniglia a pallini, non su tutta la riga** (scelta dell'utente): il corpo della riga
+resta dedicato alla selezione. L'icona è di 14px ma l'area che risponde è allargata di ~8px per lato con uno
+pseudo-elemento, che era il vero motivo per cui in una prima versione la maniglia risultava introvabile.
+
+**Due errori commessi e corretti durante il lavoro, entrambi non ovvi:**
+1. **Lo stato del drag non può stare in `useState` se l'updater ha side-effect**: in `StrictMode` React
+   invoca gli updater due volte per verificarne la purezza, e il mio avviava lì il timer di commit → il
+   riordino veniva applicato due volte e si annullava da solo. Ora il drag vive in una `ref` e lo stato è
+   solo il suo riflesso per il render.
+2. Al commit i transform vanno azzerati **senza** transizione (un frame di `settling`): React riusa i nodi
+   per `key`, quindi la riga già disegnata nella posizione giusta animerebbe una seconda volta un movimento
+   che l'occhio ha appena visto.
+
+Verificato in browser: drag di 1 e di 2 slot dalla maniglia, trascinamento dal nome del layer (seleziona e
+non riordina), click sotto soglia, nessun transform residuo, console pulita, `npm run build` verde.
+
 ## 2026-08-21 — Morph Morphogen Growth: reaction-diffusion VERA (primo effetto con stato)
 
 Su richiesta esplicita (riferimento visivo: uno screenshot di photismapp), il quarto Morphogen non e' analitico come gli altri tre ma una **Gray-Scott vera**, con lo stato che si accumula frame su frame. E' il primo effetto della libreria che non e' una funzione pura della uv e del tempo, e per reggerlo l'engine ha ora un percorso **multipass**.

@@ -18,7 +18,6 @@ export type LayerSection =
   | 'properties'
   | 'asset'
   | 'mask'
-  | 'move'
   | 'fxControls'
   | 'effectPresets'
 
@@ -27,7 +26,6 @@ const DEFAULT_SECTIONS: Record<LayerSection, boolean> = {
   properties: true,
   asset: true,
   mask: true,
-  move: true,
   fxControls: true,
   effectPresets: true,
 }
