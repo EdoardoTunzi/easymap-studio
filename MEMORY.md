@@ -2,6 +2,16 @@
 
 Ogni modifica al progetto va registrata qui con data, descrizione e motivazione. Le voci più recenti in alto dentro ogni giornata.
 
+## 2026-08-21 — Fix bug: la cornice corner-pin spariva dopo aver selezionato una maschera e cambiato layer
+
+Selezionando una maschera su un layer e passando poi a un altro layer, la cornice viola col corner-pin non tornava più: nemmeno il tasto "Nascondi/mostra i riferimenti di mapping" la faceva ricomparire, serviva un refresh della pagina.
+
+- **Causa**: `activeMaskId` in `layersStore` è una selezione *per-layer*, ma nessuna delle azioni che cambiano `activeLayerId` la azzerava. `ControlPage` decideva quale overlay montare con `activeMaskId != null` (`editingMask`), quindi restava montato `MaskOverlay` al posto di `CornerPinOverlay`; e siccome `MaskOverlay` disegna solo le maschere del layer *attivo*, sul nuovo layer non disegnava nulla — canvas apparentemente senza overlay. Il toggle `overlaysVisible` alternava fra "niente" e "niente", mentre il refresh funzionava solo perché `activeMaskId` riparte da `null`.
+- **`layersStore.ts`**: `selectLayer` azzera `activeMaskId` quando il layer cambia davvero (no-op se si riclicca quello già attivo). Stessa pulizia in `addLayer`, `duplicateLayer`, `removeLayer` (solo se cancella il layer attivo), `setScene`, `beginSceneCrossfade` e in `undoMapping`/`redoMapping` (che spostano la selezione sul layer dello snapshot).
+- **`ControlPage.tsx`**: `editingMask` non si fida più del solo `activeMaskId` — verifica che la maschera esista fra quelle del layer attivo. Rete di sicurezza: qualunque percorso futuro dimentichi l'azzeramento, l'overlay non può più restare bloccato su una maschera irraggiungibile.
+
+Verificato nel browser (dev server su :5173): creato Layer 2, aggiunta una maschera rettangolo, selezionata (corner-pin sostituito dalle maniglie della maschera come previsto), poi click su Layer 1 → cornice viola coi pin di nuovo visibile; tornando su Layer 2 la maschera resta applicata al layer ma non più selezionata, quindi si vede il corner-pin.
+
 ## 2026-08-21 — Halo: toggle mirror interno + controllo speed per-shader su tutti i 12 effetti
 
 Molti effetti della famiglia Halo specchiano internamente la texture sorgente (`uv_sym = vec2(0.5 + abs(uv.x - 0.5), uv.y)` dentro `processColor`, indipendente dal Mirror X/Y globale del pannello Controlli globali, che agisce *prima* su un'altra copia della uv). Non c'era modo di disattivarlo, e nessuno shader Halo esponeva un controllo di velocità proprio (solo il moltiplicatore di tempo globale `uFxSpeed`, uguale per qualsiasi effetto).

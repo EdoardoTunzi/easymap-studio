@@ -74,8 +74,14 @@ export function ControlPage() {
   const overlaysVisible = useUiStore((s) => s.overlaysVisible)
   const gridVisible = useUiStore((s) => s.gridVisible)
   const rightSidebarOpen = useUiStore((s) => s.rightSidebarOpen)
-  // le maniglie delle maschere sostituiscono il corner-pin solo mentre se ne sta modificando una
-  const editingMask = useLayersStore((s) => s.activeMaskId != null)
+  // le maniglie delle maschere sostituiscono il corner-pin solo mentre se ne sta modificando una:
+  // la maschera deve esistere davvero sul layer attivo, altrimenti il corner-pin resterebbe nascosto
+  // dietro un MaskOverlay vuoto (selezione rimasta appesa a un altro layer)
+  const editingMask = useLayersStore((s) => {
+    if (s.activeMaskId == null) return false
+    const active = s.layers.find((l) => l.id === s.activeLayerId)
+    return active?.masks.some((m) => m.id === s.activeMaskId) ?? false
+  })
   const { width, startResize } = useResizableWidth({
     defaultWidth: 288,
     min: 240,

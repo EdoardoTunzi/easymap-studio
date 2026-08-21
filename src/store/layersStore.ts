@@ -624,7 +624,10 @@ export const useLayersStore = create<LayersState>((set, get) => {
       return s.layers.find((l) => l.id === s.activeLayerId)
     },
 
-    selectLayer: (id) => set({ activeLayerId: id }),
+    // la maschera selezionata appartiene al layer attivo: cambiando layer va azzerata, altrimenti
+    // il canvas resta bloccato sul MaskOverlay di una maschera che non è più raggiungibile
+    selectLayer: (id) =>
+      set((state) => (state.activeLayerId === id ? state : { activeLayerId: id, activeMaskId: null })),
 
     addLayer: (partial) => {
       const layer = createLayer({
@@ -632,7 +635,11 @@ export const useLayersStore = create<LayersState>((set, get) => {
         ...partial,
       })
       // nuovo layer indipendente: non entra nella selezione di sincronizzazione
-      set((state) => ({ layers: [...state.layers, layer], activeLayerId: layer.id }))
+      set((state) => ({
+        layers: [...state.layers, layer],
+        activeLayerId: layer.id,
+        activeMaskId: null,
+      }))
       return layer.id
     },
 
@@ -646,7 +653,12 @@ export const useLayersStore = create<LayersState>((set, get) => {
           const next = layers[Math.min(index, layers.length - 1)]
           activeLayerId = next.id
         }
-        return { layers, activeLayerId, syncTargetIds: state.syncTargetIds.filter((x) => x !== id) }
+        return {
+          layers,
+          activeLayerId,
+          activeMaskId: activeLayerId === state.activeLayerId ? state.activeMaskId : null,
+          syncTargetIds: state.syncTargetIds.filter((x) => x !== id),
+        }
       }),
 
     duplicateLayer: (id) =>
@@ -670,7 +682,7 @@ export const useLayersStore = create<LayersState>((set, get) => {
         }
         const layers = [...state.layers]
         layers.splice(index + 1, 0, copy)
-        return { layers, activeLayerId: copy.id }
+        return { layers, activeLayerId: copy.id, activeMaskId: null }
       }),
 
     reorderLayers: (from, to) =>
@@ -919,6 +931,7 @@ export const useLayersStore = create<LayersState>((set, get) => {
           // l'annullamento sposta anche la selezione sul layer coinvolto, altrimenti si vedrebbe
           // cambiare un layer diverso da quello selezionato
           activeLayerId: snap.layerId,
+          activeMaskId: state.activeLayerId === snap.layerId ? state.activeMaskId : null,
         }
       }),
 
@@ -933,6 +946,7 @@ export const useLayersStore = create<LayersState>((set, get) => {
           mappingFuture: state.mappingFuture.slice(0, -1),
           mappingPast: [...state.mappingPast, applied.previous],
           activeLayerId: snap.layerId,
+          activeMaskId: state.activeLayerId === snap.layerId ? state.activeMaskId : null,
         }
       }),
 
@@ -1107,6 +1121,7 @@ export const useLayersStore = create<LayersState>((set, get) => {
       set({
         layers: next,
         activeLayerId: next.find((l) => l.id === activeLayerId)?.id ?? next[0]?.id ?? '',
+        activeMaskId: null, // le maschere della scena precedente non esistono più
         syncTargetIds: [], // il caricamento riparte con layer indipendenti
         // un cambio scena secco interrompe un eventuale crossfade in corso
         outgoingLayers: null,
@@ -1123,6 +1138,7 @@ export const useLayersStore = create<LayersState>((set, get) => {
         sceneFade: 0,
         layers: next,
         activeLayerId: next.find((l) => l.id === activeLayerId)?.id ?? next[0]?.id ?? '',
+        activeMaskId: null,
         syncTargetIds: [],
       }))
     },
