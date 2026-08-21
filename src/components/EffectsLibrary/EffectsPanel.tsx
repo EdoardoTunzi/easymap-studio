@@ -347,6 +347,24 @@ export function EffectsPanel() {
           </div>
           {shader.controls.map((control) => {
             const value = params[shader.name]?.[control.name] ?? control.default
+            // min 0, max 1, step 1: non è uno slider continuo ma un on/off (es. i toggle
+            // "mirror" dei Halo) — un bottone comunica lo stato molto meglio di uno slider.
+            const isToggle = control.step === 1 && control.min === 0 && control.max === 1
+            if (isToggle) {
+              const on = value >= 0.5
+              return (
+                <Button
+                  key={control.name}
+                  variant={on ? 'default' : 'outline'}
+                  size="sm"
+                  className="justify-between gap-2 px-3 text-xs capitalize"
+                  onClick={() => setParam(control.name, on ? 0 : 1)}
+                >
+                  {control.name}
+                  <Power className="size-3.5 shrink-0" />
+                </Button>
+              )
+            }
             return (
               <div key={control.name} className="flex flex-col gap-1.5">
                 <div className="flex items-center justify-between">
@@ -358,7 +376,7 @@ export function EffectsPanel() {
                 <Slider
                   min={control.min}
                   max={control.max}
-                  step={(control.max - control.min) / 200 || 0.01}
+                  step={control.step ?? ((control.max - control.min) / 200 || 0.01)}
                   value={[value]}
                   onValueChange={([v]) => setParam(control.name, v)}
                 />

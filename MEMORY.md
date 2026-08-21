@@ -2,6 +2,19 @@
 
 Ogni modifica al progetto va registrata qui con data, descrizione e motivazione. Le voci più recenti in alto dentro ogni giornata.
 
+## 2026-08-21 — Halo: toggle mirror interno + controllo speed per-shader su tutti i 12 effetti
+
+Molti effetti della famiglia Halo specchiano internamente la texture sorgente (`uv_sym = vec2(0.5 + abs(uv.x - 0.5), uv.y)` dentro `processColor`, indipendente dal Mirror X/Y globale del pannello Controlli globali, che agisce *prima* su un'altra copia della uv). Non c'era modo di disattivarlo, e nessuno shader Halo esponeva un controllo di velocità proprio (solo il moltiplicatore di tempo globale `uFxSpeed`, uguale per qualsiasi effetto).
+
+- **`isfParser.ts`**: `UNIFORM_RE` ora riconosce un marcatore opzionale `@step N` dopo `@default`; `UniformControl` ha un campo `step?` corrispondente. Serve a distinguere, lato UI, un controllo booleano (`@min 0 @max 1 @default 1 @step 1`) da uno slider continuo che usa lo stesso range (es. `intensity`).
+- **`EffectsPanel.tsx`**: i controlli con `step === 1 && min === 0 && max === 1` si renderizzano come bottone on/off (icona `Power`, stile identico a Mirror X/Y nei Controlli globali) invece che come slider continuo.
+- **`layersStore.ts`** (`randomizeActiveParams`): rispetta `control.step` invece di usare sempre `(max-min)/200` — altrimenti "Random" avrebbe scelto un valore intermedio (es. 0.37) per un uniform pensato come booleano, che lo shader legge poi con `mix(...)`.
+- **12 shader `.glsl`** (`symmetricalHaloSwirl[-2]`, `haloPetalKaleido`, `haloRadialKaleido`, `haloLiquidSymmetry`, `haloSpiralDrift`, `haloTwinVortex`, `haloMirrorBloom`, `haloPrismaticSwirl`, `haloMandala`, `haloFractalBloom`, `haloConcentricPulse`): aggiunto uniform `mirror` (default 1 = comportamento identico a prima, `uv_sym = mix(uv, ..., mirror)`) a tutti tranne `haloRadialKaleido` (non ha mirror interno: la sua simmetria viene dal folding angolare, non da uno specchio pixel). Su `haloMirrorBloom` e `haloConcentricPulse` (che specchiavano già su entrambi gli assi) un solo bottone `mirror` disattiva X e Y insieme.
+- **Uniform `speed`** (`time * speed`, min 0 max 3 default 1) aggiunto a 10 shader su 12: escluse `haloLiquidSymmetry` (l'uniform `flow` già esistente scala il dominio del noise nel tempo) e `haloConcentricPulse` (l'uniform `pulse` già esistente scala la frequenza dell'anello) per non duplicare un controllo che c'era già.
+- Extra solo su `symmetricalHaloSwirl` e `symmetricalHaloSwirl-2` (unici due shader quasi identici della famiglia): smontate due costanti hardcoded in uniform — `swirlAmount` (torsione dello swirl, prima fissa a 0.12) e `petals` (righe del fiore in `makeFlower`, prima fisse a 8.0).
+
+Verificato nel browser su tutti e 12 gli shader (dev server già attivo su :5173): nessun errore di compilazione GLSL in console, bottone Mirror e slider speed/swirlAmount/petals presenti e funzionanti (petals portato a 20 cambia visibilmente il numero di petali del fiore).
+
 ## 2026-08-20 — Pannello Progetti: pulsante "Nuovo progetto" con conferma di salvataggio
 
 Prima si poteva solo salvare/caricare/eliminare progetti già esistenti: non c'era modo di ripartire da zero senza ricaricare la pagina (che perde comunque lo stato solo se non c'è autosave).

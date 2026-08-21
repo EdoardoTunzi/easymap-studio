@@ -4,6 +4,7 @@ uniform float scale; // @min 1.0 @max 8.0 @default 3.0
 uniform float colorShift; // @min 0.0 @max 10.0 @default 3.0
 uniform float intensity; // @min 0.0 @max 1.0 @default 0.85
 uniform float flow; // @min 0.0 @max 2.0 @default 0.7
+uniform float mirror; // @min 0.0 @max 1.0 @default 1.0 @step 1
 
 float h(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
 
@@ -28,7 +29,7 @@ vec3 palette(float t) {
 
 vec4 processColor(sampler2D tex, vec2 uv, float time, vec2 resolution) {
   float stime = time + seed * 9.2;
-  vec2 uv_sym = vec2(0.5 + abs(uv.x - 0.5), uv.y);
+  vec2 uv_sym = mix(uv, vec2(0.5 + abs(uv.x - 0.5), uv.y), mirror);
   vec4 source = texture2D(tex, uv_sym);
   float lum = dot(source.rgb, vec3(0.299, 0.587, 0.114));
   vec2 p = uv_sym * scale;

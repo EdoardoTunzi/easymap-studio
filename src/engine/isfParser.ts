@@ -5,6 +5,9 @@ export interface UniformControl {
   min: number
   max: number
   default: number
+  /** Passo dello slider dichiarato via `@step`; se assente si usa (max-min)/200. Con
+   *  min 0, max 1 e step 1 il controllo è un on/off e la UI lo mostra come bottone. */
+  step?: number
 }
 
 export interface ColorControl {
@@ -39,7 +42,7 @@ export interface ParsedShader {
 
 const NAME_RE = /\/\/\s*NAME:\s*(.+)/
 const UNIFORM_RE =
-  /uniform\s+float\s+(\w+)\s*;\s*\/\/\s*@min\s+(-?[\d.]+)\s*@max\s+(-?[\d.]+)\s*@default\s+(-?[\d.]+)/g
+  /uniform\s+float\s+(\w+)\s*;\s*\/\/\s*@min\s+(-?[\d.]+)\s*@max\s+(-?[\d.]+)\s*@default\s+(-?[\d.]+)(?:\s*@step\s+(-?[\d.]+))?/g
 // uniform vec3 con @default r,g,b (usato dagli shader MAPSHROOM per i colori)
 const VEC3_RE =
   /uniform\s+vec3\s+(\w+)\s*;\s*\/\/[^\n]*@default\s+(-?[\d.]+)\s*,\s*(-?[\d.]+)\s*,\s*(-?[\d.]+)/g
@@ -351,12 +354,13 @@ export function parseShader(raw: string, category: ShaderCategoryId = 'other'): 
 
   const controls: UniformControl[] = []
   for (const match of raw.matchAll(UNIFORM_RE)) {
-    const [, uniformName, min, max, def] = match
+    const [, uniformName, min, max, def, step] = match
     controls.push({
       name: uniformName,
       min: Number(min),
       max: Number(max),
       default: Number(def),
+      ...(step !== undefined ? { step: Number(step) } : {}),
     })
   }
 

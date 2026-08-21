@@ -742,7 +742,8 @@ export const useLayersStore = create<LayersState>((set, get) => {
         const random = Object.fromEntries(
           shader.controls.map((c) => {
             // stesso passo dello slider: evita valori con dieci decimali, illeggibili nel readout
-            const step = (c.max - c.min) / 200 || 0.01
+            // (e per i toggle on/off, step 1, garantisce che il random peschi solo 0 o 1)
+            const step = c.step ?? ((c.max - c.min) / 200 || 0.01)
             const value = c.min + Math.round((Math.random() * (c.max - c.min)) / step) * step
             return [c.name, value]
           }),
