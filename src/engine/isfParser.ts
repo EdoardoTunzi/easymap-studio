@@ -8,6 +8,12 @@ export interface UniformControl {
   /** Passo dello slider dichiarato via `@step`; se assente si usa (max-min)/200. Con
    *  min 0, max 1 e step 1 il controllo è un on/off e la UI lo mostra come bottone. */
   step?: number
+  /**
+   * Etichette dichiarate via `@options a|b|c`: il controllo non è una quantità ma una scelta fra
+   * modi, e la UI lo mostra come gruppo di bottoni. Il valore resta un float (0, 1, 2…), perché
+   * gli uniform GLSL non hanno enum: le etichette servono solo a rendere leggibile la scelta.
+   */
+  options?: string[]
 }
 
 export interface ColorControl {
@@ -38,11 +44,46 @@ export interface ParsedShader {
   category: ShaderCategoryId
   vertexShader: string
   fragmentShader: string
+  /**
+   * Presente solo per gli effetti **con stato**: il file dichiara, dopo il marcatore
+   * `//! SIMULATION`, un passo di simulazione che gira fuori schermo su una coppia di render
+   * target in ping-pong (vedi `engine/simulation.ts`), e `processColor` ne legge il risultato in
+   * `uSimState`. Serve alla reaction-diffusion vera, che non si puo' calcolare in un solo
+   * passaggio perche' ogni frame ha bisogno del frame precedente.
+   */
+  simulation?: SimulationProgram
+}
+
+export interface SimulationProgram {
+  vertexShader: string
+  fragmentShader: string
+  /** Lato della griglia di simulazione in texel (quadrata, toroidale). */
+  size: number
 }
 
 const NAME_RE = /\/\/\s*NAME:\s*(.+)/
+/** Separa la parte di simulazione da quella di disegno in un effetto con stato. */
+const SIM_MARK = /^[ \t]*\/\/!\s*SIMULATION[ \t]*$/m
+const DISPLAY_MARK = /^[ \t]*\/\/!\s*DISPLAY[ \t]*$/m
+/**
+ * Lato della griglia di simulazione.
+ *
+ * Non e' una scelta di qualita' ma di **tempo**: le strutture di Gray-Scott hanno una taglia fissa
+ * in texel, quindi su una griglia grande la colonia impiega molti piu' passi a riempire il campo.
+ * A 512 servivano diversi minuti per coprire il quadro; a 320 la crescita si legge in una
+ * ventina di secondi, che e' il tempo giusto per un live, e le strutture risultano piu' grandi.
+ */
+const SIM_SIZE = 320
+
+const SIM_VERTEX_SHADER = `
+varying vec2 vUv;
+void main() {
+  vUv = uv;
+  gl_Position = vec4(position.xy, 0.0, 1.0);
+}
+`
 const UNIFORM_RE =
-  /uniform\s+float\s+(\w+)\s*;\s*\/\/\s*@min\s+(-?[\d.]+)\s*@max\s+(-?[\d.]+)\s*@default\s+(-?[\d.]+)(?:\s*@step\s+(-?[\d.]+))?/g
+  /uniform\s+float\s+(\w+)\s*;\s*\/\/\s*@min\s+(-?[\d.]+)\s*@max\s+(-?[\d.]+)\s*@default\s+(-?[\d.]+)(?:\s*@step\s+(-?[\d.]+))?(?:\s*@options\s+([^\n]+))?/g
 // uniform vec3 con @default r,g,b (usato dagli shader MAPSHROOM per i colori)
 const VEC3_RE =
   /uniform\s+vec3\s+(\w+)\s*;\s*\/\/[^\n]*@default\s+(-?[\d.]+)\s*,\s*(-?[\d.]+)\s*,\s*(-?[\d.]+)/g
@@ -97,6 +138,10 @@ uniform float uMaskTexOn;            // 1 = usa la maschera-immagine
 // Rapporto larghezza/altezza del QUAD del layer (dai corner-pin, non del canvas): serve agli
 // shader che disegnano forme riconoscibili (cerchi, occhi…) e non devono deformarsi col mapping.
 uniform float uQuadAspect;
+// --- Stato della simulazione (solo effetti con //! SIMULATION; altrove resta una texture vuota) ---
+uniform sampler2D uSimState;         // RG = concentrazioni dei due morfogeni
+uniform vec2 uSimTexel;              // 1 / lato della griglia
+uniform float uSimPhase;             // secondi dall'ultimo riavvio della simulazione
 // --- Blend mode "avanzati" (quelli che il blending hardware non sa calcolare) ---
 uniform sampler2D uBackdrop;         // copia di ciò che è già disegnato sotto questo layer
 uniform vec2 uScreenSize;            // dimensioni del buffer di disegno, per campionarla
@@ -249,6 +294,18 @@ float easyvj_level(float t) {
   return 0.32 + 0.22 * sin(t * 2.2) + 0.08 * sin(t * 5.7);
 }
 
+/**
+ * uv del layer -> uv della griglia di simulazione.
+ *
+ * La griglia e' quadrata e toroidale: la correzione di aspect tiene le celle tonde anche su un
+ * mapping molto largo, e cio' che esce da un lato rientra dall'altro (wrap Repeat), quindi il
+ * pattern si ripete senza mai mostrare una cucitura.
+ */
+vec2 easyvj_simUv(vec2 uv, float patternScale) {
+  float aspect = max(uQuadAspect, 0.05);
+  return (uv - 0.5) * vec2(aspect, 1.0) / max(patternScale, 0.01) + 0.5;
+}
+
 // Correzioni di colore comuni, applicate DOPO processColor e prima della palette.
 vec3 easyvj_fxColor(vec3 col) {
   col *= uFxBrightness;
@@ -345,6 +402,69 @@ void main() {
 }
 
 /**
+ * Wrapper del passo di simulazione: un quad a schermo intero che legge lo stato precedente e
+ * scrive quello nuovo. Il file .glsl deve definire
+ *   `vec4 simulate(sampler2D state, vec2 uv, vec2 texel, float phase)`.
+ */
+function buildSimulationShader(header: string, body: string): string {
+  return `
+precision highp float;
+uniform sampler2D uState;      // stato del passo precedente (RG = concentrazioni)
+uniform vec2 uTexel;           // 1 / lato della griglia
+uniform float uInit;           // 1 = primo passo dopo un riavvio: si scrive lo stato iniziale
+uniform float uPhase;          // secondi dall'ultimo riavvio
+uniform vec2 uSeeds[8];        // semi da cui parte la crescita, in uv della griglia
+uniform float uSeedCount;
+uniform sampler2D uTexture;    // media del layer: serve agli effetti guidati dall'immagine
+uniform float uQuadAspect;
+varying vec2 vUv;
+
+${header}
+
+/**
+ * Laplaciano a 9 punti (pesi 0.05 sugli spigoli, 0.2 sui lati, -1 al centro).
+ *
+ * La versione a 5 punti e' piu' economica ma **non e' isotropa**: la griglia dei texel resta
+ * impressa nel risultato e le strutture crescono con evidenti spigoli a crocetta lungo gli assi.
+ * A 9 punti la diffusione e' uguale in tutte le direzioni e le forme restano tonde.
+ * Il wrap ai bordi lo fa la texture stessa (RepeatWrapping): il dominio e' un toro.
+ */
+vec4 easyvj_lap(sampler2D state, vec2 uv, vec2 texel) {
+  vec4 sum = texture2D(state, uv) * -1.0;
+  sum += (texture2D(state, uv + vec2(texel.x, 0.0)) + texture2D(state, uv - vec2(texel.x, 0.0))
+        + texture2D(state, uv + vec2(0.0, texel.y)) + texture2D(state, uv - vec2(0.0, texel.y))) * 0.2;
+  sum += (texture2D(state, uv + texel) + texture2D(state, uv - texel)
+        + texture2D(state, uv + vec2(texel.x, -texel.y)) + texture2D(state, uv + vec2(-texel.x, texel.y))) * 0.05;
+  return sum;
+}
+
+/** 1 dentro un seme, 0 fuori. La distanza e' quella sul toro: il seme vicino al bordo non si taglia. */
+float easyvj_seedMask(vec2 uv, float radius) {
+  float m = 0.0;
+  for (int i = 0; i < 8; i++) {
+    if (float(i) > uSeedCount - 0.5) break;
+    vec2 d = uv - uSeeds[i];
+    d -= floor(d + 0.5);
+    m = max(m, 1.0 - smoothstep(radius * 0.55, radius, length(d)));
+  }
+  return m;
+}
+
+/** Inversa di easyvj_simUv: da griglia di simulazione a uv del layer, per leggere il media. */
+vec2 easyvj_sourceUv(vec2 simUv, float patternScale) {
+  float aspect = max(uQuadAspect, 0.05);
+  return (simUv - 0.5) * max(patternScale, 0.01) / vec2(aspect, 1.0) + 0.5;
+}
+
+${body}
+
+void main() {
+  gl_FragColor = simulate(uState, vUv, uTexel, uPhase);
+}
+`
+}
+
+/**
  * Estrae nome shader e controlli (@min/@max/@default) da una sorgente GLSL in stile ISF.
  * `category` arriva da chi carica il file (il percorso non è visibile da qui).
  */
@@ -352,15 +472,32 @@ export function parseShader(raw: string, category: ShaderCategoryId = 'other'): 
   const nameMatch = raw.match(NAME_RE)
   const name = nameMatch ? nameMatch[1].trim() : 'Untitled Shader'
 
+  // Effetti con stato: il file e' diviso in tre parti — intestazione comune (uniform e helper),
+  // passo di simulazione, disegno. L'intestazione finisce in ENTRAMBI i programmi, cosi' i
+  // controlli dell'effetto sono leggibili sia da chi fa evolvere lo stato sia da chi lo disegna.
+  const simMatch = raw.match(SIM_MARK)
+  const displayMatch = raw.match(DISPLAY_MARK)
+  let header = raw
+  let simBody: string | null = null
+  if (simMatch?.index !== undefined && displayMatch?.index !== undefined) {
+    header = raw.slice(0, simMatch.index)
+    simBody = raw.slice(simMatch.index + simMatch[0].length, displayMatch.index)
+    // il display riceve intestazione + corpo di disegno, senza il passo di simulazione
+    raw = header + raw.slice(displayMatch.index + displayMatch[0].length)
+  }
+
   const controls: UniformControl[] = []
   for (const match of raw.matchAll(UNIFORM_RE)) {
-    const [, uniformName, min, max, def, step] = match
+    const [, uniformName, min, max, def, step, options] = match
     controls.push({
       name: uniformName,
       min: Number(min),
       max: Number(max),
       default: Number(def),
       ...(step !== undefined ? { step: Number(step) } : {}),
+      ...(options !== undefined
+        ? { options: options.split('|').map((o) => o.trim()).filter(Boolean) }
+        : {}),
     })
   }
 
@@ -386,5 +523,14 @@ export function parseShader(raw: string, category: ShaderCategoryId = 'other'): 
     category: usesAudio ? 'audio' : category,
     vertexShader: VERTEX_SHADER,
     fragmentShader: buildFragmentShader(raw),
+    ...(simBody !== null
+      ? {
+          simulation: {
+            vertexShader: SIM_VERTEX_SHADER,
+            fragmentShader: buildSimulationShader(header, simBody),
+            size: SIM_SIZE,
+          },
+        }
+      : {}),
   }
 }

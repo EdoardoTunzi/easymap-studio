@@ -349,6 +349,33 @@ export function EffectsPanel() {
             const value = params[shader.name]?.[control.name] ?? control.default
             // min 0, max 1, step 1: non è uno slider continuo ma un on/off (es. i toggle
             // "mirror" dei Halo) — un bottone comunica lo stato molto meglio di uno slider.
+            // `@options a|b|c`: il valore non è una quantità ma una scelta fra modi, e uno
+            // slider a scatti costringerebbe a indovinare cosa significhi "1" durante un live
+            if (control.options && control.options.length > 1) {
+              const stepSize = control.step ?? 1
+              return (
+                <div key={control.name} className="flex flex-col gap-1.5">
+                  <span className="text-xs text-foreground">{control.name}</span>
+                  <div className="flex flex-wrap gap-1">
+                    {control.options.map((label, i) => {
+                      const optionValue = control.min + i * stepSize
+                      const selected = Math.abs(value - optionValue) < stepSize / 2
+                      return (
+                        <Button
+                          key={label}
+                          variant={selected ? 'default' : 'outline'}
+                          size="sm"
+                          className="h-7 flex-1 px-2 text-xs"
+                          onClick={() => setParam(control.name, optionValue)}
+                        >
+                          {label}
+                        </Button>
+                      )
+                    })}
+                  </div>
+                </div>
+              )
+            }
             const isToggle = control.step === 1 && control.min === 0 && control.max === 1
             if (isToggle) {
               const on = value >= 0.5

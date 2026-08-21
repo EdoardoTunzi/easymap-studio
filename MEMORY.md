@@ -2,6 +2,38 @@
 
 Ogni modifica al progetto va registrata qui con data, descrizione e motivazione. Le voci più recenti in alto dentro ogni giornata.
 
+## 2026-08-21 — Morph Morphogen Growth: reaction-diffusion VERA (primo effetto con stato)
+
+Su richiesta esplicita (riferimento visivo: uno screenshot di photismapp), il quarto Morphogen non e' analitico come gli altri tre ma una **Gray-Scott vera**, con lo stato che si accumula frame su frame. E' il primo effetto della libreria che non e' una funzione pura della uv e del tempo, e per reggerlo l'engine ha ora un percorso **multipass**.
+
+### Come e' fatto
+
+- **`isfParser.ts`** — un file `.glsl` puo' ora dichiarare, fra i marcatori `//! SIMULATION` e `//! DISPLAY`, un passo di simulazione (`vec4 simulate(sampler2D state, vec2 uv, vec2 texel, float phase)`) oltre al solito `processColor`. L'intestazione (uniform e costanti) finisce in **entrambi** i programmi, cosi' i controlli sono leggibili sia da chi evolve lo stato sia da chi lo disegna. Il wrapper della simulazione fornisce `easyvj_lap` (laplaciano a 9 punti), `easyvj_seedMask` e `easyvj_sourceUv`; quello di disegno riceve `uSimState`, `uSimTexel`, `uSimPhase` e `easyvj_simUv`.
+- **`engine/simulation.ts`** (nuovo) — coppia di render target in ping-pong, **toroidali** (`RepeatWrapping`: il laplaciano ai bordi legge il lato opposto, quindi il pattern non ha mai una cucitura comunque lo si mappi). Griglia 320x320: non e' una scelta di qualita' ma di tempo, le strutture di Gray-Scott hanno taglia fissa in texel e su 512 la colonia impiegava minuti a riempire il campo.
+- **`engine/SimulationPass.tsx`** (nuovo) — fa girare i passi e consegna lo stato al materiale. Il conteggio e' agganciato al **tempo trascorso** (150 passi/s a velocita' 1, tetto di 8 per frame), non ai frame: due finestre a fps diversi devono arrivare allo stesso numero di passi.
+- **`EffectsPanel.tsx` + parser** — nuovo marcatore `@options a|b|c`: un uniform float che rappresenta una scelta fra modi si renderizza come gruppo di bottoni invece che come slider a scatti (`seeds`, `lifecycle`).
+
+### Due errori che sono costati tempo, entrambi non ovvi
+
+1. **Il dizionario di uniform passato a `<shaderMaterial>` non e' quello che il materiale usa.** Scrivevo `uSimState` sull'oggetto memoizzato passato come prop, e non arrivava nulla: R3F, applicando la prop, non lascia in giro lo stesso oggetto. Tutto il resto dell'aggiornamento per-frame infatti passa da `materialRef.current.uniforms` — ora anche la simulazione. Sintomo: lo shader leggeva la texture di **fallback** (bianca), quindi il quadro era di colore pieno invece che nero.
+2. **A mezza precisione Gray-Scott cambia regime.** Con `HalfFloatType` la crescita produceva un tappeto di macchie invece del labirinto: vicino a 1.0 l'ulp di un half float vale circa 0.001, ed e' esattamente li' che vive il substrato non consumato, quindi gli incrementi piu' piccoli sparivano e la coda che alimenta il fronte non si formava. Con `FloatType` (quando la GPU sa filtrarlo, altrimenti si ripiega su half) il regime corretto e' comparso subito.
+
+Inoltre: **`active` e' parola riservata in GLSL ES** — gia' annotato per gli altri Morphogen, ricapitato qui.
+
+### Comportamento
+
+`speed`, `scale`, `pattern`, `growTime`, `seeds` (1-5), `posX/posY`, `lifecycle` (Matura | Ciclo | Manuale), `cycleTime`, `restart`, `symmetry`, `sharpness`, `glow`, piu' i soliti `sourceInfluence`/`blendAmount`/`blackThreshold`. La luminanza del media sposta **feed e kill locali** (di millesimi: la mappa di Gray-Scott e' ripidissima), quindi il rilievo della statua guida davvero la reazione invece di limitarsi a mascherarla. `speed` a 0 congela il pattern, ed e' un gesto utile in live.
+
+I tre regimi sono punti noti della mappa (F, k): crescita `coral` (0.0545, 0.0620), maturo `mitosis` (0.0367, 0.0649) oppure `maze` (0.0290, 0.0570) secondo `pattern`. La transizione e' larga apposta: cambiare (F,k) di colpo fa collassare le strutture gia' formate.
+
+### Sincronizzazione Control/Output — cosa vale e cosa no
+
+Verificato con le due finestre affiancate: i parametri viaggiano (provato con `scale`) e il **Restart si propaga**, riavviando entrambe le colonie insieme. Il ciclo automatico e' derivato dall'orologio di sistema (`Date.now()`), quindi le due finestre resettano nello stesso istante senza scambiarsi nulla.
+
+Resta un limite, da conoscere: in modalita' **Matura**, due finestre avviate in momenti diversi mostrano due realizzazioni diverse della stessa colonia (stesso regime, disegno diverso), perche' non c'e' un istante di partenza condiviso. **Un click su Restart le riallinea.** Nota di contorno emersa qui: `uTime` viene da `state.clock.elapsedTime`, che parte da zero all'apertura di *ciascuna* finestra — anche gli altri 106 shader sono quindi in fase diversa fra anteprima e proiettore, cosa che non si nota perche' sono ciclici.
+
+Misurato a 120 fps (limite del vsync) con la simulazione attiva: il costo dei passi e' trascurabile.
+
 ## 2026-08-21 — Tre effetti Morphogen: pattern di Turing, micelio, mitosi
 
 Nuova mini-famiglia di effetti morfogenetici (i pattern che in biologia nascono dalla diffusione dei morfogeni), tutti e tre nella famiglia **Morph** e tutti con lo stesso controllo `sourceInfluence` (0 = generativo puro che riempie la sagoma, 1 = geometria guidata dalla luminanza dell'immagine).

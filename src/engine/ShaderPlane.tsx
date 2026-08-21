@@ -14,6 +14,7 @@ import { releaseTexture, trackTexture } from './textureQuality'
 import { getAudioLevel, getAudioTexture, isAudioActive } from './audioInput'
 import { captureBackdrop, getBackdropSize, getBackdropTexture } from './backdrop'
 import { createWarpGeometry, updateWarpGeometry, warpSegments } from './warpGeometry'
+import { SimulationPass } from './SimulationPass'
 
 const NOOP_CONTROLLER: MediaTextureController = {
   getTexture: () => FALLBACK_TEXTURE,
@@ -93,6 +94,11 @@ export function buildUniforms(shader: ParsedShader | undefined): Record<string, 
     uMaskTex: { value: FALLBACK_TEXTURE },
     uMaskTexOn: { value: 0 },
     uQuadAspect: { value: 1 },
+    // stato degli effetti con simulazione: texture vuota per tutti gli altri, così il wrapper
+    // compila comunque e il costo per chi non la usa è un sampler mai letto
+    uSimState: { value: FALLBACK_TEXTURE },
+    uSimTexel: { value: new THREE.Vector2(1, 1) },
+    uSimPhase: { value: 0 },
     // blend calcolati nello shader: 0 = ci pensa l'hardware (nessuna copia dello schermo)
     uBackdrop: { value: FALLBACK_TEXTURE },
     uScreenSize: { value: new THREE.Vector2(1, 1) },
@@ -192,6 +198,10 @@ interface EffectPassProps {
  */
 function EffectPass({ layerId, variant, source, renderOrder, geometry, controllerRef, maskTexRef }: EffectPassProps) {
   const materialRef = useRef<THREE.ShaderMaterial>(null)
+  // parametri e aspect dell'ultimo frame: li rilegge il passo di simulazione, che gira subito
+  // dopo questo useFrame e non deve rifare il giro nello store per conto suo
+  const paramsRef = useRef<Record<string, number>>({})
+  const aspectRef = useRef(1)
 
   const layer = useLayersStore((s) => findLayer(s, layerId, source))
   const shaders = useEffectsStore((s) => s.shaders)
@@ -215,6 +225,8 @@ function EffectPass({ layerId, variant, source, renderOrder, geometry, controlle
     ;(u.uResolution.value as THREE.Vector2).set(state.size.width, state.size.height)
     u.uScale.value = fx.size
     u.uQuadAspect.value = quadAspect(l.corners)
+    paramsRef.current = fx.params
+    aspectRef.current = u.uQuadAspect.value as number
     u.uLumaKey.value = l.lumaKey
     // ?? 0: i progetti salvati prima di questo controllo non hanno il campo
     u.uEdgeSharp.value = l.edgeSharp ?? 0
@@ -299,6 +311,15 @@ function EffectPass({ layerId, variant, source, renderOrder, geometry, controlle
   const blend = shaderBlend > 0 ? REPLACE_BLEND : (BLEND_FACTORS[layer.blendMode] ?? BLEND_FACTORS.normal!)
 
   return (
+    <>
+      {shader.simulation && (
+        <SimulationPass
+          shader={shader}
+          materialRef={materialRef}
+          paramsRef={paramsRef}
+          aspectRef={aspectRef}
+        />
+      )}
     <mesh
       geometry={geometry}
       renderOrder={renderOrder}
@@ -324,6 +345,7 @@ function EffectPass({ layerId, variant, source, renderOrder, geometry, controlle
         blendDst={blend.dst}
       />
     </mesh>
+    </>
   )
 }
 

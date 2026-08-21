@@ -32,7 +32,7 @@ Progetto solista, sviluppato in modo iterativo con un ciclo di lavoro rigoroso (
 
 1. Carichi una foto con sfondo trasparente (o nero, con rilevamento automatico) di ciò su cui vuoi proiettare.
 2. Allinei i 4 angoli dell'immagine alla superficie reale tramite corner-pin, direttamente da finestra di controllo.
-3. Scegli tra **97 shader GLSL** generativi/psichedelici, ognuno con parametri regolabili via slider e colori personalizzabili — scorribili al volo con le frecce o da tastiera, e randomizzabili con un pulsante.
+3. Scegli tra **106 shader GLSL** generativi/psichedelici, ognuno con parametri regolabili via slider e colori personalizzabili — scorribili al volo con le frecce o da tastiera, e randomizzabili con un pulsante.
 4. Regoli l'effetto con i **controlli globali** (velocità, rotazione, kaleidoscopio, mirror, pixelate, colore): funzionano su qualsiasi shader, senza doverne conoscere i parametri.
 5. Componi più layer indipendenti (immagine, video, GIF o **ripresa live** da webcam/capture card), ciascuno con la propria maschera, il proprio effetto, opacità e blend mode.
 6. Costruisci una **playlist di effetti** con transizioni a crossfade, per sequenze automatizzate durante il live.
@@ -59,7 +59,7 @@ Tutto quello che puoi fare dall'editor, pannello per pannello.
 
 ### Effetti e palette colori
 
-- Libreria di **97 shader GLSL** generativi/psichedelici, in cinque famiglie:
+- Libreria di **106 shader GLSL** generativi/psichedelici, in cinque famiglie:
   - **Halo** e **Liquid** — simmetrie radiali e superfici fluide;
   - **Psy** (30 effetti) — pensati per stage psytrance e techno: strobo, tunnel, laser, griglie esagonali, digital rain, wireframe synthwave, glitch, barre spettro, geometria sacra, frattali;
   - **Morph** (20 effetti) — _source-driven_: usano la luminanza del tuo asset come mappa di profondità (`morphDepth`), così il pattern non ci si appoggia sopra ma lo **modella**, seguendone i rilievi.
@@ -155,7 +155,7 @@ Fuori dalla modalità Live la barra spaziatrice resta interamente al pan della v
 ### Motore di rendering shader
 
 - Parser **ISF-like** che legge uniform GLSL commentati (`// @min @max @default`) e genera automaticamente slider e color picker nell'UI — basta aggiungere un file `.glsl` per far apparire un nuovo effetto, senza toccare codice React.
-- Libreria di **97 shader** originali (famiglie _Halo_, _Liquid_, _Psy_, _Morph_, _SD_), molti dei quali source-driven: reagiscono alla luminanza dell'immagine sorgente e restano sempre ritagliati dentro la sua sagoma. Gli shader _Morph_ spingono l'idea oltre, usando quella luminanza come **campo di quota** che deforma la geometria dell'effetto; gli _SD_ aggiungono il **gradiente** della luminanza, che dà la direzione della pendenza: i pattern seguono le curve dell'oggetto e ricevono un'illuminazione coerente con la superficie.
+- Libreria di **106 shader** originali (famiglie _Halo_, _Liquid_, _Psy_, _Morph_, _SD_), molti dei quali source-driven: reagiscono alla luminanza dell'immagine sorgente e restano sempre ritagliati dentro la sua sagoma. Gli shader _Morph_ spingono l'idea oltre, usando quella luminanza come **campo di quota** che deforma la geometria dell'effetto; gli _SD_ aggiungono il **gradiente** della luminanza, che dà la direzione della pendenza: i pattern seguono le curve dell'oggetto e ricevono un'illuminazione coerente con la superficie.
 - **Controlli globali nel wrapper GLSL**: trasformazioni della uv (`easyvj_fxUv`: mirror, kaleidoscopio, rotazione, pan, pixelate) e correzioni di colore (`easyvj_fxColor`: luminosità, contrasto, saturazione, posterize, negativo) applicate rispettivamente prima e dopo `processColor`. Valgono per ogni shader senza modificarne il codice — con quasi novanta effetti in libreria, aggiungere uniform uno per uno non sarebbe scalabile.
 - **Maschera automatica per canale alpha**, con **luma key** opzionale (rilevata automaticamente all'upload) per le immagini con sfondo nero opaco anziché trasparente.
 - Palette colori con 7 preset fluorescenti, editor a 5 colori, generatore di **palette casuali** a numero di stop variabile con cinque schemi di armonia, e colori assegnabili ai singoli parametri `vec3` di ogni shader.
