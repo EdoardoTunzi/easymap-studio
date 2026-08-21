@@ -2,6 +2,23 @@
 
 Ogni modifica al progetto va registrata qui con data, descrizione e motivazione. Le voci più recenti in alto dentro ogni giornata.
 
+## 2026-08-21 — Tre effetti Morphogen: pattern di Turing, micelio, mitosi
+
+Nuova mini-famiglia di effetti morfogenetici (i pattern che in biologia nascono dalla diffusione dei morfogeni), tutti e tre nella famiglia **Morph** e tutti con lo stesso controllo `sourceInfluence` (0 = generativo puro che riempie la sagoma, 1 = geometria guidata dalla luminanza dell'immagine).
+
+**Vincolo di partenza**: una reaction-diffusion vera (Gray-Scott) e' iterativa e ha bisogno di un buffer di stato in ping-pong, che la pipeline non ha — `isfParser.ts` compila un solo fragment shader per layer, senza texture di stato. I tre pattern sono quindi ottenuti in forma analitica: stesso risultato visivo, ricalcolato a ogni frame invece che accumulato (in piu' non ha stato da resettare e non puo' divergere durante un live).
+
+- **`morphMorphogenTuring.glsl`** — macchie e labirinti. Il campo e' una somma di 12 onde piane con la STESSA lunghezza d'onda, direzioni sull'angolo aureo e fasi che derivano a velocita' diverse: e' il modello matematico del pattern di Turing (la reazione seleziona una sola lunghezza d'onda e lascia libere direzione e fase), quindi le macchie hanno tutte la stessa taglia. Un fbm darebbe chiazze di ogni dimensione, cioe' una nuvola. Lo slider `pattern` muove solo la soglia: frazione coperta bassa -> isole separate, meta' esatta -> labirinti connessi. Prima di arrivarci ho provato l'interpolazione fra due formule diverse (macchie e `abs()` per le bande): a meta' corsa i due campi si cancellano e il pattern sparisce — scartata.
+- **`morphMorphogenMycelium.glsl`** — rete di ife che cresce dal centro. I filamenti sono le **isolinee** n = 0.5 di un value noise ciclico sull'angolo, non le creste di un ridged noise: le creste si spezzano dove il massimo locale non tocca il valore pieno, le isolinee invece sono continue, si biforcano sulle selle e si richiudono in anelli. La distanza dalla isolinea e' divisa per il gradiente, altrimenti dove il campo e' piatto la fascia si apre in chiazze larghe invece di restare un filo. Tre generazioni con rami raddoppiati, ognuna attiva solo oltre una certa distanza dal centro. Scartati per strada: la raggiera di isolinee angolari (rami sempre rettilinei, o fusi in pennellate se si alza il warp) e il ridged noise puro.
+- **`morphMorphogenMitosis.glsl`** — tessuto di cellule che si dividono. Voronoi con **due nuclei per cella**: quando si separano, il bordo che nasce fra loro taglia la cella in due, quindi la citocinesi viene dalla geometria e non da un'animazione disegnata. Il secondo nucleo entra in gioco solo oltre una separazione minima (`split`): con i nuclei coincidenti `f2 - f1` vale zero su tutta la cella e la cella si riempiva interamente di membrana — era il bug delle "celle bianche" viste al primo test. L'escursione totale (wobble + separazione) resta sotto mezza cella, oltre i nuclei uscirebbero dal vicinato 3x3 e i bordi si spezzerebbero.
+
+Note trasversali:
+- Tutti e tre correggono `uQuadAspect`: su un mapping largo le macchie diventerebbero ellissi e le cellule si schiaccerebbero.
+- Il gate `blackThreshold` e' pesato su `sourceInfluence`, cosi' a 0 il pattern copre tutta la sagoma anche sulle zone scure dell'immagine (a differenza degli altri Morph, che sono sempre source-driven).
+- **`active` e' parola riservata in GLSL ES**: usarla come nome di variabile fa fallire la compilazione del fragment con "Illegal use of reserved word" e il canvas resta nero. Rinominata in `split`.
+
+Verificato nel browser (dev server su :5173) su tutti e tre: nessun errore GLSL in console, gli estremi di `pattern` (isole / labirinti), `sourceInfluence` a 0 e a 0.6 con `default-stage.png` caricato — il pattern segue il rilievo della statua e resta ritagliato dai bordi del PNG.
+
 ## 2026-08-21 — Fix bug: la cornice corner-pin spariva dopo aver selezionato una maschera e cambiato layer
 
 Selezionando una maschera su un layer e passando poi a un altro layer, la cornice viola col corner-pin non tornava più: nemmeno il tasto "Nascondi/mostra i riferimenti di mapping" la faceva ricomparire, serviva un refresh della pagina.
