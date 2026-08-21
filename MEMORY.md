@@ -51,6 +51,31 @@ Note trasversali:
 
 Verificato nel browser (dev server su :5173) su tutti e tre: nessun errore GLSL in console, gli estremi di `pattern` (isole / labirinti), `sourceInfluence` a 0 e a 0.6 con `default-stage.png` caricato — il pattern segue il rilievo della statua e resta ritagliato dai bordi del PNG.
 
+## 2026-08-21 — Fix riga doppia fra sliders e "Controlli globali"
+
+Dopo il fix del padding (voce precedente), il divisorio fra la fine degli sliders e "Controlli globali" era doppio: il `<Separator />` originale (fra `EffectsPanel` e il gruppo) più un `border-t border-sidebar-border` aggiunto sul gruppo per dargli un bordo proprio — due righe vicine invece di una.
+
+- **`ControlPage.tsx`**: rimosso il `<Separator />` ridondante, tenuto solo `border-t border-sidebar-border` sul `div.-mx-4` che avvolge le due `CollapsibleSection` — un solo divisorio, con lo stesso token di colore già usato dal `border-b` interno di `CollapsibleSection` (più coerente del `bg-border` generico di `Separator`). Import di `Separator` rimosso, non più usato in questo file.
+- Ripristinato anche lo stile del file (virgolette singole, niente punto e virgola, JSX multi-riga): un format-on-save dell'IDE con impostazioni diverse da quelle del progetto aveva riformattato l'intero file in un salvataggio precedente, senza modifiche di sostanza a parte il `border-t` aggiunto a mano — nessun'altra riga di codice è cambiata di significato.
+
+## 2026-08-21 — Fix padding doppio nelle sezioni collassabili della sidebar sinistra
+
+Le due sezioni appena rese collassabili (voce precedente) avevano il testo del titolo rientrato di 36px in più rispetto a "COLORI CASUALI"/"CONTROLLI EFFETTO" sopra di loro, invece di allinearsi come fanno a destra.
+
+- **Causa**: in `ControlPage.tsx` tutto il pannello Shader vive dentro `<div className="p-4">`, mentre a destra `CollapsibleSection` sta in una `ScrollArea` senza padding proprio. Il `px-4` di `CollapsibleSection` si sommava al `p-4` del wrapper (16+16=32px) invece di essere l'unico inset. Misurato nel browser: "CONTROLLI GLOBALI" a x=52 contro "COLORI CASUALI" a x=16 (stessa colonna); a destra "PROPRIETÀ" sta a 37px dal bordo dell'aside, che è il valore corretto (px-4 + chevron + gap).
+- **`ControlPage.tsx`**: le due `CollapsibleSection` sono avvolte in un unico `<div className="-mx-4">`, che annulla il padding orizzontale ereditato dal wrapper e riporta il `px-4` di `CollapsibleSection` a essere l'unico inset — stesso risultato della colonna destra (verificato: x=36, contro i 37 di destra, 1px di arrotondamento). Rimosso anche il `<Separator />` fra le due sezioni: con `last:border-b-0` che ora si applica correttamente dentro il gruppo, il divisorio fra "Controlli globali" e "Preset salvati" lo dà il `border-b` di `CollapsibleSection` stesso, senza righe doppie.
+- Non toccato `CollapsibleSection.tsx`: la colonna destra non aveva il problema (il suo contenitore non ha padding proprio) e non doveva essere modificata.
+
+## 2026-08-21 — Sidebar sinistra: "Controlli globali" e "Preset salvati" collassabili
+
+Su richiesta dell'utente, le due sezioni in fondo al pannello Shader si comportano ora come quelle della colonna destra (Proprietà/Asset/Mask/Move): chevron cliccabile, stato ricordato tra le sessioni.
+
+- **`store/uiStore.ts`**: `LayerSection` esteso con `'fxControls' | 'effectPresets'`, di default aperte (`DEFAULT_SECTIONS`) — comportamento invariato per chi apre l'app la prima volta. Il tipo e `CollapsibleSection` non erano davvero legati alla sola colonna destra: solo la documentazione lo era, aggiornata di conseguenza.
+- **`FxControlsPanel.tsx`** e **`EffectPresetsPanel.tsx`**: tolto il titolo maiuscolo che disegnavano da soli (ora lo fornisce `CollapsibleSection`, come già fanno `LayerProperties`/`MaskPanel`/`MovePanel` a destra). In `FxControlsPanel` il pulsante Reset resta, spostato da `justify-between` con l'ex titolo a `justify-end` da solo.
+- **`ControlPage.tsx`**: i due pannelli sono avvolti in `<CollapsibleSection section="fxControls" title="Controlli globali">` e `<CollapsibleSection section="effectPresets" title="Preset salvati">`, riusando il componente già esistente in `components/Layers/`.
+
+Verificato nel browser: chevron e persistenza dopo reload identiche alla colonna destra, nessun errore in console, nessuna riga doppia nel punto di giunzione con i `<Separator />` esistenti.
+
 ## 2026-08-21 — Fix bug: la cornice corner-pin spariva dopo aver selezionato una maschera e cambiato layer
 
 Selezionando una maschera su un layer e passando poi a un altro layer, la cornice viola col corner-pin non tornava più: nemmeno il tasto "Nascondi/mostra i riferimenti di mapping" la faceva ricomparire, serviva un refresh della pagina.

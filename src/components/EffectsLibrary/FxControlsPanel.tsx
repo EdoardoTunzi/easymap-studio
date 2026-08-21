@@ -47,10 +47,8 @@ export function FxControlsPanel() {
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex items-center justify-between">
-        <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-          Controlli globali
-        </span>
+      {/* il titolo "Controlli globali" lo mette il CollapsibleSection che lo ospita */}
+      <div className="flex justify-end">
         <Button
           variant="ghost"
           size="sm"

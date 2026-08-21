@@ -160,6 +160,9 @@ Modello: scena = pila di Layer indipendenti; ogni layer ha contenuto (img/gif/vi
 
 ## Manutenzione / debito tecnico
 
+- [x] Sidebar sinistra: sezioni **Controlli globali** e **Preset salvati** collassabili, con la stessa persistenza (chevron, stato ricordato tra le sessioni) delle sezioni della colonna destra — riusano `CollapsibleSection`
+- [x] Fix padding doppio delle stesse due sezioni: il `px-4` di `CollapsibleSection` si sommava al `p-4` del wrapper del pannello Shader (titoli rientrati 36px in più del resto del pannello) — risolto con `-mx-4` sul gruppo, senza toccare il componente condiviso con la colonna destra
+- [x] Fix riga doppia sopra "Controlli globali": `<Separator />` + `border-t` sommati — tenuto solo il `border-t` sul gruppo, `Separator` rimosso da `ControlPage.tsx`
 - [x] Fix `npm run build`: alzato `workbox.maximumFileSizeToCacheInBytes` a 10 MB in `vite.config.ts` per precachare `default-stage.png` (7.1 MB), sopra il limite di default 2 MB di vite-plugin-pwa
 - [x] Fix sidebar destra (Asset): nome file troppo lungo mandava la colonna fuori dai bordi del browser — troncamento a 28 caratteri con tooltip sul nome completo (`MediaUploader.tsx`)
 - [x] **Morph Morphogen Growth**: reaction-diffusion di Gray-Scott VERA (primo effetto con stato). Percorso multipass nell'engine — marcatore `//! SIMULATION` nel parser, `engine/simulation.ts` (ping-pong FBO toroidali 320x320), `engine/SimulationPass.tsx` (passi agganciati al tempo, non ai frame). Crescita dal seme -> labirinto -> maturita' (mitosi <-> labirinto di Turing), semi 1-5 posizionabili, ciclo di vita Matura/Ciclo/Manuale

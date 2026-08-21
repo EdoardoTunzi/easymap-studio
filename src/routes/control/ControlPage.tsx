@@ -9,6 +9,7 @@ import { EffectPresetsPanel } from '@/components/EffectsLibrary/EffectPresetsPan
 import { FxControlsPanel } from '@/components/EffectsLibrary/FxControlsPanel'
 import { PalettePanel } from '@/components/Palette/PalettePanel'
 import { LayerInspector } from '@/components/Layers/LayerInspector'
+import { CollapsibleSection } from '@/components/Layers/CollapsibleSection'
 import { MaskOverlay } from '@/components/Mask/MaskOverlay'
 import { CornerPinOverlay } from '@/components/Positioning/CornerPinOverlay'
 import { AlignmentGrid } from '@/components/Positioning/AlignmentGrid'
@@ -23,7 +24,6 @@ import {
   SidebarProvider,
 } from '@/components/ui/sidebar'
 import { ScrollArea } from '@/components/ui/scroll-area'
-import { Separator } from '@/components/ui/separator'
 import { useResizableWidth } from '@/hooks/use-resizable-width'
 import { useEffectHotkeys } from '@/hooks/use-effect-hotkeys'
 import { useOutputHotkeys } from '@/hooks/use-output-hotkeys'
@@ -48,10 +48,22 @@ function PanelContent() {
       return (
         <div className="flex flex-col gap-6">
           <EffectsPanel />
-          <Separator />
-          <FxControlsPanel />
-          <Separator />
-          <EffectPresetsPanel />
+          {/* -mx-4: annulla il padding orizzontale del wrapper p-4 del pannello (sotto), che
+              altrimenti si sommerebbe al px-4 interno di CollapsibleSection — lo stesso
+              componente della colonna destra, dove vive in un contenitore senza padding proprio
+              e quindi non ha questo problema. Le due sezioni tornano ad allinearsi sotto
+              "EFFETTO"/"COLORI CASUALI" invece di un livello più a destra.
+              border-t: unico divisorio verso gli sliders sopra — niente <Separator /> qui,
+              altrimenti si vedrebbero due righe vicine (la Separator e questo bordo). Fra le due
+              sezioni il divisorio è il border-b di CollapsibleSection stesso. */}
+          <div className="-mx-4 border-t border-sidebar-border">
+            <CollapsibleSection section="fxControls" title="Controlli globali">
+              <FxControlsPanel />
+            </CollapsibleSection>
+            <CollapsibleSection section="effectPresets" title="Preset salvati">
+              <EffectPresetsPanel />
+            </CollapsibleSection>
+          </div>
         </div>
       )
     case 'palette':

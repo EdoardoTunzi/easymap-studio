@@ -36,10 +36,8 @@ export function EffectPresetsPanel() {
   }
 
   return (
+    // il titolo "Preset salvati" lo mette il CollapsibleSection che lo ospita
     <div className="flex flex-col gap-2">
-      <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-        Preset salvati
-      </span>
       <div className="flex gap-2">
         <Input
           value={name}
