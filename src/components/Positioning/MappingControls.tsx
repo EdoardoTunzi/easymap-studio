@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import {
   Lock,
   Unlock,
@@ -21,6 +21,8 @@ import {
   Grid2x2,
   Undo2,
   Redo2,
+  Minimize2,
+  Maximize2,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Separator } from '@/components/ui/separator'
@@ -57,6 +59,19 @@ const GRID_SIZES = Array.from(
   { length: GRID_MAX_CELLS - GRID_MIN_CELLS + 1 },
   (_, i) => GRID_MIN_CELLS + i,
 )
+
+/** Stato compresso/espanso della toolbar, ricordato tra le sessioni come l'altezza della playlist. */
+const COLLAPSED_KEY = 'easyvj-mapping-toolbar-collapsed'
+
+/** Sfondo dei pulsanti-pillola quando selezionati/attivi: `hover:` ripetuto sullo stesso colore
+ * perché altrimenti l'hover di `variant="ghost"` (pensato per le card dell'app, non per una
+ * toolbar nera) riprenderebbe il sopravvento e la pillola sbiadirebbe passandoci sopra. Stringhe
+ * letterali e non costruite a runtime: Tailwind genera le classi scansionando il testo del file,
+ * un `` `hover:${bg}` `` con `bg` variabile non produrrebbe alcuna regola CSS. */
+const PILL_IDLE = 'text-white/60 hover:bg-white/10 hover:text-white'
+const PILL_ACTIVE_PURPLE = 'bg-purple-500 text-white hover:bg-purple-500 hover:text-white'
+const PILL_ACTIVE_CYAN = 'bg-cyan-500 text-white hover:bg-cyan-500 hover:text-white'
+const PILL_ACTIVE_WHITE = 'bg-white/20 text-white hover:bg-white/20 hover:text-white'
 
 const SELECTION_OPTIONS: { value: MappingSelection; label: string; title: string }[] = [
   { value: { kind: 'all' }, label: 'Tutti', title: 'Le frecce spostano tutta la proiezione' },
@@ -128,6 +143,11 @@ function useNudgeKeys() {
 export function MappingControls() {
   useNudgeKeys()
 
+  const [collapsed, setCollapsed] = useState(() => localStorage.getItem(COLLAPSED_KEY) === '1')
+  useEffect(() => {
+    localStorage.setItem(COLLAPSED_KEY, collapsed ? '1' : '0')
+  }, [collapsed])
+
   const locked = useLayersStore((s) => s.layers.find((l) => l.id === s.activeLayerId)?.locked ?? false)
   const toggleLocked = useLayersStore((s) => s.toggleActiveLocked)
   const rotate = useLayersStore((s) => s.rotateActiveCorners)
@@ -162,347 +182,419 @@ export function MappingControls() {
   const toggleSnap = useUiStore((s) => s.toggleSnap)
 
   return (
-    <div className="pointer-events-auto absolute bottom-3 left-3 flex flex-col gap-1.5 rounded-lg border border-white/10 bg-black/70 p-1.5 backdrop-blur-sm">
-      {/* riga 1: bersaglio delle frecce e passo dello spostamento */}
-      <div className="flex items-center gap-1">
-        <Crosshair className="mx-0.5 size-3.5 shrink-0 text-white/40" />
-        {SELECTION_OPTIONS.map((opt) => (
-          <button
-            key={opt.label}
-            type="button"
-            title={opt.title}
-            onClick={() => setSelection(opt.value)}
-            className={cn(
-              'min-w-8 rounded px-1.5 py-1 text-[11px] font-medium tabular-nums transition-colors',
-              sameSelection(selection, opt.value)
-                ? 'bg-purple-500 text-white'
-                : 'text-white/60 hover:bg-white/10 hover:text-white',
-            )}
-          >
-            {opt.label}
-          </button>
-        ))}
-
-        {/* lati interi: le frecce muovono insieme i due angoli. Sul canvas si ottiene lo stesso
-            cliccando la maniglia a rombo al centro del lato */}
-        {EDGE_OPTIONS.map(({ edge, Icon }) => {
-          const value: MappingSelection = { kind: 'edge', edge }
-          return (
-            <button
-              key={edge}
-              type="button"
-              title={`${WARP_EDGE_LABELS[edge]}: le frecce muovono i due angoli insieme`}
-              onClick={() => setSelection(value)}
-              className={cn(
-                'rounded p-1 transition-colors',
-                sameSelection(selection, value)
-                  ? 'bg-purple-500 text-white'
-                  : 'text-white/60 hover:bg-white/10 hover:text-white',
-              )}
-            >
-              <Icon className="size-3.5" />
-            </button>
-          )
-        })}
-
-        <Separator orientation="vertical" className="mx-0.5 h-5 bg-white/15" />
-
-        {NUDGE_STEPS.map((step) => (
-          <button
-            key={step.id}
-            type="button"
-            title={`Passo delle frecce: ${step.label} (${step.value}). Shift = ×5`}
-            onClick={() => setNudgeStep(step.id)}
-            className={cn(
-              'rounded px-1.5 py-1 text-[11px] font-medium transition-colors',
-              nudgeStep === step.id
-                ? 'bg-white/20 text-white'
-                : 'text-white/60 hover:bg-white/10 hover:text-white',
-            )}
-          >
-            {step.label}
-          </button>
-        ))}
-      </div>
-
-      {/* riga 2: trasformazioni del quad, blocco e riferimenti visivi */}
-      <div className="flex items-center gap-0.5">
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon-xs"
-          title="Ruota di -90°"
-          disabled={locked}
-          onClick={() => rotate(QUARTER_TURN)}
+    <div className="pointer-events-none absolute bottom-3 left-3 z-20">
+      {/* toolbar piena: si comprime in altezza (grid-template-rows) e il contenuto si dissolve
+          un po' prima di schiacciarsi — stessa tecnica di CollapsibleSection (§7 apple-design:
+          entra ed esce lungo lo stesso percorso, non un semplice fade). */}
+      <div
+        className={cn(
+          'grid overflow-hidden transition-[grid-template-rows] duration-[--dur-base] ease-[--ease-fluid]',
+          collapsed ? 'grid-rows-[0fr]' : 'grid-rows-[1fr]',
+        )}
+      >
+        <div
+          className={cn(
+            'pointer-events-auto flex min-h-0 flex-col gap-1.5 rounded-lg border border-white/10 bg-black/70 p-1.5 backdrop-blur-sm',
+            'transition-opacity duration-[--dur-fast] ease-[--ease-out]',
+            collapsed ? 'opacity-0' : 'opacity-100',
+          )}
         >
-          <RotateCcw className="size-3.5" />
-        </Button>
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon-xs"
-          title="Ruota di +90°"
-          disabled={locked}
-          onClick={() => rotate(-QUARTER_TURN)}
-        >
-          <RotateCw className="size-3.5" />
-        </Button>
-        <button
-          type="button"
-          title="Rotazione fine: -1°"
-          disabled={locked}
-          onClick={() => rotate(FINE_ROTATION)}
-          className="rounded px-1 py-1 text-[11px] text-white/60 transition-colors hover:bg-white/10 hover:text-white disabled:opacity-40"
-        >
-          −1°
-        </button>
-        <button
-          type="button"
-          title="Rotazione fine: +1°"
-          disabled={locked}
-          onClick={() => rotate(-FINE_ROTATION)}
-          className="rounded px-1 py-1 text-[11px] text-white/60 transition-colors hover:bg-white/10 hover:text-white disabled:opacity-40"
-        >
-          +1°
-        </button>
-
-        <Separator orientation="vertical" className="mx-0.5 h-5 bg-white/15" />
-
-        {/* scala non uniforme: adatta le proporzioni del quad a quelle reali dell'oggetto */}
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon-xs"
-          title="Allarga (larghezza). Alt+click per restringere"
-          disabled={locked}
-          onClick={(e) => scale(e.altKey ? 1 / SCALE_STEP : SCALE_STEP, 1)}
-        >
-          <ChevronsLeftRight className="size-3.5" />
-        </Button>
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon-xs"
-          title="Allunga (altezza). Alt+click per accorciare"
-          disabled={locked}
-          onClick={(e) => scale(1, e.altKey ? 1 / SCALE_STEP : SCALE_STEP)}
-        >
-          <ChevronsUpDown className="size-3.5" />
-        </Button>
-
-        <Separator orientation="vertical" className="mx-0.5 h-5 bg-white/15" />
-
-        {/* keystone: la correzione trapezoidale del proiettore fuori asse. Agisce sui corner
-            come rotazione e scala, quindi resta compatibile col trascinamento delle maniglie */}
-        <button
-          type="button"
-          title="Keystone verticale: allarga il lato alto. Alt+click per il basso"
-          disabled={locked}
-          onClick={(e) => keystone(0, e.altKey ? -KEYSTONE_STEP : KEYSTONE_STEP)}
-          className="rounded px-1 py-1 text-[11px] text-white/60 transition-colors hover:bg-white/10 hover:text-white disabled:opacity-40"
-        >
-          ⌃K
-        </button>
-        <button
-          type="button"
-          title="Keystone orizzontale: allunga il lato destro. Alt+click per il sinistro"
-          disabled={locked}
-          onClick={(e) => keystone(e.altKey ? -KEYSTONE_STEP : KEYSTONE_STEP, 0)}
-          className="rounded px-1 py-1 text-[11px] text-white/60 transition-colors hover:bg-white/10 hover:text-white disabled:opacity-40"
-        >
-          ⌐K
-        </button>
-
-        <Separator orientation="vertical" className="mx-0.5 h-5 bg-white/15" />
-
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon-xs"
-          title="Specchia in orizzontale"
-          disabled={locked}
-          onClick={() => flip('horizontal')}
-        >
-          <FlipHorizontal className="size-3.5" />
-        </Button>
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon-xs"
-          title="Specchia in verticale"
-          disabled={locked}
-          onClick={() => flip('vertical')}
-        >
-          <FlipVertical className="size-3.5" />
-        </Button>
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon-xs"
-          title="Raddrizza: riporta i 4 angoli a rettangolo, mantenendo centro e dimensioni"
-          disabled={locked}
-          onClick={straighten}
-        >
-          <Square className="size-3.5" />
-        </Button>
-
-        <Separator orientation="vertical" className="mx-0.5 h-5 bg-white/15" />
-
-        {/* deformazione: le maniglie compaiono sul canvas solo a modalità accesa, ma la
-            deformazione già impostata resta applicata anche spegnendola */}
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon-xs"
-          title="Deforma la superficie: mostra le maniglie sul canvas (per statue, colonne, archi)"
-          aria-pressed={editingWarp}
-          onClick={toggleWarpMode}
-          className={cn(editingWarp && 'text-cyan-400 hover:text-cyan-300')}
-        >
-          {mode === 'grid' ? <Grid2x2 className="size-3.5" /> : <Spline className="size-3.5" />}
-        </Button>
-
-        {/* scelta della modalità e, per il reticolo, della sua densità: visibili solo mentre si
-            deforma, altrimenti la toolbar del live si allunga per niente */}
-        {editingWarp && (
-          <>
-            <button
-              type="button"
-              title="Curvatura dei bordi: 2 maniglie per lato, curve morbide"
-              onClick={() => setWarpMode('bezier')}
-              className={cn(
-                'rounded px-1.5 py-1 text-[11px] font-medium transition-colors',
-                mode === 'bezier'
-                  ? 'bg-cyan-500 text-white'
-                  : 'text-white/60 hover:bg-white/10 hover:text-white',
-              )}
-            >
-              Bordi
-            </button>
-            <button
-              type="button"
-              title="Reticolo: nodi trascinabili anche all'interno della superficie"
-              onClick={() => setWarpMode('grid')}
-              className={cn(
-                'rounded px-1.5 py-1 text-[11px] font-medium transition-colors',
-                mode === 'grid'
-                  ? 'bg-cyan-500 text-white'
-                  : 'text-white/60 hover:bg-white/10 hover:text-white',
-              )}
-            >
-              Reticolo
-            </button>
-            {mode === 'grid' &&
-              GRID_SIZES.map((cells) => (
-                <button
-                  key={cells}
+          {/* riga 1: bersaglio delle frecce, passo dello spostamento e — spinto sull'estrema
+              destra da justify-between — il tasto di riduzione, nell'angolo in alto ma dentro
+              il riquadro invece che a cavallo del bordo */}
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex items-center gap-1">
+              <Crosshair className="mx-0.5 size-3.5 shrink-0 text-white/40" />
+              {SELECTION_OPTIONS.map((opt) => (
+                <Button
+                  key={opt.label}
                   type="button"
-                  title={`Reticolo ${cells + 1}×${cells + 1} nodi (la forma già data viene conservata)`}
-                  disabled={locked}
-                  onClick={() => setGridSize(cells, cells)}
+                  variant="ghost"
+                  size="xs"
+                  title={opt.title}
+                  onClick={() => setSelection(opt.value)}
                   className={cn(
-                    'rounded px-1.5 py-1 text-[11px] font-medium tabular-nums transition-colors disabled:opacity-40',
-                    gridCells === cells
-                      ? 'bg-white/20 text-white'
-                      : 'text-white/60 hover:bg-white/10 hover:text-white',
+                    'min-w-8 px-1.5 tabular-nums',
+                    sameSelection(selection, opt.value) ? PILL_ACTIVE_PURPLE : PILL_IDLE,
                   )}
                 >
-                  {cells + 1}²
-                </button>
+                  {opt.label}
+                </Button>
               ))}
-          </>
-        )}
 
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon-xs"
-          title="Azzera la deformazione della modalità attiva e la correzione dell'obiettivo (corner e posizione restano)"
-          disabled={locked || !warpActive}
-          onClick={resetWarp}
-        >
-          <Eraser className="size-3.5" />
-        </Button>
+              {/* lati interi: le frecce muovono insieme i due angoli. Sul canvas si ottiene lo
+                  stesso cliccando la maniglia a rombo al centro del lato */}
+              {EDGE_OPTIONS.map(({ edge, Icon }) => {
+                const value: MappingSelection = { kind: 'edge', edge }
+                return (
+                  <Button
+                    key={edge}
+                    type="button"
+                    variant="ghost"
+                    size="icon-xs"
+                    title={`${WARP_EDGE_LABELS[edge]}: le frecce muovono i due angoli insieme`}
+                    aria-label={WARP_EDGE_LABELS[edge]}
+                    onClick={() => setSelection(value)}
+                    className={cn(sameSelection(selection, value) ? PILL_ACTIVE_PURPLE : PILL_IDLE)}
+                  >
+                    <Icon className="size-3.5" />
+                  </Button>
+                )
+              })}
 
-        <Separator orientation="vertical" className="mx-0.5 h-5 bg-white/15" />
+              <Separator orientation="vertical" className="mx-0.5 h-5 bg-white/15" />
 
-        {/* annulla/ripeti del solo mapping: allineare è lento e delicato, e fino a ora un drag
-            sbagliato non si poteva disfare */}
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon-xs"
-          title="Annulla l'ultima modifica di mapping (⌘Z / Ctrl+Z)"
-          disabled={!canUndo}
-          onClick={undoMapping}
-        >
-          <Undo2 className="size-3.5" />
-        </Button>
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon-xs"
-          title="Ripeti la modifica annullata (⇧⌘Z / Ctrl+Shift+Z)"
-          disabled={!canRedo}
-          onClick={redoMapping}
-        >
-          <Redo2 className="size-3.5" />
-        </Button>
+              {NUDGE_STEPS.map((step) => (
+                <Button
+                  key={step.id}
+                  type="button"
+                  variant="ghost"
+                  size="xs"
+                  title={`Passo delle frecce: ${step.label} (${step.value}). Shift = ×5`}
+                  onClick={() => setNudgeStep(step.id)}
+                  className={cn(
+                    'px-1.5',
+                    nudgeStep === step.id ? PILL_ACTIVE_WHITE : PILL_IDLE,
+                  )}
+                >
+                  {step.label}
+                </Button>
+              ))}
+            </div>
 
-        <Separator orientation="vertical" className="mx-0.5 h-5 bg-white/15" />
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon-xs"
+              title="Comprimi gli strumenti di mapping"
+              aria-label="Comprimi gli strumenti di mapping"
+              onClick={() => setCollapsed(true)}
+              className={PILL_IDLE}
+            >
+              <Minimize2 className="size-3.5" />
+            </Button>
+          </div>
 
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon-xs"
-          title="Mostra la griglia di allineamento"
-          aria-pressed={gridVisible}
-          onClick={toggleGrid}
-          className={cn(gridVisible && 'text-purple-400 hover:text-purple-300')}
-        >
-          <Grid3x3 className="size-3.5" />
-        </Button>
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon-xs"
-          title="Aggancia gli angoli alla griglia mentre li trascini"
-          aria-pressed={snapEnabled}
-          onClick={toggleSnap}
-          className={cn(snapEnabled && 'text-purple-400 hover:text-purple-300')}
-        >
-          <Magnet className="size-3.5" />
-        </Button>
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon-xs"
-          title="Test pattern di calibrazione: griglia proiettata sull'oggetto, visibile anche in Output"
-          aria-pressed={testPattern}
-          onClick={() => setTestPattern(!testPattern)}
-          className={cn(testPattern && 'text-cyan-400 hover:text-cyan-300')}
-        >
-          <Crosshair className="size-3.5" />
-        </Button>
+          {/* riga 2: trasformazioni del quad, blocco e riferimenti visivi */}
+          <div className="flex items-center gap-0.5">
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon-xs"
+              title="Ruota di -90°"
+              aria-label="Ruota di -90°"
+              disabled={locked}
+              onClick={() => rotate(QUARTER_TURN)}
+            >
+              <RotateCcw className="size-3.5" />
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon-xs"
+              title="Ruota di +90°"
+              aria-label="Ruota di +90°"
+              disabled={locked}
+              onClick={() => rotate(-QUARTER_TURN)}
+            >
+              <RotateCw className="size-3.5" />
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              size="xs"
+              title="Rotazione fine: -1°"
+              disabled={locked}
+              onClick={() => rotate(FINE_ROTATION)}
+              className={cn('px-1', PILL_IDLE)}
+            >
+              −1°
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              size="xs"
+              title="Rotazione fine: +1°"
+              disabled={locked}
+              onClick={() => rotate(-FINE_ROTATION)}
+              className={cn('px-1', PILL_IDLE)}
+            >
+              +1°
+            </Button>
 
-        <Separator orientation="vertical" className="mx-0.5 h-5 bg-white/15" />
+            <Separator orientation="vertical" className="mx-0.5 h-5 bg-white/15" />
 
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon-xs"
-          title={
-            locked
-              ? 'Mapping bloccato: sbloccalo per modificarlo'
-              : 'Blocca il mapping (evita spostamenti accidentali durante il live)'
-          }
-          aria-pressed={locked}
-          onClick={toggleLocked}
-          className={cn(locked && 'text-amber-400 hover:text-amber-300')}
-        >
-          {locked ? <Lock className="size-3.5" /> : <Unlock className="size-3.5" />}
-        </Button>
+            {/* scala non uniforme: adatta le proporzioni del quad a quelle reali dell'oggetto */}
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon-xs"
+              title="Allarga (larghezza). Alt+click per restringere"
+              aria-label="Allarga (larghezza). Alt+click per restringere"
+              disabled={locked}
+              onClick={(e) => scale(e.altKey ? 1 / SCALE_STEP : SCALE_STEP, 1)}
+            >
+              <ChevronsLeftRight className="size-3.5" />
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon-xs"
+              title="Allunga (altezza). Alt+click per accorciare"
+              aria-label="Allunga (altezza). Alt+click per accorciare"
+              disabled={locked}
+              onClick={(e) => scale(1, e.altKey ? 1 / SCALE_STEP : SCALE_STEP)}
+            >
+              <ChevronsUpDown className="size-3.5" />
+            </Button>
+
+            <Separator orientation="vertical" className="mx-0.5 h-5 bg-white/15" />
+
+            {/* keystone: la correzione trapezoidale del proiettore fuori asse. Agisce sui corner
+                come rotazione e scala, quindi resta compatibile col trascinamento delle maniglie */}
+            <Button
+              type="button"
+              variant="ghost"
+              size="xs"
+              title="Keystone verticale: allarga il lato alto. Alt+click per il basso"
+              disabled={locked}
+              onClick={(e) => keystone(0, e.altKey ? -KEYSTONE_STEP : KEYSTONE_STEP)}
+              className={cn('px-1', PILL_IDLE)}
+            >
+              ⌃K
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              size="xs"
+              title="Keystone orizzontale: allunga il lato destro. Alt+click per il sinistro"
+              disabled={locked}
+              onClick={(e) => keystone(e.altKey ? -KEYSTONE_STEP : KEYSTONE_STEP, 0)}
+              className={cn('px-1', PILL_IDLE)}
+            >
+              ⌐K
+            </Button>
+
+            <Separator orientation="vertical" className="mx-0.5 h-5 bg-white/15" />
+
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon-xs"
+              title="Specchia in orizzontale"
+              aria-label="Specchia in orizzontale"
+              disabled={locked}
+              onClick={() => flip('horizontal')}
+            >
+              <FlipHorizontal className="size-3.5" />
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon-xs"
+              title="Specchia in verticale"
+              aria-label="Specchia in verticale"
+              disabled={locked}
+              onClick={() => flip('vertical')}
+            >
+              <FlipVertical className="size-3.5" />
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon-xs"
+              title="Raddrizza: riporta i 4 angoli a rettangolo, mantenendo centro e dimensioni"
+              aria-label="Raddrizza: riporta i 4 angoli a rettangolo, mantenendo centro e dimensioni"
+              disabled={locked}
+              onClick={straighten}
+            >
+              <Square className="size-3.5" />
+            </Button>
+
+            <Separator orientation="vertical" className="mx-0.5 h-5 bg-white/15" />
+
+            {/* deformazione: le maniglie compaiono sul canvas solo a modalità accesa, ma la
+                deformazione già impostata resta applicata anche spegnendola */}
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon-xs"
+              title="Deforma la superficie: mostra le maniglie sul canvas (per statue, colonne, archi)"
+              aria-label="Deforma la superficie: mostra le maniglie sul canvas (per statue, colonne, archi)"
+              aria-pressed={editingWarp}
+              onClick={toggleWarpMode}
+              className={cn(editingWarp && 'text-cyan-400 hover:text-cyan-300')}
+            >
+              {mode === 'grid' ? <Grid2x2 className="size-3.5" /> : <Spline className="size-3.5" />}
+            </Button>
+
+            {/* scelta della modalità e, per il reticolo, della sua densità: visibili solo mentre
+                si deforma, altrimenti la toolbar del live si allunga per niente */}
+            {editingWarp && (
+              <>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="xs"
+                  title="Curvatura dei bordi: 2 maniglie per lato, curve morbide"
+                  onClick={() => setWarpMode('bezier')}
+                  className={cn('px-1.5', mode === 'bezier' ? PILL_ACTIVE_CYAN : PILL_IDLE)}
+                >
+                  Bordi
+                </Button>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="xs"
+                  title="Reticolo: nodi trascinabili anche all'interno della superficie"
+                  onClick={() => setWarpMode('grid')}
+                  className={cn('px-1.5', mode === 'grid' ? PILL_ACTIVE_CYAN : PILL_IDLE)}
+                >
+                  Reticolo
+                </Button>
+                {mode === 'grid' &&
+                  GRID_SIZES.map((cells) => (
+                    <Button
+                      key={cells}
+                      type="button"
+                      variant="ghost"
+                      size="xs"
+                      title={`Reticolo ${cells + 1}×${cells + 1} nodi (la forma già data viene conservata)`}
+                      disabled={locked}
+                      onClick={() => setGridSize(cells, cells)}
+                      className={cn(
+                        'px-1.5 tabular-nums',
+                        gridCells === cells ? PILL_ACTIVE_WHITE : PILL_IDLE,
+                      )}
+                    >
+                      {cells + 1}²
+                    </Button>
+                  ))}
+              </>
+            )}
+
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon-xs"
+              title="Azzera la deformazione della modalità attiva e la correzione dell'obiettivo (corner e posizione restano)"
+              aria-label="Azzera la deformazione della modalità attiva e la correzione dell'obiettivo"
+              disabled={locked || !warpActive}
+              onClick={resetWarp}
+            >
+              <Eraser className="size-3.5" />
+            </Button>
+
+            <Separator orientation="vertical" className="mx-0.5 h-5 bg-white/15" />
+
+            {/* annulla/ripeti del solo mapping: allineare è lento e delicato, e fino a ora un
+                drag sbagliato non si poteva disfare */}
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon-xs"
+              title="Annulla l'ultima modifica di mapping (⌘Z / Ctrl+Z)"
+              aria-label="Annulla l'ultima modifica di mapping"
+              disabled={!canUndo}
+              onClick={undoMapping}
+            >
+              <Undo2 className="size-3.5" />
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon-xs"
+              title="Ripeti la modifica annullata (⇧⌘Z / Ctrl+Shift+Z)"
+              aria-label="Ripeti la modifica annullata"
+              disabled={!canRedo}
+              onClick={redoMapping}
+            >
+              <Redo2 className="size-3.5" />
+            </Button>
+
+            <Separator orientation="vertical" className="mx-0.5 h-5 bg-white/15" />
+
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon-xs"
+              title="Mostra la griglia di allineamento"
+              aria-label="Mostra la griglia di allineamento"
+              aria-pressed={gridVisible}
+              onClick={toggleGrid}
+              className={cn(gridVisible && 'text-purple-400 hover:text-purple-300')}
+            >
+              <Grid3x3 className="size-3.5" />
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon-xs"
+              title="Aggancia gli angoli alla griglia mentre li trascini"
+              aria-label="Aggancia gli angoli alla griglia mentre li trascini"
+              aria-pressed={snapEnabled}
+              onClick={toggleSnap}
+              className={cn(snapEnabled && 'text-purple-400 hover:text-purple-300')}
+            >
+              <Magnet className="size-3.5" />
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon-xs"
+              title="Test pattern di calibrazione: griglia proiettata sull'oggetto, visibile anche in Output"
+              aria-label="Test pattern di calibrazione"
+              aria-pressed={testPattern}
+              onClick={() => setTestPattern(!testPattern)}
+              className={cn(testPattern && 'text-cyan-400 hover:text-cyan-300')}
+            >
+              <Crosshair className="size-3.5" />
+            </Button>
+
+            <Separator orientation="vertical" className="mx-0.5 h-5 bg-white/15" />
+
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon-xs"
+              title={
+                locked
+                  ? 'Mapping bloccato: sbloccalo per modificarlo'
+                  : 'Blocca il mapping (evita spostamenti accidentali durante il live)'
+              }
+              aria-label={locked ? 'Mapping bloccato: sbloccalo per modificarlo' : 'Blocca il mapping'}
+              aria-pressed={locked}
+              onClick={toggleLocked}
+              className={cn(locked && 'text-amber-400 hover:text-amber-300')}
+            >
+              {locked ? <Lock className="size-3.5" /> : <Unlock className="size-3.5" />}
+            </Button>
+          </div>
+        </div>
       </div>
+
+      {/* pillola quando compressa: stessa posizione di ancoraggio del riquadro pieno, si
+          materializza dal suo angolo invece di comparire al centro (§7 apple-design). La durata
+          di transizione è tutta dichiarata qui (non lasciata a `transition-all` del componente
+          Button) perché deve coprire anche l'opacità, non solo i colori. */}
+      <Button
+        type="button"
+        variant="ghost"
+        size="icon"
+        title="Mostra gli strumenti di mapping"
+        aria-label="Mostra gli strumenti di mapping"
+        onClick={() => setCollapsed(false)}
+        className={cn(
+          'absolute bottom-0 left-0 origin-bottom-left rounded-lg border border-white/10 bg-black/70 text-white/70 backdrop-blur-sm',
+          'transition-[opacity,transform,background-color,color] duration-[--dur-base] ease-[--ease-fluid]',
+          'hover:bg-white/10 hover:text-white',
+          collapsed
+            ? 'pointer-events-auto scale-100 opacity-100 delay-100'
+            : 'pointer-events-none scale-90 opacity-0',
+        )}
+      >
+        <Maximize2 className="size-4" />
+      </Button>
     </div>
   )
 }

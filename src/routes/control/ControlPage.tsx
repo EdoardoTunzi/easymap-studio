@@ -119,9 +119,9 @@ export function ControlPage() {
             </span>
           </SidebarHeader>
           <SidebarContent>
-            {/* Stesso maiuscoletto e stesso ritmo verticale del titolo della colonna destra
-                (.ui-eyebrow, px-4): due colonne che si somigliano devono scriversi uguale. */}
-            <div className="shrink-0 px-4 pt-3.5 pb-2.5">
+            {/* Stesso maiuscoletto, stesso sfondo e stesso testo centrato del titolo della
+                colonna destra: due colonne che si somigliano devono scriversi uguale. */}
+            <div className="flex shrink-0 justify-center border-b border-sidebar-border bg-secondary/40 py-4.5">
               <span className="ui-eyebrow text-muted-foreground">{PANEL_TITLE[activePanel]}</span>
             </div>
             {/* min-w-0 + w-full: il Viewport di Radix ScrollArea è `display: table` e si

@@ -2,6 +2,76 @@
 
 Ogni modifica al progetto va registrata qui con data, descrizione e motivazione. Le voci più recenti in alto dentro ogni giornata.
 
+## 2026-08-22 — Titolo del pannello sinistro allineato a quello della colonna destra (`ControlPage.tsx`, solo UI)
+
+L'utente aveva aggiunto a mano `bg-secondary/40` + testo centrato al titolo "Layer Inspector" della
+colonna destra (`LayerInspector.tsx:38`). Applicato lo stesso trattamento al titolo condiviso dei
+quattro pannelli della colonna sinistra (Effetti/Palette/Progetti/Output — un solo blocco, il testo
+cambia via `PANEL_TITLE[activePanel]`): `src/routes/control/ControlPage.tsx`, il div che prima era
+`shrink-0 px-4 pt-3.5 pb-2.5` è ora `flex shrink-0 justify-center border-b border-sidebar-border
+bg-secondary/40 py-4.5` (stesso di destra, senza `px-4` perché il testo è centrato, non a bordo).
+Verificato dall'utente nel browser. `npx tsc -b --noEmit` pulito.
+
+## 2026-08-22 — Riposizionato il tasto di riduzione + tutti i pulsanti della toolbar di mapping ora shadcn `Button` (`MappingControls.tsx`, solo UI)
+
+Due correzioni richieste dall'utente sulla toolbar appena rifatta: il tasto di riduzione a cavallo
+del bordo era "parzialmente invisibile", e voleva ogni pulsante come componente shadcn `Button`
+(molti erano ancora `<button>` nativi con classi scritte a mano).
+
+- **Tasto di riduzione spostato dentro il riquadro.** Non più una badge assoluta `-top-2.5 -right-2.5`
+  a cavallo del bordo (tagliata visivamente e poco leggibile su sfondo nero), ma un `Button` in coda
+  alla riga 1, accanto a "Grande": la riga usa `justify-between` fra il gruppo di controlli a
+  sinistra e il tasto, che finisce così nell'angolo in alto a destra ma **dentro** il riquadro.
+- **Tutti i pulsanti custom convertiti a `<Button variant="ghost">`** (Tutti/TL/TR/BL/BR, lati,
+  Fine/Medio/Grande, −1°/+1°, ⌃K/⌐K, Bordi/Reticolo, dimensioni reticolo, pillola compressa): la
+  costante `CUSTOM_BUTTON` è sparita, non serviva più (feedback alla pressione e focus-visible
+  arrivano gratis dal componente). Lo stato "attivo" (sfondo pieno viola/ciano/bianco) è ora una
+  classe passata via `className`, non più una variante — servono colori custom (purple-500,
+  cyan-500) che non hanno un token shadcn corrispondente.
+  - **Bug preso e corretto prima di consegnare**: il primo tentativo componeva la classe hover a
+    runtime (`` `hover:${bg}` ``) per evitare che l'hover di `variant="ghost"` sbiadisse la pillola
+    selezionata. Tailwind genera le classi scansionando il *testo* del file, non l'output a
+    runtime: una stringa costruita con un'interpolazione non produce mai la regola CSS
+    corrispondente. Sostituito con tre costanti letterali (`PILL_ACTIVE_PURPLE/CYAN/WHITE`), una
+    per colore, verificate poi nel browser (pillole "Tutti"/"Medio"/"Bordi" restano piene anche
+    passandoci sopra col mouse).
+- Verificato nel browser: tasto di riduzione ben visibile e cliccabile nell'angolo, collassa/espande
+  con l'animazione già esistente, stato di selezione (Tutti, Medio, Bordi) intatto dopo un giro di
+  collassa→espandi. `npx tsc -b --noEmit` pulito, nessun `<button>` nativo rimasto nel file.
+
+## 2026-08-22 — Tasto di riduzione sulla toolbar di mapping + audit UI (`MappingControls.tsx`, solo UI)
+
+Skill `apple-design` applicata alla toolbar flottante di posizionamento/mapping in basso a sinistra
+nel canvas (`src/components/Positioning/MappingControls.tsx`). Decisioni concordate con l'utente
+prima di implementare (AskUserQuestion): riduzione = collasso totale a sola icona (non una versione
+compatta né uno zoom-out), tasto agganciato all'angolo in alto a destra del riquadro, stato
+persistito in `localStorage` come l'altezza della playlist, più un audit esteso su feedback/a11y.
+
+- **Nuovo tasto di riduzione** (`Minimize2`/`Maximize2` da lucide-react): comprime la toolbar a una
+  pillola quadrata di 36px nello stesso angolo, lasciando il canvas sgombro durante un live. Stato
+  in `localStorage['easyvj-mapping-toolbar-collapsed']`, letto pigro come `barHeight` in
+  `PlaylistBar.tsx`.
+- **Animazione**: stessa tecnica a due stadi di `CollapsibleSection` (§7 apple-design — entra ed
+  esce lungo lo stesso percorso, non un semplice fade) — wrapper esterno che comprime l'altezza con
+  `grid-template-rows: 1fr → 0fr` (`--dur-base`/`--ease-fluid`), contenuto interno che si dissolve
+  un po' prima di schiacciarsi (`--dur-fast`). La pillola compressa vive nello stesso punto di
+  ancoraggio (`origin-bottom-left`) e si materializza con opacità+scala, non con un fade piatto.
+  **Attenzione alla combinazione con `.press`**: quella classe (CSS non layerizzato) vince sempre su
+  `transition-property/duration/timing-function` contro le utility Tailwind layerizzate come
+  `transition-colors` — per questo la pillola NON usa `.press` (userebbe la durata sbagliata,
+  100ms invece di `--dur-base`, e droppherebbe l'opacità dalla lista animata), usa invece
+  `active:scale-95` dentro lo stesso `transition-[opacity,transform]` che già controlla.
+- **Audit UI** (lacune reali, non solo preferenza): i pulsanti "custom" testuali (Tutti/TL/TR/BL/BR,
+  lati, passo frecce, −1°/+1°, ⌃K/⌐K, Bordi/Reticolo, dimensioni reticolo) non avevano feedback alla
+  pressione né un contorno visibile da tastiera — ora condividono la costante `CUSTOM_BUTTON`
+  (`.press` + `focus-visible:ring-white/50`, ring bianco perché il contesto è nero, non i token
+  `--ring` dell'app pensati per superfici card/sidebar). Aggiunti gli `aria-label` mancanti su tutti
+  i pulsanti icon-only (rotazione, scala, specchia/raddrizza, deforma superficie, reset, undo/redo,
+  griglia/snap/test pattern, lucchetto, lati del mapping) — prima solo `title`, invisibile a chi
+  naviga con screen reader senza hover.
+- Verificato nel browser: collassa/espande con animazione, la pillola riapre la toolbar intatta
+  (stato del warp mode, Bordi/Reticolo condizionali, tutti i controlli). `npx tsc -b --noEmit` pulito.
+
 ## 2026-08-22 — Etichette dei cursori nel popover clip allineate al pannello "Controlli" di sinistra (solo UI)
 
 Le label di Size e dei parametri shader nell'editor clip (`ClipEditor` in `PlaylistBar.tsx`) usavano

@@ -35,7 +35,7 @@ export function LayerInspector() {
     <div className="flex h-full flex-col">
       {/* Titolo della colonna: stesso maiuscoletto degli altri titoli (.ui-eyebrow, 11px) e stesso
           px-4 del resto, altrimenti resta l'unico testo appoggiato al bordo. */}
-      <div className="shrink-0 px-4 pt-3.5 pb-2.5">
+      <div className=" flex justify-center py-4.5 border-b border-sidebar-border bg-secondary/40">
         <span className="ui-eyebrow text-muted-foreground">Layer Inspector</span>
       </div>
 
@@ -44,7 +44,7 @@ export function LayerInspector() {
           il tracking stretto che il testo grande richiede): l'informazione è il nome, non la parola
           che lo introduce. Il divisore è la hairline usata nel resto della colonna, non il Separator
           pieno, che qui pesava più del titolo che stava separando. */}
-      <div className="flex shrink-0 items-baseline justify-between gap-3 border-t border-sidebar-border/60 px-4 py-3">
+      <div className="flex shrink-0 items-baseline justify-between gap-3 px-4 py-3">
         {/* min-w-0: senza, il truncate non ha effetto e un nome lungo allarga la colonna */}
         <div className="flex min-w-0 items-baseline gap-1.5">
           <span className="ui-sublabel shrink-0 text-muted-foreground">Layer selezionato: </span>
