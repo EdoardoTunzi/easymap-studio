@@ -1,7 +1,7 @@
 import { RotateCcw, FlipHorizontal, FlipVertical } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Slider } from '@/components/ui/slider'
-import { cn } from '@/lib/utils'
+import { ControlRow } from '@/components/layout/ControlRow'
 import { useLayersStore, DEFAULT_FX, type FxControls } from '@/store/layersStore'
 
 interface FxSliderProps {
@@ -15,17 +15,19 @@ interface FxSliderProps {
   onChange: (v: number) => void
 }
 
+/** Un cursore globale: stessa riga etichetta/valore del resto dell'app (ControlRow). */
 function FxSlider({ label, value, min, max, step = 0.01, format, onChange }: FxSliderProps) {
   return (
-    <div className="flex flex-col gap-1.5">
-      <div className="flex items-center justify-between">
-        <span className="text-xs text-foreground">{label}</span>
-        <span className="text-xs tabular-nums text-muted-foreground">
-          {format ? format(value) : value.toFixed(2)}
-        </span>
-      </div>
-      <Slider min={min} max={max} step={step} value={[value]} onValueChange={([v]) => onChange(v)} />
-    </div>
+    <ControlRow label={label} value={format ? format(value) : value.toFixed(2)}>
+      <Slider
+        min={min}
+        max={max}
+        step={step}
+        value={[value]}
+        onValueChange={([v]) => onChange(v)}
+        aria-label={label}
+      />
+    </ControlRow>
   )
 }
 
@@ -47,14 +49,12 @@ export function FxControlsPanel() {
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex items-center justify-between">
-        <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-          Controlli globali
-        </span>
+      {/* il titolo "Controlli globali" lo mette il CollapsibleSection che lo ospita */}
+      <div className="flex justify-end">
         <Button
           variant="ghost"
           size="sm"
-          className="h-6 gap-1 px-1.5 text-[11px] text-muted-foreground"
+          className="press h-6 gap-1 px-1.5 text-[11px] text-muted-foreground"
           onClick={resetFx}
           disabled={isDefault}
           title="Riporta tutti i controlli globali ai valori neutri"
@@ -114,7 +114,7 @@ export function FxControlsPanel() {
         <Button
           variant={fx.mirrorX ? 'default' : 'outline'}
           size="sm"
-          className="flex-1 gap-1.5"
+          className="press flex-1 gap-1.5"
           onClick={() => setFx({ mirrorX: !fx.mirrorX })}
         >
           <FlipHorizontal className="size-3.5" />
@@ -123,7 +123,7 @@ export function FxControlsPanel() {
         <Button
           variant={fx.mirrorY ? 'default' : 'outline'}
           size="sm"
-          className="flex-1 gap-1.5"
+          className="press flex-1 gap-1.5"
           onClick={() => setFx({ mirrorY: !fx.mirrorY })}
         >
           <FlipVertical className="size-3.5" />
@@ -180,7 +180,7 @@ export function FxControlsPanel() {
         onChange={(invert) => setFx({ invert })}
       />
 
-      <p className={cn('text-[11px] leading-snug text-muted-foreground')}>
+      <p className="text-[11px] leading-snug text-muted-foreground">
         Valgono per qualsiasi effetto, anche i visual generativi: agiscono sopra i parametri del
         singolo shader.
       </p>

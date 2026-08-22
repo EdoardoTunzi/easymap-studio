@@ -13,7 +13,7 @@ type NavItem = { id: Panel; label: string; icon: typeof Move };
 // Il toggle della playlist si infila tra "Progetti" e "Output": non è un pannello della
 // sidebar, quindi la nav è spezzata in due gruppi con il bottone in mezzo.
 const NAV_BEFORE_PLAYLIST: NavItem[] = [
-  { id: "shader", label: "Shader", icon: Sparkles },
+  { id: "shader", label: "Effetti", icon: Sparkles },
   { id: "palette", label: "Palette", icon: Palette },
   { id: "projects", label: "Progetti", icon: FolderOpen }
 ];
@@ -92,9 +92,7 @@ export function TopToolbar() {
           >
             <MonitorUp className="size-3.5" />
             Esegui in output
-            <kbd className="ml-0.5 rounded border border-current/30 px-1 text-[10px] leading-4 opacity-70">
-              Spazio
-            </kbd>
+            <kbd className="ml-0.5 rounded border border-current/30 px-1 text-[10px] leading-4 opacity-70">Spazio</kbd>
             {dirty && <span className="absolute -right-1 -top-1 size-2 rounded-full bg-amber-400" />}
           </Button>
         )}

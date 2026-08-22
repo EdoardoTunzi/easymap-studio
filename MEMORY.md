@@ -2,6 +2,440 @@
 
 Ogni modifica al progetto va registrata qui con data, descrizione e motivazione. Le voci più recenti in alto dentro ogni giornata.
 
+## 2026-08-22 — Pagina 404 (`src/routes/not-found/NotFoundPage.tsx`)
+
+Qualunque URL fuori da `/control` e `/output` (prima cadeva su un `<Routes>` senza match, schermo
+bianco) ora mostra una pagina 404 basic: "404" / "Pagina non trovata" / link "Torna all'app" verso
+`/control`. Route catch-all `path="*"` aggiunta in fondo a `App.tsx`. Verificato nel browser
+(URL inesistente → 404 → click sul link → arriva su `/control`). `npx tsc -b --noEmit` pulito.
+
+## 2026-08-22 — Blocco a schermo intero da telefono (`MobileBlockOverlay.tsx`)
+
+L'app non ha senso su un telefono (corner-pin, sidebar ridimensionabili, canvas WebGL): sotto i
+768px ora compare un blocco a schermo intero non richiudibile invece di lasciar provare un layout
+rotto. Un tablet in orizzontale (1024px+) resta sopra soglia e passa senza vederlo — di proposito
+il testo non lo nomina, per non suggerire "prova comunque ruotando il telefono".
+
+- **Nuovo componente** `src/components/layout/MobileBlockOverlay.tsx`: riusa `useIsMobile()`
+  (`src/hooks/use-mobile.ts`, soglia 768px già esistente e già in uso altrove nel progetto per la
+  sidebar — nessun hook nuovo). Overlay `fixed inset-0` sopra tutto (`z-100`), icona
+  `MonitorSmartphone` di lucide-react, messaggio breve senza menzionare i tablet.
+  Deciso con l'utente (AskUserQuestion) prima di implementare: bloccante e non richiudibile (non un
+  avviso ignorabile), soglia sulla larghezza del viewport (non user-agent, così reagisce anche
+  restringendo la finestra su desktop), attivo su entrambe le route.
+- **Montato una sola volta** in `src/App.tsx`, fuori da `<Routes>`: copre sia `/control` sia
+  `/output` senza doverlo inserire in ciascuna pagina.
+- Verificato nel browser: a 390×844 (telefono) compare il blocco su entrambe le route; a 1024×768
+  (tablet orizzontale) l'app resta pienamente utilizzabile, nessun overlay. `npx tsc -b --noEmit`
+  pulito.
+
+## 2026-08-22 — Titolo del pannello sinistro allineato a quello della colonna destra (`ControlPage.tsx`, solo UI)
+
+L'utente aveva aggiunto a mano `bg-secondary/40` + testo centrato al titolo "Layer Inspector" della
+colonna destra (`LayerInspector.tsx:38`). Applicato lo stesso trattamento al titolo condiviso dei
+quattro pannelli della colonna sinistra (Effetti/Palette/Progetti/Output — un solo blocco, il testo
+cambia via `PANEL_TITLE[activePanel]`): `src/routes/control/ControlPage.tsx`, il div che prima era
+`shrink-0 px-4 pt-3.5 pb-2.5` è ora `flex shrink-0 justify-center border-b border-sidebar-border
+bg-secondary/40 py-4.5` (stesso di destra, senza `px-4` perché il testo è centrato, non a bordo).
+Verificato dall'utente nel browser. `npx tsc -b --noEmit` pulito.
+
+## 2026-08-22 — Riposizionato il tasto di riduzione + tutti i pulsanti della toolbar di mapping ora shadcn `Button` (`MappingControls.tsx`, solo UI)
+
+Due correzioni richieste dall'utente sulla toolbar appena rifatta: il tasto di riduzione a cavallo
+del bordo era "parzialmente invisibile", e voleva ogni pulsante come componente shadcn `Button`
+(molti erano ancora `<button>` nativi con classi scritte a mano).
+
+- **Tasto di riduzione spostato dentro il riquadro.** Non più una badge assoluta `-top-2.5 -right-2.5`
+  a cavallo del bordo (tagliata visivamente e poco leggibile su sfondo nero), ma un `Button` in coda
+  alla riga 1, accanto a "Grande": la riga usa `justify-between` fra il gruppo di controlli a
+  sinistra e il tasto, che finisce così nell'angolo in alto a destra ma **dentro** il riquadro.
+- **Tutti i pulsanti custom convertiti a `<Button variant="ghost">`** (Tutti/TL/TR/BL/BR, lati,
+  Fine/Medio/Grande, −1°/+1°, ⌃K/⌐K, Bordi/Reticolo, dimensioni reticolo, pillola compressa): la
+  costante `CUSTOM_BUTTON` è sparita, non serviva più (feedback alla pressione e focus-visible
+  arrivano gratis dal componente). Lo stato "attivo" (sfondo pieno viola/ciano/bianco) è ora una
+  classe passata via `className`, non più una variante — servono colori custom (purple-500,
+  cyan-500) che non hanno un token shadcn corrispondente.
+  - **Bug preso e corretto prima di consegnare**: il primo tentativo componeva la classe hover a
+    runtime (`` `hover:${bg}` ``) per evitare che l'hover di `variant="ghost"` sbiadisse la pillola
+    selezionata. Tailwind genera le classi scansionando il *testo* del file, non l'output a
+    runtime: una stringa costruita con un'interpolazione non produce mai la regola CSS
+    corrispondente. Sostituito con tre costanti letterali (`PILL_ACTIVE_PURPLE/CYAN/WHITE`), una
+    per colore, verificate poi nel browser (pillole "Tutti"/"Medio"/"Bordi" restano piene anche
+    passandoci sopra col mouse).
+- Verificato nel browser: tasto di riduzione ben visibile e cliccabile nell'angolo, collassa/espande
+  con l'animazione già esistente, stato di selezione (Tutti, Medio, Bordi) intatto dopo un giro di
+  collassa→espandi. `npx tsc -b --noEmit` pulito, nessun `<button>` nativo rimasto nel file.
+
+## 2026-08-22 — Tasto di riduzione sulla toolbar di mapping + audit UI (`MappingControls.tsx`, solo UI)
+
+Skill `apple-design` applicata alla toolbar flottante di posizionamento/mapping in basso a sinistra
+nel canvas (`src/components/Positioning/MappingControls.tsx`). Decisioni concordate con l'utente
+prima di implementare (AskUserQuestion): riduzione = collasso totale a sola icona (non una versione
+compatta né uno zoom-out), tasto agganciato all'angolo in alto a destra del riquadro, stato
+persistito in `localStorage` come l'altezza della playlist, più un audit esteso su feedback/a11y.
+
+- **Nuovo tasto di riduzione** (`Minimize2`/`Maximize2` da lucide-react): comprime la toolbar a una
+  pillola quadrata di 36px nello stesso angolo, lasciando il canvas sgombro durante un live. Stato
+  in `localStorage['easyvj-mapping-toolbar-collapsed']`, letto pigro come `barHeight` in
+  `PlaylistBar.tsx`.
+- **Animazione**: stessa tecnica a due stadi di `CollapsibleSection` (§7 apple-design — entra ed
+  esce lungo lo stesso percorso, non un semplice fade) — wrapper esterno che comprime l'altezza con
+  `grid-template-rows: 1fr → 0fr` (`--dur-base`/`--ease-fluid`), contenuto interno che si dissolve
+  un po' prima di schiacciarsi (`--dur-fast`). La pillola compressa vive nello stesso punto di
+  ancoraggio (`origin-bottom-left`) e si materializza con opacità+scala, non con un fade piatto.
+  **Attenzione alla combinazione con `.press`**: quella classe (CSS non layerizzato) vince sempre su
+  `transition-property/duration/timing-function` contro le utility Tailwind layerizzate come
+  `transition-colors` — per questo la pillola NON usa `.press` (userebbe la durata sbagliata,
+  100ms invece di `--dur-base`, e droppherebbe l'opacità dalla lista animata), usa invece
+  `active:scale-95` dentro lo stesso `transition-[opacity,transform]` che già controlla.
+- **Audit UI** (lacune reali, non solo preferenza): i pulsanti "custom" testuali (Tutti/TL/TR/BL/BR,
+  lati, passo frecce, −1°/+1°, ⌃K/⌐K, Bordi/Reticolo, dimensioni reticolo) non avevano feedback alla
+  pressione né un contorno visibile da tastiera — ora condividono la costante `CUSTOM_BUTTON`
+  (`.press` + `focus-visible:ring-white/50`, ring bianco perché il contesto è nero, non i token
+  `--ring` dell'app pensati per superfici card/sidebar). Aggiunti gli `aria-label` mancanti su tutti
+  i pulsanti icon-only (rotazione, scala, specchia/raddrizza, deforma superficie, reset, undo/redo,
+  griglia/snap/test pattern, lucchetto, lati del mapping) — prima solo `title`, invisibile a chi
+  naviga con screen reader senza hover.
+- Verificato nel browser: collassa/espande con animazione, la pillola riapre la toolbar intatta
+  (stato del warp mode, Bordi/Reticolo condizionali, tutti i controlli). `npx tsc -b --noEmit` pulito.
+
+## 2026-08-22 — Etichette dei cursori nel popover clip allineate al pannello "Controlli" di sinistra (solo UI)
+
+Le label di Size e dei parametri shader nell'editor clip (`ClipEditor` in `PlaylistBar.tsx`) usavano
+`.ui-label text-foreground` (nome col peso pieno) e valore `.ui-value text-muted-foreground`: l'opposto
+esatto del pannello "Controlli" della sidebar sinistra, dove label e valore vivono in `ControlRow`
+(`src/components/layout/ControlRow.tsx`) come `.ui-sublabel text-muted-foreground` (grigio tenue,
+maiuscola solo sulla prima lettera via `first-letter:uppercase`) e `.ui-value text-foreground/80`.
+Riportate a questa combinazione — stesso font, stesso colore, stessa capitalizzazione — così l'editor
+della clip e il pannello sorgente dei parametri si leggono come lo stesso linguaggio. Verificato nel
+browser affiancando i due pannelli sullo stesso effetto (Morph Petal Bloom). `npx tsc -b --noEmit` pulito.
+
+## 2026-08-22 — Skill `apple-design` applicata al popover "Opzioni clip" della Playlist (solo UI, nessuna logica toccata)
+
+Seconda passata sulla stessa barra, questa volta sul popover che si apre dai tre puntini di ogni
+clip (`ClipEditor` dentro `PlaylistBar.tsx`).
+
+- **Sfumature invece di un taglio secco sui parametri.** La lista di Size + cursori dello shader
+  (`max-h-56 overflow-y-auto`) non dava alcun segnale che continuasse oltre il bordo — niente
+  scrollbar visibile a riposo, quindi con shader dagli 8+ controlli (es. famiglia SD) gli ultimi
+  restavano nascosti senza indizi. Aggiunto `useEdgeScrollFade`, un hook locale (non condiviso: la
+  lista è un `overflow-y-auto` semplice, non una Radix ScrollArea come `useScrollShadow` in
+  `LayerInspector`) che sfuma bordo alto e basso solo quando c'è davvero altro contenuto oltre —
+  ricalcolato anche al cambio di shader, quando il numero di cursori cambia sotto lo stesso scroll.
+- **Footer separato in due gruppi.** "Cattura dal layer" (azione primaria di contenuto) e
+  Duplica/Elimina (azioni di riga) erano nello stesso filo senza gerarchia visiva. Aggiunto un
+  `<Separator orientation="vertical">` fra i due gruppi, stesso pattern già in uso nel trasporto
+  della barra per separare play/loop dal toggle Smooth/Secca.
+- Verificato nel browser (dev server temporaneo, chiuso a fine verifica) con uno shader a 8
+  parametri: scroll funzionante, sfumatura alta/bassa che compare e sparisce coerentemente con la
+  posizione, separatore del footer visibile. `npx tsc -b --noEmit` pulito.
+
+## 2026-08-22 — Skill `apple-design` applicata alla barra Playlist (solo UI, nessuna logica toccata)
+
+Stesso trattamento già dato alle due colonne laterali, ora sulla barra in fondo alla Control page
+(`src/components/Playlist/PlaylistBar.tsx`): nessun handler, store o comportamento di riproduzione è
+cambiato, solo superfici, tipografia e affordance.
+
+- **Card dei clip allineate a `LayerList`.** Usavano `bg-card` su una barra `bg-sidebar` che in dark
+  mode ha lo stesso valore: le card non avevano contrasto visibile contro lo sfondo. Ora `bg-sidebar-
+  accent/25` (hover `/45`, corrente `/70`) come le righe layer della colonna destra, con
+  `rounded-lg` invece di `rounded-md` per lo stesso raggio delle altre card dell'app.
+- **Etichette dell'editor clip → token condivisi.** I quattro `text-[11px] font-medium uppercase
+  tracking-wide text-muted-foreground` ripetuti a mano (Nome, Durata, Effetto, Colori effetto) sono
+  ora `.ui-eyebrow`; i readout di Size e dei parametri shader sono `.ui-value` (cifre tabellari) con
+  etichetta `.ui-label`, stessi token già in uso nel resto della sidebar.
+- **Maniglie di resize rese scopribili (wayfinding, §16).** Sia quella dell'altezza della barra
+  (bordo superiore) sia quella della durata di un clip (bordo destro) erano aree invisibili,
+  scopribili solo passandoci sopra per caso. Ora mostrano un segno visivo permanente e leggero (grip
+  pill in alto, filo verticale sul bordo del clip) che si accende al passaggio del mouse — l'area di
+  presa non è cambiata, solo il segnale che la rende trovabile.
+- **Indicatore "in riproduzione" più leggibile.** Bordo d'attacco del playhead acceso (`bg-primary/70`
+  largo 1px) invece del solo riempimento translucido, più un puntino animato (`animate-pulse`) accanto
+  al nome del clip corrente mentre è in play — stesso trattamento già usato per il loop-palette attivo
+  in `LayerList`.
+- **Azioni hover raggiungibili anche senza hover** (§10): il gruppo tre-puntini/elimina su ogni clip
+  restava a `opacity-0` anche su device touch, dove `group-hover` non scatta mai — irraggiungibile.
+  Aggiunta la stessa via d'uscita già usata da `.row-action`: `[@media(hover:none)]:opacity-100`.
+- **Toggle Smooth/Secca differenziato.** Era sempre `variant="outline"` indipendentemente dallo stato:
+  ora `secondary` quando attivo (smooth) coerente con gli altri toggle a due stati dell'app
+  (`TopToolbar`: Live, pannelli, playlist visibile).
+- Verificato nel browser (dev server temporaneo, chiuso a fine verifica): card vuote, con 1-2 clip,
+  stato "in riproduzione", hover sulle azioni, editor del clip in popover. `npx tsc -b --noEmit` pulito.
+
+## 2026-08-21 — Skill `apple-design` applicata alla sidebar sinistra (solo UI, nessuna logica toccata)
+
+Passata la colonna sinistra allo stesso linguaggio della destra: nessun handler, store o comportamento
+è cambiato, solo tipografia, gerarchia, feedback e larghezze.
+
+- **Ruoli tipografici unificati.** Tutti i pannelli usavano `text-xs uppercase tracking-wide` per
+  qualsiasi livello: titolo di sezione ed etichetta di slider gridavano uguale (§15). Ora i titoli
+  sono `.ui-eyebrow`, le etichette dei controlli `.ui-sublabel` in maiuscolo iniziale, i valori
+  `.ui-value` con cifre tabellari.
+- **`ControlRow` condiviso** (`src/components/layout/ControlRow.tsx`): la riga etichetta/valore/hint
+  esisteva in quattro copie leggermente diverse (EffectsPanel, FxControlsPanel, PalettePanel,
+  OutputLauncher) più quella di LayerProperties. Ora è una sola; LayerProperties la avvolge per far
+  uscire il tooltip a sinistra, verso il canvas. Il nome dell'uniform prende la maiuscola iniziale
+  con `first-letter:uppercase` (non `capitalize`, che maiuscolava ogni parola delle etichette scritte
+  a mano nella colonna destra).
+- **Note lunghe → tooltip** nel pannello Output: gli hint stampati sotto ogni cursore occupavano più
+  spazio dei controlli stessi. Stesso pattern `HelpCircle` già usato a destra (§16 Simplicity).
+- **Intestazione del pannello** allineata a quella della colonna destra (`.ui-eyebrow`, `px-4`,
+  stesso ritmo verticale) e bordo fisso sostituito dalla sfumatura che compare solo a scorrimento
+  iniziato (§12). La logica è in `useScrollShadow` (`src/hooks/use-scroll-shadow.ts`), estratta da
+  LayerInspector che la aveva inline.
+- **Feedback alla pressione** (§1): classe `.press` su lista effetti, chip delle famiglie, preset
+  palette, swatch, pulsanti dei pannelli; `focus-visible` sui bottoni custom che ne erano privi;
+  transizioni agganciate ai token `--dur-*` / `--ease-*` invece dei default del browser.
+- **Etichette più dirette** (§16): pannello "Sliders" → "Effetti" (descriveva il widget, non il
+  contenuto), "Size" → "Scala" con nota che la distingue da "Dimensione" della colonna destra,
+  "Controlli effetto" → "Controlli", tolto il titolo "Progetti" duplicato dentro il pannello
+  Progetti, empty state esplicito per la lista dei progetti salvati.
+- **Fix di larghezza (era un bug reale, non solo estetica).** Il Viewport di Radix ScrollArea rende
+  il contenuto come `display: table`, che non scende mai sotto il proprio min-content: stringendo la
+  sidebar il contenuto restava largo com'era e usciva oltre il bordo. In `ui/scroll-area.tsx` il
+  figlio è ora `!block !w-full` — verificato a 240px (il minimo) su entrambe le colonne. La riga
+  "Controlli" ha in più `flex-wrap`, perché i Button hanno `shrink-0` di serie e Reset/Random
+  sarebbero comunque usciti.
+- Verificato nel browser: i quattro pannelli (Effetti, Palette, Progetti, Output) a larghezza piena e
+  al minimo, tooltip inclusi. `npx tsc -b --noEmit` e `npm run build` puliti.
+
+## 2026-08-21 — Intestazione della colonna destra: allineata ai ruoli tipografici del resto della UI
+
+Ripresa l'intestazione a due righe aggiunta a mano ("Layer Inspector" + "Layer selezionato: <nome>"),
+lasciandone i testi e sistemandone la forma.
+
+- Il titolo era `uppercase text-[0.875rem]`: un maiuscoletto da 14px, il testo più grande della colonna,
+  che sovrastava il nome del layer. Ora usa `.ui-eyebrow` (11px/600), lo stesso di LAYERS, PROPRIETÀ,
+  SORGENTE — verificato a runtime che corpo, peso, colore e tracking coincidano.
+- Mancava il `px-4`: era l'unico testo appoggiato al bordo mentre tutta la colonna rientra di 16px.
+- I tre span erano tutti `text-sidebar-foreground`, quindi senza gerarchia. Ora sono tre livelli (§15,
+  peso + corpo + colore come insieme): etichetta indietro (12px/500 muted), nome del layer avanti
+  (15px/600, pieno, `tracking -0.011em` come vuole il testo grande), conteggio in coda (11px muted).
+- `<Separator />` sostituito dalla hairline `border-sidebar-border/60` usata negli altri divisori della
+  colonna: quello pieno pesava più del titolo che stava separando.
+- `h-12` fissa tolta (con un nome lungo il contenuto andava a capo e sfondava) e aggiunto `min-w-0` al
+  contenitore, senza il quale `truncate` non ha effetto: verificato che un nome molto lungo tronchi
+  invece di allargare la colonna.
+- Tolti i due punti dopo "Layer selezionato": con l'etichetta muted e il nome in grassetto non servono.
+
+## 2026-08-21 — "Sorgente" resta il posto del media: i suoi due cursori passano in "Proprietà"
+
+`Rimuovi sfondo scuro` (luma key) e `Nitidezza bordo` erano proprietà del layer finite in mezzo al
+caricamento del media. Spostati in "Proprietà" subito sotto Opacità, con le rispettive note passate nel
+tooltip "?" come per gli altri cursori. `BackgroundKeyPanel.tsx` resta vuoto e viene **eliminato**.
+
+Ordine della sezione: Nome layer → Blend mode → Dimensione (+Reset) → Opacità → **Rimuovi sfondo scuro →
+Nitidezza bordo** → Curvatura obiettivo → Sfumatura bordi.
+
+### "Adatta al preview" rimosso
+Via il pulsante "Adatta immagine" e la sua informativa; `PositioningPanel.tsx` conteneva solo quelli ed è
+stato **eliminato**. `requestFit()` continua a essere chiamato da solo dove serve davvero — al caricamento
+di un media (`MediaUploader`), all'accensione della camera (`CameraPicker`) e sull'asset di default
+(`lib/defaultAsset.ts`); quello che sparisce è la possibilità di **richiederlo di nuovo a mano** dopo aver
+spostato o deformato la proiezione.
+
+"Sorgente" ora contiene solo ciò che riguarda il media: caricamento file e ingresso video live.
+
+Verificato in browser: ordine delle otto etichette, cinque tooltip agganciati, i due cursori spostati
+scrivono nello store (riportati a "off" dopo la prova), pulsante e informativa spariti. `npm run build`
+verde.
+
+## 2026-08-21 — Via la sezione "Posizione": i suoi controlli continui passano in "Proprietà"
+
+Il pad direzionale spostava la proiezione a passi di 0.05 — il modo lento di fare una cosa che il gesto
+diretto sul canvas fa meglio (§2 della skill `apple-design`, la manipolazione diretta batte il comando a
+scatti). Eliminato insieme all'intera sezione. Quel che restava erano tre valori continui, che ora vivono
+in "Proprietà" insieme all'opacità.
+
+### Ordine finale della sezione Proprietà
+Nome layer → Blend mode → **Dimensione (+Reset) → Opacità → Curvatura obiettivo → Sfumatura bordi**:
+l'opacità è scesa sotto la select insieme agli altri, così i controlli continui stanno tutti di seguito
+invece di essere separati da una tendina. "Obiettivo" si chiama **Curvatura obiettivo**, che dice cosa fa
+lo slider invece di nominare solo l'oggetto su cui agisce.
+
+### File
+- `LayerProperties.tsx` riscritto: accoglie i quattro cursori con un sotto-componente `ControlRow`
+  (etichetta, valore sulla stessa riga, comando sotto) — uno solo per tutte le righe, così ciò che si
+  somiglia si comporta uguale (§16 Craft).
+- **Eliminati** `MovePanel.tsx` e `MappingOpticsPanel.tsx` (non più referenziati), voce `'move'` tolta da
+  `LayerSection` e da `DEFAULT_SECTIONS` in `uiStore.ts` — `loadSections` fa merge sui default, quindi le
+  chiavi rimaste nel localStorage sono innocue.
+
+### Le note lunghe sono diventate tooltip
+Curvatura obiettivo e Sfumatura bordi si portavano dietro 3-4 righe di spiegazione ciascuna: in "Proprietà"
+avrebbero occupato più spazio dei controlli. Ora stanno dietro un "?" accanto all'etichetta, con il
+**Tooltip nativo di shadcn** usato direttamente (`Tooltip`/`TooltipTrigger`/`TooltipContent`, provider già
+globale in `main.tsx`) — nessun componente wrapper. Il trigger è un `button`, quindi la spiegazione si
+raggiunge anche da tastiera.
+
+### Il Reset ora tocca solo la Dimensione, e una conseguenza da conoscere
+`resetActiveTransform` azzerava pan **e** zoom; sotto l'etichetta "Dimensione" avrebbe annullato anche il
+posizionamento fatto sul canvas. Ora riporta solo `zoom` a 1.
+
+Conseguenza: `transform.offsetX/offsetY` era scrivibile **soltanto** da quel pad, quindi da oggi nessun
+controllo lo modifica più (il pan sul canvas muove i `corners`, che sono un'altra cosa; il "Pan X/Y" dei
+Controlli globali agisce sullo shader dentro il quad, un'altra ancora). Un progetto salvato prima con un
+offset ≠ 0 sarebbe rimasto spostato senza via d'uscita: per questo compare un "Ricentra la proiezione"
+**solo** quando l'offset non è zero — sui progetti nuovi la riga non si vede mai.
+
+Verificato in browser: sezione Posizione sparita, Reset che porta la dimensione a 1.00× e si disabilita a
+default lasciando intatti opacità e obiettivo, tooltip che si apre col testo giusto, "Ricentra" invisibile
+a offset zero. `npm run build` verde.
+
+## 2026-08-21 — Skill `apple-design` installata nel progetto e applicata alla sidebar destra
+
+Installata `.claude/skills/apple-design/SKILL.md` (da github.com/emilkowalski/skills, file singolo, scaricato
+non modificato). Vale solo per questo progetto. Poi usata per rifare la colonna destra.
+
+### Fondamenta condivise (`src/index.css`)
+- Token di motion in un posto solo: `--ease-fluid` (`cubic-bezier(.32,.72,0,1)`, spring criticamente
+  smorzato — nessun rimbalzo), `--ease-out`, e tre durate (`--dur-press` 100ms, `--dur-fast` 180ms,
+  `--dur-base` 320ms). Le durate si azzerano sotto `prefers-reduced-motion: reduce`, quindi ogni
+  componente che le usa eredita il comportamento senza doverlo gestire.
+- Ruoli tipografici con tracking specifico per dimensione: `.ui-eyebrow` (maiuscoletto 11px, solo per i
+  titoli di sezione), `.ui-sublabel` (12px maiuscolo iniziale, dentro le sezioni), `.ui-label`, `.ui-value`.
+- Utility `.press` (scala 0.96 su `:active`) e `.row-action` (azioni di riga attenuate che si accendono
+  in hover, piene dove l'hover non esiste).
+
+### Gerarchia tipografica: 13 etichette che gridavano più del titolo che le conteneva
+Le sotto-etichette dei pannelli erano `text-xs uppercase` (12px), i titoli di sezione 11px: le figlie erano
+più grandi delle madri, e la colonna era una parete di maiuscoletto tutta sullo stesso piano. Ora il
+maiuscoletto resta ai soli titoli di sezione; dentro si torna al maiuscolo iniziale (`.ui-sublabel`) in
+`MediaUploader`, `CameraPicker`, `BackgroundKeyPanel`, `PositioningPanel`, `MaskPanel`, `MovePanel`,
+`MappingOpticsPanel`.
+
+### `CollapsibleSection.tsx`
+Apertura animata con `grid-template-rows: 0fr → 1fr` invece di `{open && ...}`: il contenuto entra ed esce
+lungo lo stesso percorso. `overflow: hidden` **solo durante** la transizione — a riposo torna `visible`,
+altrimenti taglierebbe i popover ancorati ai controlli interni.
+
+### `LayerInspector.tsx`
+- L'intestazione porta il **nome del layer attivo** e il conteggio, non più la parola "Layer" che la lista
+  sotto ripeteva già.
+- Titoli di sezione più diretti: Asset → **Sorgente**, Mask → **Maschere**, Move → **Posizione** (e via il
+  misto italiano/inglese).
+- Sfumatura in cima all'area di scorrimento al posto del bordo fisso da 1px, visibile solo quando c'è
+  davvero del contenuto nascosto sopra.
+
+### `LayerList.tsx` — riordino con Pointer Events al posto dell'HTML5 drag & drop
+L'HTML5 DnD dà solo un fantasma disegnato dal browser e nessun controllo sul movimento intermedio. Ora la
+riga resta incollata al puntatore 1:1, le vicine scivolano per fare spazio, e ai bordi della lista la
+resistenza cresce (rubber-band) invece di bloccarsi di colpo. Al rilascio la riga si posa sullo slot scelto
+e **solo dopo** l'ordine cambia davvero, così non si vede alcun salto fra animazione e nuovo layout.
+
+**La presa sta sulla maniglia a pallini, non su tutta la riga** (scelta dell'utente): il corpo della riga
+resta dedicato alla selezione. L'icona è di 14px ma l'area che risponde è allargata di ~8px per lato con uno
+pseudo-elemento, che era il vero motivo per cui in una prima versione la maniglia risultava introvabile.
+
+**Due errori commessi e corretti durante il lavoro, entrambi non ovvi:**
+1. **Lo stato del drag non può stare in `useState` se l'updater ha side-effect**: in `StrictMode` React
+   invoca gli updater due volte per verificarne la purezza, e il mio avviava lì il timer di commit → il
+   riordino veniva applicato due volte e si annullava da solo. Ora il drag vive in una `ref` e lo stato è
+   solo il suo riflesso per il render.
+2. Al commit i transform vanno azzerati **senza** transizione (un frame di `settling`): React riusa i nodi
+   per `key`, quindi la riga già disegnata nella posizione giusta animerebbe una seconda volta un movimento
+   che l'occhio ha appena visto.
+
+Verificato in browser: drag di 1 e di 2 slot dalla maniglia, trascinamento dal nome del layer (seleziona e
+non riordina), click sotto soglia, nessun transform residuo, console pulita, `npm run build` verde.
+
+## 2026-08-21 — Morph Morphogen Growth: reaction-diffusion VERA (primo effetto con stato)
+
+Su richiesta esplicita (riferimento visivo: uno screenshot di photismapp), il quarto Morphogen non e' analitico come gli altri tre ma una **Gray-Scott vera**, con lo stato che si accumula frame su frame. E' il primo effetto della libreria che non e' una funzione pura della uv e del tempo, e per reggerlo l'engine ha ora un percorso **multipass**.
+
+### Come e' fatto
+
+- **`isfParser.ts`** — un file `.glsl` puo' ora dichiarare, fra i marcatori `//! SIMULATION` e `//! DISPLAY`, un passo di simulazione (`vec4 simulate(sampler2D state, vec2 uv, vec2 texel, float phase)`) oltre al solito `processColor`. L'intestazione (uniform e costanti) finisce in **entrambi** i programmi, cosi' i controlli sono leggibili sia da chi evolve lo stato sia da chi lo disegna. Il wrapper della simulazione fornisce `easyvj_lap` (laplaciano a 9 punti), `easyvj_seedMask` e `easyvj_sourceUv`; quello di disegno riceve `uSimState`, `uSimTexel`, `uSimPhase` e `easyvj_simUv`.
+- **`engine/simulation.ts`** (nuovo) — coppia di render target in ping-pong, **toroidali** (`RepeatWrapping`: il laplaciano ai bordi legge il lato opposto, quindi il pattern non ha mai una cucitura comunque lo si mappi). Griglia 320x320: non e' una scelta di qualita' ma di tempo, le strutture di Gray-Scott hanno taglia fissa in texel e su 512 la colonia impiegava minuti a riempire il campo.
+- **`engine/SimulationPass.tsx`** (nuovo) — fa girare i passi e consegna lo stato al materiale. Il conteggio e' agganciato al **tempo trascorso** (150 passi/s a velocita' 1, tetto di 8 per frame), non ai frame: due finestre a fps diversi devono arrivare allo stesso numero di passi.
+- **`EffectsPanel.tsx` + parser** — nuovo marcatore `@options a|b|c`: un uniform float che rappresenta una scelta fra modi si renderizza come gruppo di bottoni invece che come slider a scatti (`seeds`, `lifecycle`).
+
+### Due errori che sono costati tempo, entrambi non ovvi
+
+1. **Il dizionario di uniform passato a `<shaderMaterial>` non e' quello che il materiale usa.** Scrivevo `uSimState` sull'oggetto memoizzato passato come prop, e non arrivava nulla: R3F, applicando la prop, non lascia in giro lo stesso oggetto. Tutto il resto dell'aggiornamento per-frame infatti passa da `materialRef.current.uniforms` — ora anche la simulazione. Sintomo: lo shader leggeva la texture di **fallback** (bianca), quindi il quadro era di colore pieno invece che nero.
+2. **A mezza precisione Gray-Scott cambia regime.** Con `HalfFloatType` la crescita produceva un tappeto di macchie invece del labirinto: vicino a 1.0 l'ulp di un half float vale circa 0.001, ed e' esattamente li' che vive il substrato non consumato, quindi gli incrementi piu' piccoli sparivano e la coda che alimenta il fronte non si formava. Con `FloatType` (quando la GPU sa filtrarlo, altrimenti si ripiega su half) il regime corretto e' comparso subito.
+
+Inoltre: **`active` e' parola riservata in GLSL ES** — gia' annotato per gli altri Morphogen, ricapitato qui.
+
+### Comportamento
+
+`speed`, `scale`, `pattern`, `growTime`, `seeds` (1-5), `posX/posY`, `lifecycle` (Matura | Ciclo | Manuale), `cycleTime`, `restart`, `symmetry`, `sharpness`, `glow`, piu' i soliti `sourceInfluence`/`blendAmount`/`blackThreshold`. La luminanza del media sposta **feed e kill locali** (di millesimi: la mappa di Gray-Scott e' ripidissima), quindi il rilievo della statua guida davvero la reazione invece di limitarsi a mascherarla. `speed` a 0 congela il pattern, ed e' un gesto utile in live.
+
+I tre regimi sono punti noti della mappa (F, k): crescita `coral` (0.0545, 0.0620), maturo `mitosis` (0.0367, 0.0649) oppure `maze` (0.0290, 0.0570) secondo `pattern`. La transizione e' larga apposta: cambiare (F,k) di colpo fa collassare le strutture gia' formate.
+
+### Sincronizzazione Control/Output — cosa vale e cosa no
+
+Verificato con le due finestre affiancate: i parametri viaggiano (provato con `scale`) e il **Restart si propaga**, riavviando entrambe le colonie insieme. Il ciclo automatico e' derivato dall'orologio di sistema (`Date.now()`), quindi le due finestre resettano nello stesso istante senza scambiarsi nulla.
+
+Resta un limite, da conoscere: in modalita' **Matura**, due finestre avviate in momenti diversi mostrano due realizzazioni diverse della stessa colonia (stesso regime, disegno diverso), perche' non c'e' un istante di partenza condiviso. **Un click su Restart le riallinea.** Nota di contorno emersa qui: `uTime` viene da `state.clock.elapsedTime`, che parte da zero all'apertura di *ciascuna* finestra — anche gli altri 106 shader sono quindi in fase diversa fra anteprima e proiettore, cosa che non si nota perche' sono ciclici.
+
+Misurato a 120 fps (limite del vsync) con la simulazione attiva: il costo dei passi e' trascurabile.
+
+## 2026-08-21 — Tre effetti Morphogen: pattern di Turing, micelio, mitosi
+
+Nuova mini-famiglia di effetti morfogenetici (i pattern che in biologia nascono dalla diffusione dei morfogeni), tutti e tre nella famiglia **Morph** e tutti con lo stesso controllo `sourceInfluence` (0 = generativo puro che riempie la sagoma, 1 = geometria guidata dalla luminanza dell'immagine).
+
+**Vincolo di partenza**: una reaction-diffusion vera (Gray-Scott) e' iterativa e ha bisogno di un buffer di stato in ping-pong, che la pipeline non ha — `isfParser.ts` compila un solo fragment shader per layer, senza texture di stato. I tre pattern sono quindi ottenuti in forma analitica: stesso risultato visivo, ricalcolato a ogni frame invece che accumulato (in piu' non ha stato da resettare e non puo' divergere durante un live).
+
+- **`morphMorphogenTuring.glsl`** — macchie e labirinti. Il campo e' una somma di 12 onde piane con la STESSA lunghezza d'onda, direzioni sull'angolo aureo e fasi che derivano a velocita' diverse: e' il modello matematico del pattern di Turing (la reazione seleziona una sola lunghezza d'onda e lascia libere direzione e fase), quindi le macchie hanno tutte la stessa taglia. Un fbm darebbe chiazze di ogni dimensione, cioe' una nuvola. Lo slider `pattern` muove solo la soglia: frazione coperta bassa -> isole separate, meta' esatta -> labirinti connessi. Prima di arrivarci ho provato l'interpolazione fra due formule diverse (macchie e `abs()` per le bande): a meta' corsa i due campi si cancellano e il pattern sparisce — scartata.
+- **`morphMorphogenMycelium.glsl`** — rete di ife che cresce dal centro. I filamenti sono le **isolinee** n = 0.5 di un value noise ciclico sull'angolo, non le creste di un ridged noise: le creste si spezzano dove il massimo locale non tocca il valore pieno, le isolinee invece sono continue, si biforcano sulle selle e si richiudono in anelli. La distanza dalla isolinea e' divisa per il gradiente, altrimenti dove il campo e' piatto la fascia si apre in chiazze larghe invece di restare un filo. Tre generazioni con rami raddoppiati, ognuna attiva solo oltre una certa distanza dal centro. Scartati per strada: la raggiera di isolinee angolari (rami sempre rettilinei, o fusi in pennellate se si alza il warp) e il ridged noise puro.
+- **`morphMorphogenMitosis.glsl`** — tessuto di cellule che si dividono. Voronoi con **due nuclei per cella**: quando si separano, il bordo che nasce fra loro taglia la cella in due, quindi la citocinesi viene dalla geometria e non da un'animazione disegnata. Il secondo nucleo entra in gioco solo oltre una separazione minima (`split`): con i nuclei coincidenti `f2 - f1` vale zero su tutta la cella e la cella si riempiva interamente di membrana — era il bug delle "celle bianche" viste al primo test. L'escursione totale (wobble + separazione) resta sotto mezza cella, oltre i nuclei uscirebbero dal vicinato 3x3 e i bordi si spezzerebbero.
+
+Note trasversali:
+- Tutti e tre correggono `uQuadAspect`: su un mapping largo le macchie diventerebbero ellissi e le cellule si schiaccerebbero.
+- Il gate `blackThreshold` e' pesato su `sourceInfluence`, cosi' a 0 il pattern copre tutta la sagoma anche sulle zone scure dell'immagine (a differenza degli altri Morph, che sono sempre source-driven).
+- **`active` e' parola riservata in GLSL ES**: usarla come nome di variabile fa fallire la compilazione del fragment con "Illegal use of reserved word" e il canvas resta nero. Rinominata in `split`.
+
+Verificato nel browser (dev server su :5173) su tutti e tre: nessun errore GLSL in console, gli estremi di `pattern` (isole / labirinti), `sourceInfluence` a 0 e a 0.6 con `default-stage.png` caricato — il pattern segue il rilievo della statua e resta ritagliato dai bordi del PNG.
+
+## 2026-08-21 — Fix riga doppia fra sliders e "Controlli globali"
+
+Dopo il fix del padding (voce precedente), il divisorio fra la fine degli sliders e "Controlli globali" era doppio: il `<Separator />` originale (fra `EffectsPanel` e il gruppo) più un `border-t border-sidebar-border` aggiunto sul gruppo per dargli un bordo proprio — due righe vicine invece di una.
+
+- **`ControlPage.tsx`**: rimosso il `<Separator />` ridondante, tenuto solo `border-t border-sidebar-border` sul `div.-mx-4` che avvolge le due `CollapsibleSection` — un solo divisorio, con lo stesso token di colore già usato dal `border-b` interno di `CollapsibleSection` (più coerente del `bg-border` generico di `Separator`). Import di `Separator` rimosso, non più usato in questo file.
+- Ripristinato anche lo stile del file (virgolette singole, niente punto e virgola, JSX multi-riga): un format-on-save dell'IDE con impostazioni diverse da quelle del progetto aveva riformattato l'intero file in un salvataggio precedente, senza modifiche di sostanza a parte il `border-t` aggiunto a mano — nessun'altra riga di codice è cambiata di significato.
+
+## 2026-08-21 — Fix padding doppio nelle sezioni collassabili della sidebar sinistra
+
+Le due sezioni appena rese collassabili (voce precedente) avevano il testo del titolo rientrato di 36px in più rispetto a "COLORI CASUALI"/"CONTROLLI EFFETTO" sopra di loro, invece di allinearsi come fanno a destra.
+
+- **Causa**: in `ControlPage.tsx` tutto il pannello Shader vive dentro `<div className="p-4">`, mentre a destra `CollapsibleSection` sta in una `ScrollArea` senza padding proprio. Il `px-4` di `CollapsibleSection` si sommava al `p-4` del wrapper (16+16=32px) invece di essere l'unico inset. Misurato nel browser: "CONTROLLI GLOBALI" a x=52 contro "COLORI CASUALI" a x=16 (stessa colonna); a destra "PROPRIETÀ" sta a 37px dal bordo dell'aside, che è il valore corretto (px-4 + chevron + gap).
+- **`ControlPage.tsx`**: le due `CollapsibleSection` sono avvolte in un unico `<div className="-mx-4">`, che annulla il padding orizzontale ereditato dal wrapper e riporta il `px-4` di `CollapsibleSection` a essere l'unico inset — stesso risultato della colonna destra (verificato: x=36, contro i 37 di destra, 1px di arrotondamento). Rimosso anche il `<Separator />` fra le due sezioni: con `last:border-b-0` che ora si applica correttamente dentro il gruppo, il divisorio fra "Controlli globali" e "Preset salvati" lo dà il `border-b` di `CollapsibleSection` stesso, senza righe doppie.
+- Non toccato `CollapsibleSection.tsx`: la colonna destra non aveva il problema (il suo contenitore non ha padding proprio) e non doveva essere modificata.
+
+## 2026-08-21 — Sidebar sinistra: "Controlli globali" e "Preset salvati" collassabili
+
+Su richiesta dell'utente, le due sezioni in fondo al pannello Shader si comportano ora come quelle della colonna destra (Proprietà/Asset/Mask/Move): chevron cliccabile, stato ricordato tra le sessioni.
+
+- **`store/uiStore.ts`**: `LayerSection` esteso con `'fxControls' | 'effectPresets'`, di default aperte (`DEFAULT_SECTIONS`) — comportamento invariato per chi apre l'app la prima volta. Il tipo e `CollapsibleSection` non erano davvero legati alla sola colonna destra: solo la documentazione lo era, aggiornata di conseguenza.
+- **`FxControlsPanel.tsx`** e **`EffectPresetsPanel.tsx`**: tolto il titolo maiuscolo che disegnavano da soli (ora lo fornisce `CollapsibleSection`, come già fanno `LayerProperties`/`MaskPanel`/`MovePanel` a destra). In `FxControlsPanel` il pulsante Reset resta, spostato da `justify-between` con l'ex titolo a `justify-end` da solo.
+- **`ControlPage.tsx`**: i due pannelli sono avvolti in `<CollapsibleSection section="fxControls" title="Controlli globali">` e `<CollapsibleSection section="effectPresets" title="Preset salvati">`, riusando il componente già esistente in `components/Layers/`.
+
+Verificato nel browser: chevron e persistenza dopo reload identiche alla colonna destra, nessun errore in console, nessuna riga doppia nel punto di giunzione con i `<Separator />` esistenti.
+
+## 2026-08-21 — Fix bug: la cornice corner-pin spariva dopo aver selezionato una maschera e cambiato layer
+
+Selezionando una maschera su un layer e passando poi a un altro layer, la cornice viola col corner-pin non tornava più: nemmeno il tasto "Nascondi/mostra i riferimenti di mapping" la faceva ricomparire, serviva un refresh della pagina.
+
+- **Causa**: `activeMaskId` in `layersStore` è una selezione *per-layer*, ma nessuna delle azioni che cambiano `activeLayerId` la azzerava. `ControlPage` decideva quale overlay montare con `activeMaskId != null` (`editingMask`), quindi restava montato `MaskOverlay` al posto di `CornerPinOverlay`; e siccome `MaskOverlay` disegna solo le maschere del layer *attivo*, sul nuovo layer non disegnava nulla — canvas apparentemente senza overlay. Il toggle `overlaysVisible` alternava fra "niente" e "niente", mentre il refresh funzionava solo perché `activeMaskId` riparte da `null`.
+- **`layersStore.ts`**: `selectLayer` azzera `activeMaskId` quando il layer cambia davvero (no-op se si riclicca quello già attivo). Stessa pulizia in `addLayer`, `duplicateLayer`, `removeLayer` (solo se cancella il layer attivo), `setScene`, `beginSceneCrossfade` e in `undoMapping`/`redoMapping` (che spostano la selezione sul layer dello snapshot).
+- **`ControlPage.tsx`**: `editingMask` non si fida più del solo `activeMaskId` — verifica che la maschera esista fra quelle del layer attivo. Rete di sicurezza: qualunque percorso futuro dimentichi l'azzeramento, l'overlay non può più restare bloccato su una maschera irraggiungibile.
+
+Verificato nel browser (dev server su :5173): creato Layer 2, aggiunta una maschera rettangolo, selezionata (corner-pin sostituito dalle maniglie della maschera come previsto), poi click su Layer 1 → cornice viola coi pin di nuovo visibile; tornando su Layer 2 la maschera resta applicata al layer ma non più selezionata, quindi si vede il corner-pin.
+
+## 2026-08-21 — Halo: toggle mirror interno + controllo speed per-shader su tutti i 12 effetti
+
+Molti effetti della famiglia Halo specchiano internamente la texture sorgente (`uv_sym = vec2(0.5 + abs(uv.x - 0.5), uv.y)` dentro `processColor`, indipendente dal Mirror X/Y globale del pannello Controlli globali, che agisce *prima* su un'altra copia della uv). Non c'era modo di disattivarlo, e nessuno shader Halo esponeva un controllo di velocità proprio (solo il moltiplicatore di tempo globale `uFxSpeed`, uguale per qualsiasi effetto).
+
+- **`isfParser.ts`**: `UNIFORM_RE` ora riconosce un marcatore opzionale `@step N` dopo `@default`; `UniformControl` ha un campo `step?` corrispondente. Serve a distinguere, lato UI, un controllo booleano (`@min 0 @max 1 @default 1 @step 1`) da uno slider continuo che usa lo stesso range (es. `intensity`).
+- **`EffectsPanel.tsx`**: i controlli con `step === 1 && min === 0 && max === 1` si renderizzano come bottone on/off (icona `Power`, stile identico a Mirror X/Y nei Controlli globali) invece che come slider continuo.
+- **`layersStore.ts`** (`randomizeActiveParams`): rispetta `control.step` invece di usare sempre `(max-min)/200` — altrimenti "Random" avrebbe scelto un valore intermedio (es. 0.37) per un uniform pensato come booleano, che lo shader legge poi con `mix(...)`.
+- **12 shader `.glsl`** (`symmetricalHaloSwirl[-2]`, `haloPetalKaleido`, `haloRadialKaleido`, `haloLiquidSymmetry`, `haloSpiralDrift`, `haloTwinVortex`, `haloMirrorBloom`, `haloPrismaticSwirl`, `haloMandala`, `haloFractalBloom`, `haloConcentricPulse`): aggiunto uniform `mirror` (default 1 = comportamento identico a prima, `uv_sym = mix(uv, ..., mirror)`) a tutti tranne `haloRadialKaleido` (non ha mirror interno: la sua simmetria viene dal folding angolare, non da uno specchio pixel). Su `haloMirrorBloom` e `haloConcentricPulse` (che specchiavano già su entrambi gli assi) un solo bottone `mirror` disattiva X e Y insieme.
+- **Uniform `speed`** (`time * speed`, min 0 max 3 default 1) aggiunto a 10 shader su 12: escluse `haloLiquidSymmetry` (l'uniform `flow` già esistente scala il dominio del noise nel tempo) e `haloConcentricPulse` (l'uniform `pulse` già esistente scala la frequenza dell'anello) per non duplicare un controllo che c'era già.
+- Extra solo su `symmetricalHaloSwirl` e `symmetricalHaloSwirl-2` (unici due shader quasi identici della famiglia): smontate due costanti hardcoded in uniform — `swirlAmount` (torsione dello swirl, prima fissa a 0.12) e `petals` (righe del fiore in `makeFlower`, prima fisse a 8.0).
+
+Verificato nel browser su tutti e 12 gli shader (dev server già attivo su :5173): nessun errore di compilazione GLSL in console, bottone Mirror e slider speed/swirlAmount/petals presenti e funzionanti (petals portato a 20 cambia visibilmente il numero di petali del fiore).
+
 ## 2026-08-20 — Pannello Progetti: pulsante "Nuovo progetto" con conferma di salvataggio
 
 Prima si poteva solo salvare/caricare/eliminare progetti già esistenti: non c'era modo di ripartire da zero senza ricaricare la pagina (che perde comunque lo stato solo se non c'è autosave).

@@ -1,55 +1,59 @@
-import {
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-  type PointerEvent as ReactPointerEvent,
-} from 'react'
-import {
-  Blend,
-  Camera,
-  Copy,
-  MoreHorizontal,
-  Pause,
-  Play,
-  Plus,
-  Repeat,
-  Trash2,
-  Zap,
-} from 'lucide-react'
-import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { Slider } from '@/components/ui/slider'
-import { Separator } from '@/components/ui/separator'
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
-import { ShaderPicker } from '@/components/EffectsLibrary/ShaderPicker'
-import { cn } from '@/lib/utils'
-import { useEffectsStore, defaultParamsFor, defaultColorsFor } from '@/store/effectsStore'
-import { useLayersStore, type EffectSnapshot } from '@/store/layersStore'
-import { rgbToHex, hexToRgb, type Palette, type RGB } from '@/store/paletteStore'
-import {
-  usePlaylistStore,
-  DEFAULT_CLIP_DURATION,
-  MIN_CLIP_DURATION,
-  type PlaylistClip,
-} from '@/store/playlistStore'
-import { useUiStore } from '@/store/uiStore'
-import { listEffectPresets, type EffectPreset } from '@/lib/persistence'
-import { effectThumbnail } from '@/engine/effectThumbnail'
+import { useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
+import { Blend, Camera, Copy, MoreHorizontal, Pause, Play, Plus, Repeat, Trash2, Zap } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Slider } from "@/components/ui/slider";
+import { Separator } from "@/components/ui/separator";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { ShaderPicker } from "@/components/EffectsLibrary/ShaderPicker";
+import { cn } from "@/lib/utils";
+import { useEffectsStore, defaultParamsFor, defaultColorsFor } from "@/store/effectsStore";
+import { useLayersStore, type EffectSnapshot } from "@/store/layersStore";
+import { rgbToHex, hexToRgb, type Palette, type RGB } from "@/store/paletteStore";
+import { usePlaylistStore, DEFAULT_CLIP_DURATION, MIN_CLIP_DURATION, type PlaylistClip } from "@/store/playlistStore";
+import { useUiStore } from "@/store/uiStore";
+import { listEffectPresets, type EffectPreset } from "@/lib/persistence";
+import { effectThumbnail } from "@/engine/effectThumbnail";
 
 /** Pixel per secondo nella timeline: la larghezza di un clip è proporzionale alla durata. */
-const PX_PER_SEC = 18
-const MIN_CLIP_PX = 72
+const PX_PER_SEC = 18;
+const MIN_CLIP_PX = 72;
 
 /** Altezza della barra: ridimensionabile trascinando il bordo superiore. */
-const MIN_BAR_H = 96
-const MAX_BAR_H = 192
-const BAR_HEIGHT_KEY = 'easyvj-playlist-height'
+const MIN_BAR_H = 96;
+const MAX_BAR_H = 192;
+const BAR_HEIGHT_KEY = "easyvj-playlist-height";
 
-const clampBarHeight = (h: number) => Math.min(MAX_BAR_H, Math.max(MIN_BAR_H, h))
+const clampBarHeight = (h: number) => Math.min(MAX_BAR_H, Math.max(MIN_BAR_H, h));
+
+/**
+ * Sfuma i bordi di una lista scrollabile invece di tagliarla di netto, e solo dove c'è davvero
+ * altro contenuto nascosto (§12 della skill apple-design). A differenza di `useScrollShadow`
+ * (agganciato al viewport di Radix ScrollArea) questa lista è un semplice `overflow-y-auto`, e
+ * serve anche il bordo basso: senza scrollbar visibile a riposo, nulla segnala che i cursori
+ * continuano oltre — specie subito dopo aver cambiato effetto, quando la lista riparte dall'alto.
+ */
+function useEdgeScrollFade<T extends HTMLElement>(deps: readonly unknown[]) {
+  const ref = useRef<T>(null);
+  const [top, setTop] = useState(false);
+  const [bottom, setBottom] = useState(false);
+
+  const measure = () => {
+    const el = ref.current;
+    if (!el) return;
+    setTop(el.scrollTop > 2);
+    setBottom(el.scrollTop + el.clientHeight < el.scrollHeight - 2);
+  };
+
+  useEffect(measure);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(measure, deps);
+
+  return { ref, top, bottom, onScroll: measure };
+}
 
 function clonePalette(p: Palette): Palette {
-  return { ...p, colors: p.colors.map((c) => [...c] as RGB) }
+  return { ...p, colors: p.colors.map((c) => [...c] as RGB) };
 }
 
 function clipToEffect(clip: PlaylistClip): EffectSnapshot {
@@ -58,13 +62,13 @@ function clipToEffect(clip: PlaylistClip): EffectSnapshot {
     params: { ...clip.params },
     colors: { ...(clip.colors ?? {}) },
     size: clip.size,
-    palette: clip.palette,
-  }
+    palette: clip.palette
+  };
 }
 
 /** Applica il look del clip al layer attivo (+ layer spuntati), secco o in crossfade. */
 function applyClip(clip: PlaylistClip, smooth: boolean) {
-  useLayersStore.getState().applyEffectSnapshot(clipToEffect(clip), smooth)
+  useLayersStore.getState().applyEffectSnapshot(clipToEffect(clip), smooth);
 }
 
 /**
@@ -72,140 +76,135 @@ function applyClip(clip: PlaylistClip, smooth: boolean) {
  * al cambio clip applica l'effetto al layer (secco o crossfade) e anima la dissolvenza.
  */
 function usePlaylistPlayback() {
-  const playing = usePlaylistStore((s) => s.playing)
+  const playing = usePlaylistStore((s) => s.playing);
 
   useEffect(() => {
-    if (!playing) return
-    let raf = 0
-    let last = performance.now()
-    let clipElapsed = 0
+    if (!playing) return;
+    let raf = 0;
+    let last = performance.now();
+    let clipElapsed = 0;
     /** Timestamp di inizio del crossfade in corso, null se nessuno. */
-    let transitionStart: number | null = null
+    let transitionStart: number | null = null;
 
     // avvio: applica subito il clip corrente, secco
     {
-      const s = usePlaylistStore.getState()
-      const clip = s.clips[Math.min(s.currentIndex, s.clips.length - 1)]
+      const s = usePlaylistStore.getState();
+      const clip = s.clips[Math.min(s.currentIndex, s.clips.length - 1)];
       if (!clip) {
-        s.setPlaying(false)
-        return
+        s.setPlaying(false);
+        return;
       }
-      applyClip(clip, false)
+      applyClip(clip, false);
     }
 
     const tick = (now: number) => {
-      const s = usePlaylistStore.getState()
-      if (!s.playing) return
-      const dt = (now - last) / 1000
-      last = now
+      const s = usePlaylistStore.getState();
+      if (!s.playing) return;
+      const dt = (now - last) / 1000;
+      last = now;
       if (s.clips.length === 0) {
-        s.setPlaying(false)
-        return
+        s.setPlaying(false);
+        return;
       }
 
       if (transitionStart != null) {
-        const p = (now - transitionStart) / 1000 / Math.max(s.transitionDuration, 0.01)
-        useLayersStore.getState().setTransitionProgress(Math.min(p, 1))
-        if (p >= 1) transitionStart = null
+        const p = (now - transitionStart) / 1000 / Math.max(s.transitionDuration, 0.01);
+        useLayersStore.getState().setTransitionProgress(Math.min(p, 1));
+        if (p >= 1) transitionStart = null;
       }
 
-      let index = Math.min(s.currentIndex, s.clips.length - 1)
-      let clip = s.clips[index]
-      clipElapsed += dt
+      let index = Math.min(s.currentIndex, s.clips.length - 1);
+      let clip = s.clips[index];
+      clipElapsed += dt;
 
       if (clipElapsed >= clip.duration) {
-        const nextIndex = index + 1
+        const nextIndex = index + 1;
         if (nextIndex >= s.clips.length && !s.loop) {
-          s.setClipProgress(1)
-          s.setPlaying(false)
-          return
+          s.setClipProgress(1);
+          s.setPlaying(false);
+          return;
         }
-        index = nextIndex % s.clips.length
-        clip = s.clips[index]
-        clipElapsed = 0
-        const smooth = s.transitionMode === 'smooth'
-        applyClip(clip, smooth)
-        if (smooth) transitionStart = now
-        s.setCurrentIndex(index)
+        index = nextIndex % s.clips.length;
+        clip = s.clips[index];
+        clipElapsed = 0;
+        const smooth = s.transitionMode === "smooth";
+        applyClip(clip, smooth);
+        if (smooth) transitionStart = now;
+        s.setCurrentIndex(index);
       }
 
-      s.setClipProgress(Math.min(clipElapsed / clip.duration, 1))
-      raf = requestAnimationFrame(tick)
-    }
+      s.setClipProgress(Math.min(clipElapsed / clip.duration, 1));
+      raf = requestAnimationFrame(tick);
+    };
 
-    raf = requestAnimationFrame(tick)
+    raf = requestAnimationFrame(tick);
     return () => {
-      cancelAnimationFrame(raf)
+      cancelAnimationFrame(raf);
       // chiude di colpo un eventuale crossfade rimasto a metà
-      useLayersStore.getState().setTransitionProgress(1)
-    }
-  }, [playing])
+      useLayersStore.getState().setTransitionProgress(1);
+    };
+  }, [playing]);
 }
 
 /** Editor del clip dentro il popover: nome, durata, shader, parametri, size. */
 function ClipEditor({ clip }: { clip: PlaylistClip }) {
-  const shaders = useEffectsStore((s) => s.shaders)
-  const updateClip = usePlaylistStore((s) => s.updateClip)
-  const duplicateClip = usePlaylistStore((s) => s.duplicateClip)
-  const removeClip = usePlaylistStore((s) => s.removeClip)
-  const shader = shaders.find((s) => s.name === clip.shaderName)
+  const shaders = useEffectsStore((s) => s.shaders);
+  const updateClip = usePlaylistStore((s) => s.updateClip);
+  const duplicateClip = usePlaylistStore((s) => s.duplicateClip);
+  const removeClip = usePlaylistStore((s) => s.removeClip);
+  const shader = shaders.find((s) => s.name === clip.shaderName);
 
   // ogni modifica dall'editor viene anche applicata subito al layer come anteprima
-  const patch = (p: Partial<Omit<PlaylistClip, 'id'>>) => {
-    updateClip(clip.id, p)
-    const updated = usePlaylistStore.getState().clips.find((c) => c.id === clip.id)
-    if (updated) applyClip(updated, false)
-  }
+  const patch = (p: Partial<Omit<PlaylistClip, "id">>) => {
+    updateClip(clip.id, p);
+    const updated = usePlaylistStore.getState().clips.find((c) => c.id === clip.id);
+    if (updated) applyClip(updated, false);
+  };
 
   const handleShaderChange = (shaderName: string) => {
-    const next = shaders.find((s) => s.name === shaderName)
-    if (!next) return
+    const next = shaders.find((s) => s.name === shaderName);
+    if (!next) return;
     patch({
       shaderName,
       params: defaultParamsFor(next),
       colors: defaultColorsFor(next),
       // se il nome era ancora quello di default (= nome shader), aggiornalo
-      name: clip.name === clip.shaderName ? shaderName : clip.name,
-    })
-  }
+      name: clip.name === clip.shaderName ? shaderName : clip.name
+    });
+  };
 
   const handleCapture = () => {
-    const layer = useLayersStore.getState().getActiveLayer()
-    if (!layer) return
+    const layer = useLayersStore.getState().getActiveLayer();
+    if (!layer) return;
     patch({
       shaderName: layer.shaderName,
       params: { ...(layer.params[layer.shaderName] ?? {}) },
       colors: { ...(layer.colorParams[layer.shaderName] ?? {}) },
       size: layer.size,
-      palette: clonePalette(layer.palette),
-    })
-  }
+      palette: clonePalette(layer.palette)
+    });
+  };
+
+  // il numero di cursori cambia con lo shader: la sfumatura va ricalcolata, non solo allo scroll
+  const paramsFade = useEdgeScrollFade<HTMLDivElement>([shader?.controls.length ?? 0]);
 
   return (
     <div className="flex flex-col gap-3">
       <div className="flex items-end gap-2">
         <div className="flex flex-1 flex-col gap-1">
-          <span className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
-            Nome
-          </span>
-          <Input
-            value={clip.name}
-            onChange={(e) => updateClip(clip.id, { name: e.target.value })}
-            className="h-8"
-          />
+          <span className="ui-eyebrow text-muted-foreground">Nome</span>
+          <Input value={clip.name} onChange={(e) => updateClip(clip.id, { name: e.target.value })} className="h-8" />
         </div>
         <div className="flex w-20 flex-col gap-1">
-          <span className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
-            Durata (s)
-          </span>
+          <span className="ui-eyebrow text-muted-foreground">Durata (s)</span>
           <Input
             type="number"
             min={MIN_CLIP_DURATION}
             step={0.5}
             value={Number(clip.duration.toFixed(1))}
             onChange={(e) => {
-              const v = Number(e.target.value)
-              if (Number.isFinite(v)) updateClip(clip.id, { duration: v })
+              const v = Number(e.target.value);
+              if (Number.isFinite(v)) updateClip(clip.id, { duration: v });
             }}
             className="h-8"
           />
@@ -213,9 +212,7 @@ function ClipEditor({ clip }: { clip: PlaylistClip }) {
       </div>
 
       <div className="flex flex-col gap-1">
-        <span className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
-          Effetto
-        </span>
+        <span className="ui-eyebrow text-muted-foreground">Effetto</span>
         {/* stessa lista scrollabile del pannello Shader: la tendina Radix, ancorata all'elemento
             selezionato, era impraticabile con un centinaio di effetti. Più bassa perché qui vive
             dentro l'editor della clip, che ha già poco spazio verticale. */}
@@ -225,72 +222,70 @@ function ClipEditor({ clip }: { clip: PlaylistClip }) {
       {/* colori dell'effetto (uniform vec3 dello shader) */}
       {shader && shader.colorControls.length > 0 && (
         <div className="flex flex-col gap-1.5">
-          <span className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
-            Colori effetto
-          </span>
+          <span className="ui-eyebrow text-muted-foreground">Colori effetto</span>
           <div className="flex flex-wrap gap-2">
             {shader.colorControls.map((cc) => {
-              const value = clip.colors?.[cc.name] ?? cc.default
+              const value = clip.colors?.[cc.name] ?? cc.default;
               return (
                 <label
                   key={cc.name}
                   title={cc.name}
-                  className="relative h-7 w-12 cursor-pointer overflow-hidden rounded-md border border-border"
+                  className="press relative h-7 w-12 cursor-pointer overflow-hidden rounded-md border border-border transition-colors duration-[--dur-fast] ease-[--ease-out] hover:border-foreground/30"
                   style={{ background: rgbToHex(value) }}
                 >
                   <input
                     type="color"
                     value={rgbToHex(value)}
-                    onChange={(e) =>
-                      patch({ colors: { ...clip.colors, [cc.name]: hexToRgb(e.target.value) } })
-                    }
+                    onChange={(e) => patch({ colors: { ...clip.colors, [cc.name]: hexToRgb(e.target.value) } })}
                     className="absolute inset-0 cursor-pointer opacity-0"
                   />
                 </label>
-              )
+              );
             })}
           </div>
         </div>
       )}
 
-      <div className="flex max-h-56 flex-col gap-3 overflow-y-auto pr-1">
-        <div className="flex flex-col gap-1.5">
-          <div className="flex items-center justify-between">
-            <span className="text-xs text-foreground">Size</span>
-            <span className="text-xs tabular-nums text-muted-foreground">
-              {clip.size.toFixed(2)}×
-            </span>
-          </div>
-          <Slider
-            min={0.1}
-            max={4}
-            step={0.01}
-            value={[clip.size]}
-            onValueChange={([v]) => patch({ size: v })}
-          />
-        </div>
-        {shader?.controls.map((control) => {
-          const value = clip.params[control.name] ?? control.default
-          return (
-            <div key={control.name} className="flex flex-col gap-1.5">
-              <div className="flex items-center justify-between">
-                <span className="text-xs text-foreground">{control.name}</span>
-                <span className="text-xs tabular-nums text-muted-foreground">
-                  {value.toFixed(2)}
-                </span>
-              </div>
-              <Slider
-                min={control.min}
-                max={control.max}
-                step={(control.max - control.min) / 200 || 0.01}
-                value={[value]}
-                onValueChange={([v]) =>
-                  patch({ params: { ...clip.params, [control.name]: v } })
-                }
-              />
+      <div className="relative min-h-0">
+        {/* sfumature invece di un taglio secco: appaiono solo mentre c'è altro contenuto oltre il
+            bordo, sopra o sotto (§12) */}
+        <div
+          aria-hidden
+          className="pointer-events-none absolute inset-x-0 top-0 z-10 h-4 bg-linear-to-b from-popover to-transparent transition-opacity duration-[--dur-fast] ease-[--ease-out]"
+          style={{ opacity: paramsFade.top ? 1 : 0 }}
+        />
+        <div
+          aria-hidden
+          className="pointer-events-none absolute inset-x-0 bottom-0 z-10 h-4 bg-linear-to-t from-popover to-transparent transition-opacity duration-[--dur-fast] ease-[--ease-out]"
+          style={{ opacity: paramsFade.bottom ? 1 : 0 }}
+        />
+        <div ref={paramsFade.ref} onScroll={paramsFade.onScroll} className="flex max-h-56 flex-col gap-3 overflow-y-auto pr-1">
+          <div className="flex flex-col gap-1.5">
+            <div className="flex items-center justify-between">
+              <span className="ui-sublabel inline-block text-muted-foreground first-letter:uppercase">Size</span>
+              <span className="ui-value shrink-0 text-foreground/80">{clip.size.toFixed(2)}×</span>
             </div>
-          )
-        })}
+            <Slider min={0.1} max={4} step={0.01} value={[clip.size]} onValueChange={([v]) => patch({ size: v })} />
+          </div>
+          {shader?.controls.map((control) => {
+            const value = clip.params[control.name] ?? control.default;
+            return (
+              <div key={control.name} className="flex flex-col gap-1.5">
+                <div className="flex items-center justify-between">
+                  <span className="ui-sublabel inline-block text-muted-foreground first-letter:uppercase">{control.name}</span>
+                  <span className="ui-value shrink-0 text-foreground/80">{value.toFixed(2)}</span>
+                </div>
+                <Slider
+                  min={control.min}
+                  max={control.max}
+                  step={(control.max - control.min) / 200 || 0.01}
+                  value={[value]}
+                  onValueChange={([v]) => patch({ params: { ...clip.params, [control.name]: v } })}
+                />
+              </div>
+            );
+          })}
+        </div>
       </div>
 
       <Separator />
@@ -300,12 +295,8 @@ function ClipEditor({ clip }: { clip: PlaylistClip }) {
           <Camera className="size-3.5" />
           Cattura dal layer
         </Button>
-        <Button
-          variant="ghost"
-          size="icon-sm"
-          onClick={() => duplicateClip(clip.id)}
-          aria-label="Duplica clip"
-        >
+        <Separator orientation="vertical" className="h-5" />
+        <Button variant="ghost" size="icon-sm" onClick={() => duplicateClip(clip.id)} aria-label="Duplica clip">
           <Copy className="size-3.5" />
         </Button>
         <Button
@@ -319,7 +310,7 @@ function ClipEditor({ clip }: { clip: PlaylistClip }) {
         </Button>
       </div>
     </div>
-  )
+  );
 }
 
 /** Un clip nella timeline: blocco largo quanto la durata, playhead, resize, editor al click. */
@@ -330,59 +321,59 @@ function ClipBlock({
   onDragOverIndex,
   onDrop,
   onDragEnd,
-  isDragOver,
+  isDragOver
 }: {
-  clip: PlaylistClip
-  index: number
-  onDragStart: () => void
-  onDragOverIndex: () => void
-  onDrop: () => void
-  onDragEnd: () => void
-  isDragOver: boolean
+  clip: PlaylistClip;
+  index: number;
+  onDragStart: () => void;
+  onDragOverIndex: () => void;
+  onDrop: () => void;
+  onDragEnd: () => void;
+  isDragOver: boolean;
 }) {
-  const currentIndex = usePlaylistStore((s) => s.currentIndex)
-  const clipProgress = usePlaylistStore((s) => s.clipProgress)
-  const playing = usePlaylistStore((s) => s.playing)
-  const editingClipId = usePlaylistStore((s) => s.editingClipId)
-  const setEditingClip = usePlaylistStore((s) => s.setEditingClip)
-  const updateClip = usePlaylistStore((s) => s.updateClip)
-  const removeClip = usePlaylistStore((s) => s.removeClip)
+  const currentIndex = usePlaylistStore((s) => s.currentIndex);
+  const clipProgress = usePlaylistStore((s) => s.clipProgress);
+  const playing = usePlaylistStore((s) => s.playing);
+  const editingClipId = usePlaylistStore((s) => s.editingClipId);
+  const setEditingClip = usePlaylistStore((s) => s.setEditingClip);
+  const updateClip = usePlaylistStore((s) => s.updateClip);
+  const removeClip = usePlaylistStore((s) => s.removeClip);
 
-  const isCurrent = index === currentIndex
-  const isEditing = editingClipId === clip.id
+  const isCurrent = index === currentIndex;
+  const isEditing = editingClipId === clip.id;
 
   // thumbnail statica del look del clip, rigenerata (con cache) quando il look cambia
-  const thumbKey = JSON.stringify([clip.shaderName, clip.params, clip.size, clip.palette])
+  const thumbKey = JSON.stringify([clip.shaderName, clip.params, clip.size, clip.palette]);
   const thumb = useMemo(
     () => effectThumbnail(clipToEffect(clip)),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [thumbKey],
-  )
+    [thumbKey]
+  );
 
   const handleResizeStart = (e: ReactPointerEvent) => {
-    e.preventDefault()
-    e.stopPropagation()
-    const startX = e.clientX
-    const startDuration = clip.duration
+    e.preventDefault();
+    e.stopPropagation();
+    const startX = e.clientX;
+    const startDuration = clip.duration;
     const onMove = (ev: PointerEvent) => {
-      const d = startDuration + (ev.clientX - startX) / PX_PER_SEC
-      updateClip(clip.id, { duration: d })
-    }
+      const d = startDuration + (ev.clientX - startX) / PX_PER_SEC;
+      updateClip(clip.id, { duration: d });
+    };
     const onUp = () => {
-      window.removeEventListener('pointermove', onMove)
-      window.removeEventListener('pointerup', onUp)
-    }
-    window.addEventListener('pointermove', onMove)
-    window.addEventListener('pointerup', onUp)
-  }
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+    };
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+  };
 
   return (
     <div
       draggable
       onDragStart={onDragStart}
       onDragOver={(e) => {
-        e.preventDefault()
-        onDragOverIndex()
+        e.preventDefault();
+        onDragOverIndex();
       }}
       onDrop={onDrop}
       onDragEnd={onDragEnd}
@@ -390,52 +381,56 @@ function ClipBlock({
       className={cn(
         // il clip non è più cliccabile: l'editor si apre solo dai tre puntini, così il
         // click accidentale non applica l'effetto al layer durante un live
-        'group relative flex h-full shrink-0 cursor-grab select-none flex-col justify-between overflow-hidden rounded-md border bg-card px-2 py-1.5 text-left transition-colors active:cursor-grabbing',
-        isCurrent ? 'border-primary/70' : 'border-border hover:border-foreground/30',
-        isEditing && 'ring-2 ring-ring/60',
-        isDragOver && 'border-l-4 border-l-primary',
+        "group relative flex h-full shrink-0 cursor-grab select-none flex-col justify-between overflow-hidden rounded-lg border px-2 py-1.5 text-left active:cursor-grabbing",
+        "transition-colors duration-[--dur-fast] ease-[--ease-out]",
+        isCurrent ? "border-primary/70 bg-sidebar-accent/70" : "border-transparent bg-sidebar-accent/25 hover:bg-sidebar-accent/45",
+        isEditing && "ring-2 ring-primary/50",
+        isDragOver && "border-l-4 border-l-primary"
       )}
     >
-      {/* playhead: riempimento dell'avanzamento nel clip corrente */}
+      {/* playhead: riempimento dell'avanzamento nel clip corrente, con bordo d'attacco acceso
+          così il transport si legge come "vivo" e non come una barra statica */}
       {isCurrent && (playing || clipProgress > 0) && (
-        <div
-          className="pointer-events-none absolute inset-y-0 left-0 bg-primary/15"
-          style={{ width: `${clipProgress * 100}%` }}
-        />
+        <div className="pointer-events-none absolute inset-y-0 left-0 bg-primary/10" style={{ width: `${clipProgress * 100}%` }}>
+          {clipProgress > 0 && clipProgress < 1 && <span className="absolute inset-y-0 right-0 w-px bg-primary/70" />}
+        </div>
       )}
-      <span className="relative truncate text-xs font-medium text-foreground">{clip.name}</span>
+      <span className="relative flex items-center gap-1.5 truncate">
+        {isCurrent && playing && <span className="size-1.5 shrink-0 animate-pulse rounded-full bg-primary" />}
+        <span className="ui-label truncate font-medium text-foreground">{clip.name}</span>
+      </span>
       {/* preview dell'effetto (frame statico renderizzato dallo shader del clip) */}
       {thumb && (
         <img
           src={thumb}
           alt=""
           draggable={false}
-          className="pointer-events-none relative my-0.5 min-h-0 w-full flex-1 rounded-sm object-cover"
+          className="pointer-events-none relative my-0.5 min-h-0 w-full flex-1 rounded-md object-cover ring-1 ring-black/5 dark:ring-white/5"
         />
       )}
       <div className="relative flex items-center justify-between gap-1">
         <span className="truncate text-[10px] text-muted-foreground">{clip.shaderName}</span>
-        <span className="shrink-0 text-[10px] tabular-nums text-muted-foreground">
-          {clip.duration.toFixed(1)}s
-        </span>
+        <span className="ui-value shrink-0 text-[10px] text-muted-foreground">{clip.duration.toFixed(1)}s</span>
       </div>
 
-      {/* azioni in hover: opzioni (tre puntini) e rimozione dalla playlist */}
+      {/* azioni in hover: opzioni (tre puntini) e rimozione dalla playlist. Sempre visibili
+          quando non esiste hover (touch), altrimenti resterebbero irraggiungibili (§10). */}
       <div
         draggable={false}
         onDragStart={(e) => e.stopPropagation()}
         className={cn(
-          'absolute right-2.5 top-1 z-10 flex items-center gap-0.5 rounded-md bg-card/90 p-0.5 opacity-0 shadow-sm backdrop-blur-sm transition-opacity',
-          'group-hover:opacity-100 focus-within:opacity-100',
-          isEditing && 'opacity-100',
+          "absolute right-2 top-1.5 z-10 flex items-center gap-0.5 rounded-md bg-card/90 p-0.5 opacity-0 shadow-sm backdrop-blur-sm",
+          "transition-opacity duration-[--dur-fast] ease-[--ease-out]",
+          "group-hover:opacity-100 focus-within:opacity-100 [@media(hover:none)]:opacity-100",
+          isEditing && "opacity-100"
         )}
       >
         <Popover
           open={isEditing}
           onOpenChange={(open) => {
-            setEditingClip(open ? clip.id : null)
+            setEditingClip(open ? clip.id : null);
             // aprire l'editor mostra subito il look del clip sul layer (anteprima)
-            if (open) applyClip(clip, false)
+            if (open) applyClip(clip, false);
           }}
         >
           <PopoverTrigger asChild>
@@ -443,7 +438,7 @@ function ClipBlock({
               type="button"
               aria-label="Opzioni clip"
               title="Opzioni clip"
-              className="flex size-5 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+              className="press flex size-5 items-center justify-center rounded text-muted-foreground transition-colors duration-[--dur-fast] ease-[--ease-out] hover:bg-accent hover:text-foreground"
             >
               <MoreHorizontal className="size-3.5" />
             </button>
@@ -457,34 +452,37 @@ function ClipBlock({
           aria-label="Rimuovi dalla playlist"
           title="Rimuovi dalla playlist (l'effetto resta nella libreria)"
           onClick={() => removeClip(clip.id)}
-          className="flex size-5 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-destructive/15 hover:text-destructive"
+          className="press flex size-5 items-center justify-center rounded text-muted-foreground transition-colors duration-[--dur-fast] ease-[--ease-out] hover:bg-destructive/15 hover:text-destructive"
         >
           <Trash2 className="size-3.5" />
         </button>
       </div>
 
-      {/* maniglia di resize della durata (bordo destro) */}
+      {/* maniglia di resize della durata (bordo destro): l'area di presa è larga (§10 hit
+          padding) ma il segno visivo resta un filo sottile finché non ci si passa sopra */}
       <div
         draggable={false}
         onPointerDown={handleResizeStart}
         onClick={(e) => e.stopPropagation()}
-        className="absolute inset-y-0 right-0 w-2 cursor-ew-resize bg-transparent transition-colors hover:bg-primary/40 group-hover:bg-foreground/10"
-      />
+        className="group/handle absolute inset-y-0 right-0 flex w-3 cursor-ew-resize items-center justify-end bg-transparent transition-colors duration-[--dur-fast] ease-[--ease-out] hover:bg-primary/10"
+      >
+        <span className="h-5 w-px bg-foreground/10 transition-colors duration-[--dur-fast] ease-[--ease-out] group-hover:bg-foreground/20 group-hover/handle:bg-primary/70" />
+      </div>
     </div>
-  )
+  );
 }
 
 /** Popover "+" per aggiungere un clip: da effetto della libreria o da preset salvato. */
 function AddClipButton({ onAdded }: { onAdded: () => void }) {
-  const [open, setOpen] = useState(false)
-  const [presets, setPresets] = useState<EffectPreset[]>([])
-  const shaders = useEffectsStore((s) => s.shaders)
-  const addClipFromShader = usePlaylistStore((s) => s.addClipFromShader)
-  const addClip = usePlaylistStore((s) => s.addClip)
+  const [open, setOpen] = useState(false);
+  const [presets, setPresets] = useState<EffectPreset[]>([]);
+  const shaders = useEffectsStore((s) => s.shaders);
+  const addClipFromShader = usePlaylistStore((s) => s.addClipFromShader);
+  const addClip = usePlaylistStore((s) => s.addClip);
 
   useEffect(() => {
-    if (open) listEffectPresets().then(setPresets)
-  }, [open])
+    if (open) listEffectPresets().then(setPresets);
+  }, [open]);
 
   const addFromPreset = (p: EffectPreset) => {
     addClip({
@@ -494,11 +492,11 @@ function AddClipButton({ onAdded }: { onAdded: () => void }) {
       colors: { ...(p.colors ?? {}) },
       size: p.size,
       palette: clonePalette(p.palette),
-      duration: DEFAULT_CLIP_DURATION,
-    })
-    setOpen(false)
-    onAdded()
-  }
+      duration: DEFAULT_CLIP_DURATION
+    });
+    setOpen(false);
+    onAdded();
+  };
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
@@ -511,9 +509,7 @@ function AddClipButton({ onAdded }: { onAdded: () => void }) {
         <div className="flex max-h-72 flex-col gap-2 overflow-y-auto">
           {presets.length > 0 && (
             <div className="flex flex-col gap-0.5">
-              <span className="px-1.5 py-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
-                Preset salvati
-              </span>
+              <span className="px-1.5 py-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Preset salvati</span>
               {presets.map((p) => (
                 <button
                   key={p.id}
@@ -522,26 +518,22 @@ function AddClipButton({ onAdded }: { onAdded: () => void }) {
                   className="flex items-center gap-2 rounded px-1.5 py-1 text-left text-sm hover:bg-accent/50"
                 >
                   <span className="truncate">{p.name}</span>
-                  <span className="ml-auto shrink-0 text-[10px] text-muted-foreground">
-                    {p.shaderName}
-                  </span>
+                  <span className="ml-auto shrink-0 text-[10px] text-muted-foreground">{p.shaderName}</span>
                 </button>
               ))}
               <Separator className="my-1" />
             </div>
           )}
           <div className="flex flex-col gap-0.5">
-            <span className="px-1.5 py-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
-              Effetti
-            </span>
+            <span className="px-1.5 py-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Effetti</span>
             {shaders.map((s) => (
               <button
                 key={s.name}
                 type="button"
                 onClick={() => {
-                  addClipFromShader(s)
-                  setOpen(false)
-                  onAdded()
+                  addClipFromShader(s);
+                  setOpen(false);
+                  onAdded();
                 }}
                 className="rounded px-1.5 py-1 text-left text-sm hover:bg-accent/50"
               >
@@ -552,104 +544,102 @@ function AddClipButton({ onAdded }: { onAdded: () => void }) {
         </div>
       </PopoverContent>
     </Popover>
-  )
+  );
 }
 
 /** Barra playlist in fondo alla Control page: trasporto + timeline dei clip. */
 export function PlaylistBar() {
-  usePlaylistPlayback()
+  usePlaylistPlayback();
 
-  const clips = usePlaylistStore((s) => s.clips)
-  const playing = usePlaylistStore((s) => s.playing)
-  const setPlaying = usePlaylistStore((s) => s.setPlaying)
-  const loop = usePlaylistStore((s) => s.loop)
-  const setLoop = usePlaylistStore((s) => s.setLoop)
-  const transitionMode = usePlaylistStore((s) => s.transitionMode)
-  const setTransitionMode = usePlaylistStore((s) => s.setTransitionMode)
-  const transitionDuration = usePlaylistStore((s) => s.transitionDuration)
-  const setTransitionDuration = usePlaylistStore((s) => s.setTransitionDuration)
-  const reorderClips = usePlaylistStore((s) => s.reorderClips)
-  const playlistVisible = useUiStore((s) => s.playlistVisible)
+  const clips = usePlaylistStore((s) => s.clips);
+  const playing = usePlaylistStore((s) => s.playing);
+  const setPlaying = usePlaylistStore((s) => s.setPlaying);
+  const loop = usePlaylistStore((s) => s.loop);
+  const setLoop = usePlaylistStore((s) => s.setLoop);
+  const transitionMode = usePlaylistStore((s) => s.transitionMode);
+  const setTransitionMode = usePlaylistStore((s) => s.setTransitionMode);
+  const transitionDuration = usePlaylistStore((s) => s.transitionDuration);
+  const setTransitionDuration = usePlaylistStore((s) => s.setTransitionDuration);
+  const reorderClips = usePlaylistStore((s) => s.reorderClips);
+  const playlistVisible = useUiStore((s) => s.playlistVisible);
 
-  const dragIndex = useRef<number | null>(null)
-  const [dragOver, setDragOver] = useState<number | null>(null)
+  const dragIndex = useRef<number | null>(null);
+  const [dragOver, setDragOver] = useState<number | null>(null);
 
   const handleDrop = (to: number) => {
-    if (dragIndex.current != null) reorderClips(dragIndex.current, to)
-    dragIndex.current = null
-    setDragOver(null)
-  }
+    if (dragIndex.current != null) reorderClips(dragIndex.current, to);
+    dragIndex.current = null;
+    setDragOver(null);
+  };
 
   // altezza della barra, ridimensionabile dal bordo superiore e persistita
-  const [barHeight, setBarHeight] = useState(() =>
-    clampBarHeight(Number(localStorage.getItem(BAR_HEIGHT_KEY)) || MIN_BAR_H),
-  )
+  const [barHeight, setBarHeight] = useState(() => clampBarHeight(Number(localStorage.getItem(BAR_HEIGHT_KEY)) || MIN_BAR_H));
   const handleBarResize = (e: ReactPointerEvent) => {
-    e.preventDefault()
-    const startY = e.clientY
-    const startH = barHeight
-    let latest = startH
+    e.preventDefault();
+    const startY = e.clientY;
+    const startH = barHeight;
+    let latest = startH;
     const onMove = (ev: PointerEvent) => {
-      latest = clampBarHeight(startH - (ev.clientY - startY))
-      setBarHeight(latest)
-    }
+      latest = clampBarHeight(startH - (ev.clientY - startY));
+      setBarHeight(latest);
+    };
     const onUp = () => {
-      localStorage.setItem(BAR_HEIGHT_KEY, String(latest))
-      window.removeEventListener('pointermove', onMove)
-      window.removeEventListener('pointerup', onUp)
-    }
-    window.addEventListener('pointermove', onMove)
-    window.addEventListener('pointerup', onUp)
-  }
+      localStorage.setItem(BAR_HEIGHT_KEY, String(latest));
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+    };
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+  };
 
   // scroll orizzontale della timeline anche con la rotellina verticale del mouse
-  const scrollRef = useRef<HTMLDivElement>(null)
+  const scrollRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
-    const el = scrollRef.current
-    if (!el) return
+    const el = scrollRef.current;
+    if (!el) return;
     const onWheel = (e: WheelEvent) => {
       // lascia passare lo scroll orizzontale nativo di trackpad/shift+rotellina
-      if (Math.abs(e.deltaY) <= Math.abs(e.deltaX)) return
-      e.preventDefault()
-      el.scrollLeft += e.deltaY
-    }
-    el.addEventListener('wheel', onWheel, { passive: false })
-    return () => el.removeEventListener('wheel', onWheel)
-  }, [])
+      if (Math.abs(e.deltaY) <= Math.abs(e.deltaX)) return;
+      e.preventDefault();
+      el.scrollLeft += e.deltaY;
+    };
+    el.addEventListener("wheel", onWheel, { passive: false });
+    return () => el.removeEventListener("wheel", onWheel);
+  }, []);
 
   const scrollToEnd = () => {
     // dopo il render del nuovo clip, porta la timeline in fondo per mostrarlo
     requestAnimationFrame(() => {
-      const el = scrollRef.current
-      if (el) el.scrollTo({ left: el.scrollWidth, behavior: 'smooth' })
-    })
-  }
+      const el = scrollRef.current;
+      if (el) el.scrollTo({ left: el.scrollWidth, behavior: "smooth" });
+    });
+  };
 
-  const smooth = transitionMode === 'smooth'
+  const smooth = transitionMode === "smooth";
 
   return (
     <div
       style={{ height: barHeight }}
       className={cn(
-        'relative flex shrink-0 items-stretch gap-3 border-t border-sidebar-border bg-sidebar px-3 py-2.5',
+        "relative flex shrink-0 items-stretch gap-3 border-t border-sidebar-border bg-sidebar px-3 py-2.5",
         // nascosta ma montata: il motore di riproduzione (usePlaylistPlayback) vive qui
         // e smontarlo fermerebbe la sequenza in corso
-        !playlistVisible && 'hidden',
+        !playlistVisible && "hidden"
       )}
     >
-      {/* maniglia di resize dell'altezza (bordo superiore) */}
-      <div
-        onPointerDown={handleBarResize}
-        className="absolute inset-x-0 -top-1 z-10 h-2 cursor-ns-resize transition-colors hover:bg-primary/30"
-      />
+      {/* maniglia di resize dell'altezza (bordo superiore): una grip pill centrale rende visibile
+          da subito che il bordo si trascina, invece di lasciarlo scoprire per caso (wayfinding) */}
+      <div onPointerDown={handleBarResize} className="group/vgrip absolute inset-x-0 -top-1.5 z-10 flex h-3 cursor-ns-resize items-center justify-center">
+        <span className="h-1 w-9 rounded-full bg-foreground/15 transition-colors duration-[--dur-fast] ease-[--ease-out] group-hover/vgrip:bg-primary/60" />
+      </div>
       {/* trasporto */}
       <div className="flex shrink-0 items-center gap-1.5">
         <Button
           size="icon"
-          variant={playing ? 'default' : 'secondary'}
+          variant={playing ? "default" : "secondary"}
           onClick={() => setPlaying(!playing)}
           disabled={clips.length === 0}
-          aria-label={playing ? 'Pausa' : 'Play'}
+          aria-label={playing ? "Pausa" : "Play"}
         >
           {playing ? <Pause className="size-4" /> : <Play className="size-4" />}
         </Button>
@@ -658,24 +648,20 @@ export function PlaylistBar() {
           variant="ghost"
           onClick={() => setLoop(!loop)}
           aria-label="Loop"
-          title={loop ? 'Loop attivo: la sequenza si ripete' : 'Loop spento: si ferma sull’ultimo clip'}
-          className={cn(loop ? 'text-primary' : 'text-muted-foreground')}
+          title={loop ? "Loop attivo: la sequenza si ripete" : "Loop spento: si ferma sull’ultimo clip"}
+          className={cn(loop ? "text-primary" : "text-muted-foreground")}
         >
           <Repeat className="size-4" />
         </Button>
         <Button
           size="sm"
-          variant="outline"
-          onClick={() => setTransitionMode(smooth ? 'cut' : 'smooth')}
-          title={
-            smooth
-              ? 'Transizione smooth (crossfade): clicca per passare a secca'
-              : 'Transizione secca: clicca per passare a smooth'
-          }
-          className="gap-1.5"
+          variant={smooth ? "secondary" : "outline"}
+          onClick={() => setTransitionMode(smooth ? "cut" : "smooth")}
+          title={smooth ? "Transizione smooth (crossfade): clicca per passare a secca" : "Transizione secca: clicca per passare a smooth"}
+          className={cn("gap-1.5", !smooth && "text-muted-foreground")}
         >
           {smooth ? <Blend className="size-3.5" /> : <Zap className="size-3.5" />}
-          {smooth ? 'Smooth' : 'Secca'}
+          {smooth ? "Smooth" : "Secca"}
         </Button>
         {smooth && (
           <div className="flex items-center gap-1">
@@ -686,8 +672,8 @@ export function PlaylistBar() {
               step={0.1}
               value={Number(transitionDuration.toFixed(1))}
               onChange={(e) => {
-                const v = Number(e.target.value)
-                if (Number.isFinite(v)) setTransitionDuration(v)
+                const v = Number(e.target.value);
+                if (Number.isFinite(v)) setTransitionDuration(v);
               }}
               className="h-8 w-16"
               aria-label="Durata transizione (secondi)"
@@ -700,14 +686,11 @@ export function PlaylistBar() {
       <Separator orientation="vertical" className="h-auto" />
 
       {/* timeline: scrollabile in orizzontale (rotellina + scrollbar visibile) */}
-      <div
-        ref={scrollRef}
-        className="timeline-scroll flex min-w-0 flex-1 items-stretch gap-1.5 overflow-x-auto pb-1"
-      >
+      <div ref={scrollRef} className="timeline-scroll flex min-w-0 flex-1 items-stretch gap-1.5 overflow-x-auto pb-1">
         {clips.length === 0 ? (
-          <p className="self-center text-xs text-muted-foreground">
-            Aggiungi effetti alla sequenza con il pulsante +. Trascina il bordo destro di un clip
-            per cambiarne la durata, passaci sopra e usa i tre puntini per modificarlo.
+          <p className="ui-sublabel self-center leading-relaxed text-muted-foreground/80">
+            Aggiungi effetti alla sequenza con il pulsante +. Trascina il bordo destro di un clip per cambiarne la durata, passaci sopra e usa i tre puntini per
+            modificarlo.
           </p>
         ) : (
           clips.map((clip, i) => (
@@ -720,8 +703,8 @@ export function PlaylistBar() {
               onDragOverIndex={() => setDragOver(i)}
               onDrop={() => handleDrop(i)}
               onDragEnd={() => {
-                dragIndex.current = null
-                setDragOver(null)
+                dragIndex.current = null;
+                setDragOver(null);
               }}
             />
           ))
@@ -730,5 +713,5 @@ export function PlaylistBar() {
 
       <AddClipButton onAdded={scrollToEnd} />
     </div>
-  )
+  );
 }

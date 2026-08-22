@@ -40,7 +40,7 @@ export function MaskPanel() {
   return (
     <div className="flex flex-col gap-5">
       <div className="flex flex-col gap-2">
-        <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+        <span className="ui-sublabel text-muted-foreground">
           Forme maschera
         </span>
         <div className="grid grid-cols-2 gap-2">
@@ -96,7 +96,7 @@ export function MaskPanel() {
         <>
           <Separator />
           <div className="flex flex-col gap-3">
-            <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+            <span className="ui-sublabel text-muted-foreground">
               Maschera selezionata
             </span>
 
@@ -146,7 +146,7 @@ export function MaskPanel() {
       <Separator />
 
       <div className="flex flex-col gap-2">
-        <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+        <span className="ui-sublabel text-muted-foreground">
           Maschera da immagine (stencil)
         </span>
         <div className="flex gap-2">

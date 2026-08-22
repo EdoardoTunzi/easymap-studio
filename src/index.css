@@ -152,3 +152,106 @@ body,
   background: color-mix(in oklch, var(--foreground) 30%, transparent);
   border-radius: 3px;
 }
+
+/* ─── Fondamenta di motion e tipografia (skill apple-design) ─────────────────
+   Un solo posto per le curve e le durate: ogni transizione dell'interfaccia
+   pesca da qui, così i tempi si assomigliano invece di essere scelti a caso
+   componente per componente ("nothing is random", §16 Craft).                */
+:root {
+  /* Spring criticamente smorzato (damping 1.0, response ~0.4): raggiunge il
+     target senza overshoot. È la curva di default per tutto ciò che non nasce
+     da un gesto con slancio. */
+  --ease-fluid: cubic-bezier(0.32, 0.72, 0, 1);
+  /* Decelerazione secca per il feedback immediato al tocco. */
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+
+  --dur-press: 100ms; /* §1: il feedback al pointer-down deve essere istantaneo */
+  --dur-fast: 180ms;
+  --dur-base: 320ms; /* response 0.3–0.4s: aperture, collassi, riordini */
+}
+
+/* §14: ridurre il moto non vuol dire togliere il feedback, ma sostituire gli
+   spostamenti con dissolvenze brevi. Azzerando le durate qui, ogni componente
+   che usa i token eredita il comportamento senza doverlo gestire. */
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --dur-press: 1ms;
+    --dur-fast: 1ms;
+    --dur-base: 1ms;
+  }
+  *,
+  *::before,
+  *::after {
+    animation-duration: 1ms !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* §1: la risposta vive sulla pressione, non sul rilascio. */
+@media (prefers-reduced-motion: no-preference) {
+  .press {
+    transition: transform var(--dur-press) var(--ease-out);
+  }
+  .press:active {
+    transform: scale(0.96);
+  }
+}
+
+/* §15: il tracking è specifico della dimensione — le micro-maiuscole hanno
+   bisogno di respiro, il corpo del testo no. Tre ruoli, tre trattamenti. */
+.ui-eyebrow {
+  font-size: 0.6875rem; /* 11px */
+  line-height: 1.1;
+  font-weight: 600;
+  letter-spacing: 0.055em;
+  text-transform: uppercase;
+}
+.ui-label {
+  font-size: 0.75rem;
+  line-height: 1.35;
+  letter-spacing: 0;
+}
+.ui-value {
+  font-size: 0.75rem;
+  line-height: 1.35;
+  letter-spacing: 0.005em;
+  font-variant-numeric: tabular-nums;
+}
+
+/* §12: dove la chrome fluttuante copre il contenuto si sfuma il bordo, invece
+   di piantarci sopra una riga da 1px. La maschera vale solo sul lato alto. */
+.edge-fade-top {
+  -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 12px);
+  mask-image: linear-gradient(to bottom, transparent 0, #000 12px);
+}
+
+/* §16 Simplicity: le azioni distruttive di una riga non devono gridare quanto
+   il nome del layer. Restano lì, attenuate, e si accendono quando il puntatore
+   entra nella riga o quando la tastiera ci arriva sopra. Dove l'hover non
+   esiste (touch) sono sempre piene, altrimenti diventerebbero irraggiungibili. */
+.row-action {
+  opacity: 0.45;
+  transition:
+    opacity var(--dur-fast) var(--ease-out),
+    color var(--dur-fast) var(--ease-out);
+}
+.group\/row:hover .row-action,
+.row-action:focus-visible {
+  opacity: 1;
+}
+@media (hover: none) {
+  .row-action {
+    opacity: 1;
+  }
+}
+
+/* §15/§16: le etichette dentro una sezione non devono gridare più forte del titolo che le
+   contiene. Il maiuscoletto resta al livello di navigazione (.ui-eyebrow, i titoli di sezione);
+   qui dentro si torna al maiuscolo iniziale, che a parità di corpo si legge molto più in fretta. */
+.ui-sublabel {
+  font-size: 0.75rem;
+  line-height: 1.35;
+  font-weight: 500;
+  letter-spacing: 0;
+}

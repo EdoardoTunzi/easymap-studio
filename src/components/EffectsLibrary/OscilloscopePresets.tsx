@@ -14,17 +14,15 @@ export function OscilloscopePresets() {
   const setActiveParams = useLayersStore((s) => s.setActiveParams)
 
   return (
-    <div className="flex flex-col gap-1.5 rounded-md border border-border p-2">
-      <span className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
-        Forme rapide
-      </span>
+    <div className="flex flex-col gap-2 rounded-lg border border-border bg-sidebar-accent/20 p-2.5">
+      <span className="ui-eyebrow text-muted-foreground">Forme rapide</span>
       <div className="grid grid-cols-3 gap-1.5">
         {OSCILLOSCOPE_PRESETS.map((preset, i) => (
           <Button
             key={preset.id}
             variant="outline"
             size="sm"
-            className="h-7 justify-center px-1 text-[11px]"
+            className="press h-7 justify-center px-1 text-[11px]"
             onClick={() => setActiveParams(preset.params)}
             title={`${preset.hint} (${ALT_LABEL}${i + 1})`}
           >
@@ -32,7 +30,7 @@ export function OscilloscopePresets() {
           </Button>
         ))}
       </div>
-      <p className="text-[10px] leading-relaxed text-muted-foreground">
+      <p className="text-[10px] leading-relaxed text-muted-foreground/80">
         Anche da tastiera: {ALT_LABEL}1…{ALT_LABEL}
         {OSCILLOSCOPE_PRESETS.length}. Volume e reattività non vengono toccati.
       </p>

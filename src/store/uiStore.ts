@@ -9,15 +9,25 @@ import { WARP_EDGE_CORNERS, type WarpEdgeId } from '../lib/warp'
  */
 export type Panel = 'shader' | 'palette' | 'projects' | 'output'
 
-/** Blocchi richiudibili della colonna destra, sotto la lista dei layer (che resta fissa). */
-export type LayerSection = 'properties' | 'asset' | 'mask' | 'move'
+/**
+ * Blocchi richiudibili delle sidebar: quelli della colonna destra (sotto la lista dei layer, che
+ * resta fissa) e i due della sinistra che si comportano allo stesso modo (Controlli globali,
+ * Preset salvati) — stessa persistenza, stesso componente `CollapsibleSection`.
+ */
+export type LayerSection =
+  | 'properties'
+  | 'asset'
+  | 'mask'
+  | 'fxControls'
+  | 'effectPresets'
 
 const SECTIONS_STORAGE_KEY = 'easyvj-layer-sections'
 const DEFAULT_SECTIONS: Record<LayerSection, boolean> = {
   properties: true,
   asset: true,
   mask: true,
-  move: true,
+  fxControls: true,
+  effectPresets: true,
 }
 
 function loadSections(): Record<LayerSection, boolean> {
