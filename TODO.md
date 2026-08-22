@@ -205,3 +205,6 @@ Modello: scena = pila di Layer indipendenti; ogni layer ha contenuto (img/gif/vi
 - [ ] `transform.offsetX/offsetY` non è più scrivibile da nessun controllo (era solo il pad direzionale). Oggi c'è un "Ricentra la proiezione" che compare solo se l'offset è ≠ 0, per non intrappolare i progetti vecchi. Se si decide che l'offset non serve più, si può togliere dal `Transform` e semplificare `ShaderPlane`/`TestPattern`/`CornerPinOverlay`/`MaskOverlay`
 - [ ] `LayerList`: due layer possono avere lo stesso nome (bug preesistente di `addLayer`/`duplicateLayer`), quindi in lista sono indistinguibili
 - [ ] Riordino layer: valutare l'autoscroll quando si trascina oltre il bordo della lista (oggi la lista scorre solo con la rotellina)
+- [x] Titolo del pannello sinistro (Effetti/Palette/Progetti/Output, blocco condiviso in `ControlPage.tsx`) allineato a quello della colonna destra: sfondo `bg-secondary/40`, testo centrato invece che a bordo sinistro
+- [x] Blocco a schermo intero sotto i 768px (`MobileBlockOverlay.tsx`, montato una volta in `App.tsx` fuori dalle route): l'app non ha senso su un telefono, un tablet in orizzontale (1024px+) resta sopra soglia e non lo vede
+- [x] Pagina 404 basic (`src/routes/not-found/NotFoundPage.tsx`) con link a `/control`, route catch-all `path="*"` in `App.tsx`: prima un URL fuori da /control e /output finiva su schermo bianco

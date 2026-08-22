@@ -2,6 +2,33 @@
 
 Ogni modifica al progetto va registrata qui con data, descrizione e motivazione. Le voci più recenti in alto dentro ogni giornata.
 
+## 2026-08-22 — Pagina 404 (`src/routes/not-found/NotFoundPage.tsx`)
+
+Qualunque URL fuori da `/control` e `/output` (prima cadeva su un `<Routes>` senza match, schermo
+bianco) ora mostra una pagina 404 basic: "404" / "Pagina non trovata" / link "Torna all'app" verso
+`/control`. Route catch-all `path="*"` aggiunta in fondo a `App.tsx`. Verificato nel browser
+(URL inesistente → 404 → click sul link → arriva su `/control`). `npx tsc -b --noEmit` pulito.
+
+## 2026-08-22 — Blocco a schermo intero da telefono (`MobileBlockOverlay.tsx`)
+
+L'app non ha senso su un telefono (corner-pin, sidebar ridimensionabili, canvas WebGL): sotto i
+768px ora compare un blocco a schermo intero non richiudibile invece di lasciar provare un layout
+rotto. Un tablet in orizzontale (1024px+) resta sopra soglia e passa senza vederlo — di proposito
+il testo non lo nomina, per non suggerire "prova comunque ruotando il telefono".
+
+- **Nuovo componente** `src/components/layout/MobileBlockOverlay.tsx`: riusa `useIsMobile()`
+  (`src/hooks/use-mobile.ts`, soglia 768px già esistente e già in uso altrove nel progetto per la
+  sidebar — nessun hook nuovo). Overlay `fixed inset-0` sopra tutto (`z-100`), icona
+  `MonitorSmartphone` di lucide-react, messaggio breve senza menzionare i tablet.
+  Deciso con l'utente (AskUserQuestion) prima di implementare: bloccante e non richiudibile (non un
+  avviso ignorabile), soglia sulla larghezza del viewport (non user-agent, così reagisce anche
+  restringendo la finestra su desktop), attivo su entrambe le route.
+- **Montato una sola volta** in `src/App.tsx`, fuori da `<Routes>`: copre sia `/control` sia
+  `/output` senza doverlo inserire in ciascuna pagina.
+- Verificato nel browser: a 390×844 (telefono) compare il blocco su entrambe le route; a 1024×768
+  (tablet orizzontale) l'app resta pienamente utilizzabile, nessun overlay. `npx tsc -b --noEmit`
+  pulito.
+
 ## 2026-08-22 — Titolo del pannello sinistro allineato a quello della colonna destra (`ControlPage.tsx`, solo UI)
 
 L'utente aveva aggiunto a mano `bg-secondary/40` + testo centrato al titolo "Layer Inspector" della
