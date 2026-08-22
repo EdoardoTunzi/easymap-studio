@@ -131,7 +131,7 @@ export function ControlPage() {
                   al posto di un bordo fisso che c'è anche quando non nasconde niente. */}
               <div
                 aria-hidden
-                className="pointer-events-none absolute inset-x-0 top-0 z-10 h-6 bg-gradient-to-b from-sidebar to-transparent transition-opacity duration-[--dur-base] ease-[--ease-out]"
+                className="pointer-events-none absolute inset-x-0 top-0 z-10 h-6 bg-linear-to-b from-sidebar to-transparent transition-opacity duration-[--dur-base] ease-[--ease-out]"
                 style={{ opacity: panelScroll.scrolled ? 1 : 0 }}
               />
               <ScrollArea className="h-full border-t border-sidebar-border/60">
