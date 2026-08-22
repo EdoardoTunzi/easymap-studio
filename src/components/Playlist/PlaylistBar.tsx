@@ -48,6 +48,32 @@ const BAR_HEIGHT_KEY = 'easyvj-playlist-height'
 
 const clampBarHeight = (h: number) => Math.min(MAX_BAR_H, Math.max(MIN_BAR_H, h))
 
+/**
+ * Sfuma i bordi di una lista scrollabile invece di tagliarla di netto, e solo dove c'è davvero
+ * altro contenuto nascosto (§12 della skill apple-design). A differenza di `useScrollShadow`
+ * (agganciato al viewport di Radix ScrollArea) questa lista è un semplice `overflow-y-auto`, e
+ * serve anche il bordo basso: senza scrollbar visibile a riposo, nulla segnala che i cursori
+ * continuano oltre — specie subito dopo aver cambiato effetto, quando la lista riparte dall'alto.
+ */
+function useEdgeScrollFade<T extends HTMLElement>(deps: readonly unknown[]) {
+  const ref = useRef<T>(null)
+  const [top, setTop] = useState(false)
+  const [bottom, setBottom] = useState(false)
+
+  const measure = () => {
+    const el = ref.current
+    if (!el) return
+    setTop(el.scrollTop > 2)
+    setBottom(el.scrollTop + el.clientHeight < el.scrollHeight - 2)
+  }
+
+  useEffect(measure)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(measure, deps)
+
+  return { ref, top, bottom, onScroll: measure }
+}
+
 function clonePalette(p: Palette): Palette {
   return { ...p, colors: p.colors.map((c) => [...c] as RGB) }
 }
@@ -181,13 +207,14 @@ function ClipEditor({ clip }: { clip: PlaylistClip }) {
     })
   }
 
+  // il numero di cursori cambia con lo shader: la sfumatura va ricalcolata, non solo allo scroll
+  const paramsFade = useEdgeScrollFade<HTMLDivElement>([shader?.controls.length ?? 0])
+
   return (
     <div className="flex flex-col gap-3">
       <div className="flex items-end gap-2">
         <div className="flex flex-1 flex-col gap-1">
-          <span className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
-            Nome
-          </span>
+          <span className="ui-eyebrow text-muted-foreground">Nome</span>
           <Input
             value={clip.name}
             onChange={(e) => updateClip(clip.id, { name: e.target.value })}
@@ -195,9 +222,7 @@ function ClipEditor({ clip }: { clip: PlaylistClip }) {
           />
         </div>
         <div className="flex w-20 flex-col gap-1">
-          <span className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
-            Durata (s)
-          </span>
+          <span className="ui-eyebrow text-muted-foreground">Durata (s)</span>
           <Input
             type="number"
             min={MIN_CLIP_DURATION}
@@ -213,9 +238,7 @@ function ClipEditor({ clip }: { clip: PlaylistClip }) {
       </div>
 
       <div className="flex flex-col gap-1">
-        <span className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
-          Effetto
-        </span>
+        <span className="ui-eyebrow text-muted-foreground">Effetto</span>
         {/* stessa lista scrollabile del pannello Shader: la tendina Radix, ancorata all'elemento
             selezionato, era impraticabile con un centinaio di effetti. Più bassa perché qui vive
             dentro l'editor della clip, che ha già poco spazio verticale. */}
@@ -225,9 +248,7 @@ function ClipEditor({ clip }: { clip: PlaylistClip }) {
       {/* colori dell'effetto (uniform vec3 dello shader) */}
       {shader && shader.colorControls.length > 0 && (
         <div className="flex flex-col gap-1.5">
-          <span className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
-            Colori effetto
-          </span>
+          <span className="ui-eyebrow text-muted-foreground">Colori effetto</span>
           <div className="flex flex-wrap gap-2">
             {shader.colorControls.map((cc) => {
               const value = clip.colors?.[cc.name] ?? cc.default
@@ -235,7 +256,7 @@ function ClipEditor({ clip }: { clip: PlaylistClip }) {
                 <label
                   key={cc.name}
                   title={cc.name}
-                  className="relative h-7 w-12 cursor-pointer overflow-hidden rounded-md border border-border"
+                  className="press relative h-7 w-12 cursor-pointer overflow-hidden rounded-md border border-border transition-colors duration-[--dur-fast] ease-[--ease-out] hover:border-foreground/30"
                   style={{ background: rgbToHex(value) }}
                 >
                   <input
@@ -253,44 +274,62 @@ function ClipEditor({ clip }: { clip: PlaylistClip }) {
         </div>
       )}
 
-      <div className="flex max-h-56 flex-col gap-3 overflow-y-auto pr-1">
-        <div className="flex flex-col gap-1.5">
-          <div className="flex items-center justify-between">
-            <span className="text-xs text-foreground">Size</span>
-            <span className="text-xs tabular-nums text-muted-foreground">
-              {clip.size.toFixed(2)}×
-            </span>
-          </div>
-          <Slider
-            min={0.1}
-            max={4}
-            step={0.01}
-            value={[clip.size]}
-            onValueChange={([v]) => patch({ size: v })}
-          />
-        </div>
-        {shader?.controls.map((control) => {
-          const value = clip.params[control.name] ?? control.default
-          return (
-            <div key={control.name} className="flex flex-col gap-1.5">
-              <div className="flex items-center justify-between">
-                <span className="text-xs text-foreground">{control.name}</span>
-                <span className="text-xs tabular-nums text-muted-foreground">
-                  {value.toFixed(2)}
-                </span>
-              </div>
-              <Slider
-                min={control.min}
-                max={control.max}
-                step={(control.max - control.min) / 200 || 0.01}
-                value={[value]}
-                onValueChange={([v]) =>
-                  patch({ params: { ...clip.params, [control.name]: v } })
-                }
-              />
+      <div className="relative min-h-0">
+        {/* sfumature invece di un taglio secco: appaiono solo mentre c'è altro contenuto oltre il
+            bordo, sopra o sotto (§12) */}
+        <div
+          aria-hidden
+          className="pointer-events-none absolute inset-x-0 top-0 z-10 h-4 bg-gradient-to-b from-popover to-transparent transition-opacity duration-[--dur-fast] ease-[--ease-out]"
+          style={{ opacity: paramsFade.top ? 1 : 0 }}
+        />
+        <div
+          aria-hidden
+          className="pointer-events-none absolute inset-x-0 bottom-0 z-10 h-4 bg-gradient-to-t from-popover to-transparent transition-opacity duration-[--dur-fast] ease-[--ease-out]"
+          style={{ opacity: paramsFade.bottom ? 1 : 0 }}
+        />
+        <div
+          ref={paramsFade.ref}
+          onScroll={paramsFade.onScroll}
+          className="flex max-h-56 flex-col gap-3 overflow-y-auto pr-1"
+        >
+          <div className="flex flex-col gap-1.5">
+            <div className="flex items-center justify-between">
+              <span className="ui-sublabel inline-block text-muted-foreground first-letter:uppercase">
+                Size
+              </span>
+              <span className="ui-value shrink-0 text-foreground/80">{clip.size.toFixed(2)}×</span>
             </div>
-          )
-        })}
+            <Slider
+              min={0.1}
+              max={4}
+              step={0.01}
+              value={[clip.size]}
+              onValueChange={([v]) => patch({ size: v })}
+            />
+          </div>
+          {shader?.controls.map((control) => {
+            const value = clip.params[control.name] ?? control.default
+            return (
+              <div key={control.name} className="flex flex-col gap-1.5">
+                <div className="flex items-center justify-between">
+                  <span className="ui-sublabel inline-block text-muted-foreground first-letter:uppercase">
+                    {control.name}
+                  </span>
+                  <span className="ui-value shrink-0 text-foreground/80">{value.toFixed(2)}</span>
+                </div>
+                <Slider
+                  min={control.min}
+                  max={control.max}
+                  step={(control.max - control.min) / 200 || 0.01}
+                  value={[value]}
+                  onValueChange={([v]) =>
+                    patch({ params: { ...clip.params, [control.name]: v } })
+                  }
+                />
+              </div>
+            )
+          })}
+        </div>
       </div>
 
       <Separator />
@@ -300,6 +339,7 @@ function ClipEditor({ clip }: { clip: PlaylistClip }) {
           <Camera className="size-3.5" />
           Cattura dal layer
         </Button>
+        <Separator orientation="vertical" className="h-5" />
         <Button
           variant="ghost"
           size="icon-sm"
@@ -390,43 +430,58 @@ function ClipBlock({
       className={cn(
         // il clip non è più cliccabile: l'editor si apre solo dai tre puntini, così il
         // click accidentale non applica l'effetto al layer durante un live
-        'group relative flex h-full shrink-0 cursor-grab select-none flex-col justify-between overflow-hidden rounded-md border bg-card px-2 py-1.5 text-left transition-colors active:cursor-grabbing',
-        isCurrent ? 'border-primary/70' : 'border-border hover:border-foreground/30',
-        isEditing && 'ring-2 ring-ring/60',
+        'group relative flex h-full shrink-0 cursor-grab select-none flex-col justify-between overflow-hidden rounded-lg border px-2 py-1.5 text-left active:cursor-grabbing',
+        'transition-colors duration-[--dur-fast] ease-[--ease-out]',
+        isCurrent
+          ? 'border-primary/70 bg-sidebar-accent/70'
+          : 'border-transparent bg-sidebar-accent/25 hover:bg-sidebar-accent/45',
+        isEditing && 'ring-2 ring-primary/50',
         isDragOver && 'border-l-4 border-l-primary',
       )}
     >
-      {/* playhead: riempimento dell'avanzamento nel clip corrente */}
+      {/* playhead: riempimento dell'avanzamento nel clip corrente, con bordo d'attacco acceso
+          così il transport si legge come "vivo" e non come una barra statica */}
       {isCurrent && (playing || clipProgress > 0) && (
         <div
-          className="pointer-events-none absolute inset-y-0 left-0 bg-primary/15"
+          className="pointer-events-none absolute inset-y-0 left-0 bg-primary/10"
           style={{ width: `${clipProgress * 100}%` }}
-        />
+        >
+          {clipProgress > 0 && clipProgress < 1 && (
+            <span className="absolute inset-y-0 right-0 w-px bg-primary/70" />
+          )}
+        </div>
       )}
-      <span className="relative truncate text-xs font-medium text-foreground">{clip.name}</span>
+      <span className="relative flex items-center gap-1.5 truncate">
+        {isCurrent && playing && (
+          <span className="size-1.5 shrink-0 animate-pulse rounded-full bg-primary" />
+        )}
+        <span className="ui-label truncate font-medium text-foreground">{clip.name}</span>
+      </span>
       {/* preview dell'effetto (frame statico renderizzato dallo shader del clip) */}
       {thumb && (
         <img
           src={thumb}
           alt=""
           draggable={false}
-          className="pointer-events-none relative my-0.5 min-h-0 w-full flex-1 rounded-sm object-cover"
+          className="pointer-events-none relative my-0.5 min-h-0 w-full flex-1 rounded-md object-cover ring-1 ring-black/5 dark:ring-white/5"
         />
       )}
       <div className="relative flex items-center justify-between gap-1">
         <span className="truncate text-[10px] text-muted-foreground">{clip.shaderName}</span>
-        <span className="shrink-0 text-[10px] tabular-nums text-muted-foreground">
+        <span className="ui-value shrink-0 text-[10px] text-muted-foreground">
           {clip.duration.toFixed(1)}s
         </span>
       </div>
 
-      {/* azioni in hover: opzioni (tre puntini) e rimozione dalla playlist */}
+      {/* azioni in hover: opzioni (tre puntini) e rimozione dalla playlist. Sempre visibili
+          quando non esiste hover (touch), altrimenti resterebbero irraggiungibili (§10). */}
       <div
         draggable={false}
         onDragStart={(e) => e.stopPropagation()}
         className={cn(
-          'absolute right-2.5 top-1 z-10 flex items-center gap-0.5 rounded-md bg-card/90 p-0.5 opacity-0 shadow-sm backdrop-blur-sm transition-opacity',
-          'group-hover:opacity-100 focus-within:opacity-100',
+          'absolute right-2 top-1.5 z-10 flex items-center gap-0.5 rounded-md bg-card/90 p-0.5 opacity-0 shadow-sm backdrop-blur-sm',
+          'transition-opacity duration-[--dur-fast] ease-[--ease-out]',
+          'group-hover:opacity-100 focus-within:opacity-100 [@media(hover:none)]:opacity-100',
           isEditing && 'opacity-100',
         )}
       >
@@ -443,7 +498,7 @@ function ClipBlock({
               type="button"
               aria-label="Opzioni clip"
               title="Opzioni clip"
-              className="flex size-5 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+              className="press flex size-5 items-center justify-center rounded text-muted-foreground transition-colors duration-[--dur-fast] ease-[--ease-out] hover:bg-accent hover:text-foreground"
             >
               <MoreHorizontal className="size-3.5" />
             </button>
@@ -457,19 +512,22 @@ function ClipBlock({
           aria-label="Rimuovi dalla playlist"
           title="Rimuovi dalla playlist (l'effetto resta nella libreria)"
           onClick={() => removeClip(clip.id)}
-          className="flex size-5 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-destructive/15 hover:text-destructive"
+          className="press flex size-5 items-center justify-center rounded text-muted-foreground transition-colors duration-[--dur-fast] ease-[--ease-out] hover:bg-destructive/15 hover:text-destructive"
         >
           <Trash2 className="size-3.5" />
         </button>
       </div>
 
-      {/* maniglia di resize della durata (bordo destro) */}
+      {/* maniglia di resize della durata (bordo destro): l'area di presa è larga (§10 hit
+          padding) ma il segno visivo resta un filo sottile finché non ci si passa sopra */}
       <div
         draggable={false}
         onPointerDown={handleResizeStart}
         onClick={(e) => e.stopPropagation()}
-        className="absolute inset-y-0 right-0 w-2 cursor-ew-resize bg-transparent transition-colors hover:bg-primary/40 group-hover:bg-foreground/10"
-      />
+        className="group/handle absolute inset-y-0 right-0 flex w-3 cursor-ew-resize items-center justify-end bg-transparent transition-colors duration-[--dur-fast] ease-[--ease-out] hover:bg-primary/10"
+      >
+        <span className="h-5 w-px bg-foreground/10 transition-colors duration-[--dur-fast] ease-[--ease-out] group-hover:bg-foreground/20 group-hover/handle:bg-primary/70" />
+      </div>
     </div>
   )
 }
@@ -637,11 +695,14 @@ export function PlaylistBar() {
         !playlistVisible && 'hidden',
       )}
     >
-      {/* maniglia di resize dell'altezza (bordo superiore) */}
+      {/* maniglia di resize dell'altezza (bordo superiore): una grip pill centrale rende visibile
+          da subito che il bordo si trascina, invece di lasciarlo scoprire per caso (wayfinding) */}
       <div
         onPointerDown={handleBarResize}
-        className="absolute inset-x-0 -top-1 z-10 h-2 cursor-ns-resize transition-colors hover:bg-primary/30"
-      />
+        className="group/vgrip absolute inset-x-0 -top-1.5 z-10 flex h-3 cursor-ns-resize items-center justify-center"
+      >
+        <span className="h-1 w-9 rounded-full bg-foreground/15 transition-colors duration-[--dur-fast] ease-[--ease-out] group-hover/vgrip:bg-primary/60" />
+      </div>
       {/* trasporto */}
       <div className="flex shrink-0 items-center gap-1.5">
         <Button
@@ -665,14 +726,14 @@ export function PlaylistBar() {
         </Button>
         <Button
           size="sm"
-          variant="outline"
+          variant={smooth ? 'secondary' : 'outline'}
           onClick={() => setTransitionMode(smooth ? 'cut' : 'smooth')}
           title={
             smooth
               ? 'Transizione smooth (crossfade): clicca per passare a secca'
               : 'Transizione secca: clicca per passare a smooth'
           }
-          className="gap-1.5"
+          className={cn('gap-1.5', !smooth && 'text-muted-foreground')}
         >
           {smooth ? <Blend className="size-3.5" /> : <Zap className="size-3.5" />}
           {smooth ? 'Smooth' : 'Secca'}
@@ -705,7 +766,7 @@ export function PlaylistBar() {
         className="timeline-scroll flex min-w-0 flex-1 items-stretch gap-1.5 overflow-x-auto pb-1"
       >
         {clips.length === 0 ? (
-          <p className="self-center text-xs text-muted-foreground">
+          <p className="ui-sublabel self-center leading-relaxed text-muted-foreground/80">
             Aggiungi effetti alla sequenza con il pulsante +. Trascina il bordo destro di un clip
             per cambiarne la durata, passaci sopra e usa i tre puntini per modificarlo.
           </p>

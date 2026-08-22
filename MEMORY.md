@@ -2,6 +2,69 @@
 
 Ogni modifica al progetto va registrata qui con data, descrizione e motivazione. Le voci più recenti in alto dentro ogni giornata.
 
+## 2026-08-22 — Etichette dei cursori nel popover clip allineate al pannello "Controlli" di sinistra (solo UI)
+
+Le label di Size e dei parametri shader nell'editor clip (`ClipEditor` in `PlaylistBar.tsx`) usavano
+`.ui-label text-foreground` (nome col peso pieno) e valore `.ui-value text-muted-foreground`: l'opposto
+esatto del pannello "Controlli" della sidebar sinistra, dove label e valore vivono in `ControlRow`
+(`src/components/layout/ControlRow.tsx`) come `.ui-sublabel text-muted-foreground` (grigio tenue,
+maiuscola solo sulla prima lettera via `first-letter:uppercase`) e `.ui-value text-foreground/80`.
+Riportate a questa combinazione — stesso font, stesso colore, stessa capitalizzazione — così l'editor
+della clip e il pannello sorgente dei parametri si leggono come lo stesso linguaggio. Verificato nel
+browser affiancando i due pannelli sullo stesso effetto (Morph Petal Bloom). `npx tsc -b --noEmit` pulito.
+
+## 2026-08-22 — Skill `apple-design` applicata al popover "Opzioni clip" della Playlist (solo UI, nessuna logica toccata)
+
+Seconda passata sulla stessa barra, questa volta sul popover che si apre dai tre puntini di ogni
+clip (`ClipEditor` dentro `PlaylistBar.tsx`).
+
+- **Sfumature invece di un taglio secco sui parametri.** La lista di Size + cursori dello shader
+  (`max-h-56 overflow-y-auto`) non dava alcun segnale che continuasse oltre il bordo — niente
+  scrollbar visibile a riposo, quindi con shader dagli 8+ controlli (es. famiglia SD) gli ultimi
+  restavano nascosti senza indizi. Aggiunto `useEdgeScrollFade`, un hook locale (non condiviso: la
+  lista è un `overflow-y-auto` semplice, non una Radix ScrollArea come `useScrollShadow` in
+  `LayerInspector`) che sfuma bordo alto e basso solo quando c'è davvero altro contenuto oltre —
+  ricalcolato anche al cambio di shader, quando il numero di cursori cambia sotto lo stesso scroll.
+- **Footer separato in due gruppi.** "Cattura dal layer" (azione primaria di contenuto) e
+  Duplica/Elimina (azioni di riga) erano nello stesso filo senza gerarchia visiva. Aggiunto un
+  `<Separator orientation="vertical">` fra i due gruppi, stesso pattern già in uso nel trasporto
+  della barra per separare play/loop dal toggle Smooth/Secca.
+- Verificato nel browser (dev server temporaneo, chiuso a fine verifica) con uno shader a 8
+  parametri: scroll funzionante, sfumatura alta/bassa che compare e sparisce coerentemente con la
+  posizione, separatore del footer visibile. `npx tsc -b --noEmit` pulito.
+
+## 2026-08-22 — Skill `apple-design` applicata alla barra Playlist (solo UI, nessuna logica toccata)
+
+Stesso trattamento già dato alle due colonne laterali, ora sulla barra in fondo alla Control page
+(`src/components/Playlist/PlaylistBar.tsx`): nessun handler, store o comportamento di riproduzione è
+cambiato, solo superfici, tipografia e affordance.
+
+- **Card dei clip allineate a `LayerList`.** Usavano `bg-card` su una barra `bg-sidebar` che in dark
+  mode ha lo stesso valore: le card non avevano contrasto visibile contro lo sfondo. Ora `bg-sidebar-
+  accent/25` (hover `/45`, corrente `/70`) come le righe layer della colonna destra, con
+  `rounded-lg` invece di `rounded-md` per lo stesso raggio delle altre card dell'app.
+- **Etichette dell'editor clip → token condivisi.** I quattro `text-[11px] font-medium uppercase
+  tracking-wide text-muted-foreground` ripetuti a mano (Nome, Durata, Effetto, Colori effetto) sono
+  ora `.ui-eyebrow`; i readout di Size e dei parametri shader sono `.ui-value` (cifre tabellari) con
+  etichetta `.ui-label`, stessi token già in uso nel resto della sidebar.
+- **Maniglie di resize rese scopribili (wayfinding, §16).** Sia quella dell'altezza della barra
+  (bordo superiore) sia quella della durata di un clip (bordo destro) erano aree invisibili,
+  scopribili solo passandoci sopra per caso. Ora mostrano un segno visivo permanente e leggero (grip
+  pill in alto, filo verticale sul bordo del clip) che si accende al passaggio del mouse — l'area di
+  presa non è cambiata, solo il segnale che la rende trovabile.
+- **Indicatore "in riproduzione" più leggibile.** Bordo d'attacco del playhead acceso (`bg-primary/70`
+  largo 1px) invece del solo riempimento translucido, più un puntino animato (`animate-pulse`) accanto
+  al nome del clip corrente mentre è in play — stesso trattamento già usato per il loop-palette attivo
+  in `LayerList`.
+- **Azioni hover raggiungibili anche senza hover** (§10): il gruppo tre-puntini/elimina su ogni clip
+  restava a `opacity-0` anche su device touch, dove `group-hover` non scatta mai — irraggiungibile.
+  Aggiunta la stessa via d'uscita già usata da `.row-action`: `[@media(hover:none)]:opacity-100`.
+- **Toggle Smooth/Secca differenziato.** Era sempre `variant="outline"` indipendentemente dallo stato:
+  ora `secondary` quando attivo (smooth) coerente con gli altri toggle a due stati dell'app
+  (`TopToolbar`: Live, pannelli, playlist visibile).
+- Verificato nel browser (dev server temporaneo, chiuso a fine verifica): card vuote, con 1-2 clip,
+  stato "in riproduzione", hover sulle azioni, editor del clip in popover. `npx tsc -b --noEmit` pulito.
+
 ## 2026-08-21 — Skill `apple-design` applicata alla sidebar sinistra (solo UI, nessuna logica toccata)
 
 Passata la colonna sinistra allo stesso linguaggio della destra: nessun handler, store o comportamento
