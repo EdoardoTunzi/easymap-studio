@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { Bookmark, Save, Trash2 } from "lucide-react";
+import { Save, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { saveEffectPreset, loadEffectPreset, deleteEffectPreset, listEffectPresets, type EffectPreset } from "@/lib/persistence";
