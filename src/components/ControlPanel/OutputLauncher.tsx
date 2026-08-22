@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button'
 import { Slider } from '@/components/ui/slider'
 import { Switch } from '@/components/ui/switch'
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
-import { Separator } from '@/components/ui/separator'
+import { ControlRow } from '@/components/layout/ControlRow'
 import { MAX_GRAIN, SUPER_SAMPLE_STEPS, useRenderStore } from '@/store/renderStore'
 
 /**
@@ -33,28 +33,33 @@ function openOutputWindow(screen?: ScreenInfo) {
   return window.open('/output', 'easyvj-output', features)
 }
 
-function SettingRow({
+/**
+ * Riga di un interruttore: nome, una riga che dice cosa fa, e lo Switch a destra.
+ *
+ * L'etichetta è in maiuscolo iniziale come nel resto dell'app: il maiuscoletto resta ai titoli di
+ * sezione, altrimenti ogni voce griderebbe quanto il titolo che la contiene (§15).
+ */
+function ToggleRow({
   label,
-  value,
-  children,
-  hint,
+  description,
+  checked,
+  onCheckedChange,
 }: {
   label: string
-  value?: string
-  children: React.ReactNode
-  hint?: string
+  description: string
+  checked: boolean
+  onCheckedChange: (v: boolean) => void
 }) {
   return (
-    <div className="flex flex-col gap-1.5">
-      <div className="flex items-center justify-between gap-2">
-        <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-          {label}
+    <label className="flex cursor-pointer items-center justify-between gap-3">
+      <span className="flex min-w-0 flex-col gap-0.5">
+        <span className="ui-sublabel text-foreground/90">{label}</span>
+        <span className="ui-sublabel font-normal leading-snug text-muted-foreground/80">
+          {description}
         </span>
-        {value && <span className="text-xs tabular-nums text-muted-foreground">{value}</span>}
-      </div>
-      {children}
-      {hint && <p className="text-xs leading-relaxed text-muted-foreground">{hint}</p>}
-    </div>
+      </span>
+      <Switch checked={checked} onCheckedChange={onCheckedChange} className="shrink-0" />
+    </label>
   )
 }
 
@@ -88,29 +93,26 @@ export function OutputLauncher() {
   return (
     <div className="flex flex-col gap-5">
       <div className="flex flex-col gap-2">
-        <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-          Finestra di proiezione
-        </span>
-        <Button onClick={openOutput} className="w-full gap-2">
+        <span className="ui-eyebrow text-muted-foreground">Finestra di proiezione</span>
+        <Button onClick={openOutput} className="press w-full gap-2">
           <MonitorPlay className="size-4" />
           Apri finestra Output
         </Button>
-        <p className="text-xs leading-relaxed text-muted-foreground">
+        <p className="ui-sublabel leading-relaxed text-muted-foreground/80">
           {note ??
             'Si apre sullo schermo secondario, se ce n’è uno. Sulla finestra: F o doppio click per il pieno schermo, S per la diagnostica, C per il cartello di prova.'}
         </p>
       </div>
 
-      <Separator />
+      {/* -mx-4: il divisorio arriva ai bordi del pannello, come nelle altre colonne */}
+      <div className="-mx-4 border-t border-sidebar-border/60" />
 
-      <div className="flex items-center justify-between">
-        <span className="text-xs font-semibold uppercase tracking-widest text-foreground/80">
-          Qualità immagine
-        </span>
+      <div className="flex items-center justify-between gap-2">
+        <span className="ui-eyebrow text-muted-foreground">Qualità immagine</span>
         <Button
           variant="ghost"
           size="sm"
-          className="h-7 gap-1.5 px-2 text-xs text-muted-foreground"
+          className="press h-7 gap-1.5 px-2 text-xs text-muted-foreground"
           onClick={() => useRenderStore.getState().reset()}
           title="Riporta le impostazioni di resa ai valori di partenza"
         >
@@ -119,7 +121,7 @@ export function OutputLauncher() {
         </Button>
       </div>
 
-      <SettingRow
+      <ControlRow
         label="Supersampling"
         value={`${render.superSample}×`}
         hint="Disegna più grande di quanto proietta e riduce: è l'unico antialiasing che agisce sui contorni disegnati dagli shader e sul bordo della sagoma. Il costo cresce col quadrato (2× sono quattro volte i pixel), ma sul vsync non si sente. La scala si ferma a 2× perché oltre, provato sul proiettore, la nitidezza non migliora: lì il limite è l'ottica. Vale solo per la finestra Output, non per questa anteprima."
@@ -141,9 +143,9 @@ export function OutputLauncher() {
             </ToggleGroupItem>
           ))}
         </ToggleGroup>
-      </SettingRow>
+      </ControlRow>
 
-      <SettingRow
+      <ControlRow
         label="Sfondamento morbido"
         value={render.rolloff <= 0 ? 'taglio netto' : render.rolloff.toFixed(2)}
         hint="Quando i blend Add/Screen superano il fondo scala, l'eccesso vira verso il bianco invece di far scivolare la tinta (un rosso che sfonda diventerebbe giallo). Non tocca nulla che stia già dentro il range: il bianco pieno resta pieno, nessun lumen buttato."
@@ -155,9 +157,9 @@ export function OutputLauncher() {
           value={[render.rolloff]}
           onValueChange={([v]) => render.set({ rolloff: v })}
         />
-      </SettingRow>
+      </ControlRow>
 
-      <SettingRow
+      <ControlRow
         label="Grana"
         value={render.grain <= 0 ? 'off' : render.grain.toFixed(3)}
         hint="Un filo di rumore in movimento. Un video ha dettaglio fine ovunque, uno shader no: la grana riavvicina le due cose e nasconde quel che resta del banding."
@@ -169,56 +171,37 @@ export function OutputLauncher() {
           value={[render.grain]}
           onValueChange={([v]) => render.set({ grain: v })}
         />
-      </SettingRow>
+      </ControlRow>
 
-      <div className="flex items-center justify-between gap-3">
-        <div className="flex flex-col">
-          <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-            Dithering
-          </span>
-          <span className="text-xs text-muted-foreground/70">Toglie il banding dai gradienti</span>
-        </div>
-        <Switch checked={render.dither} onCheckedChange={(v) => render.set({ dither: v })} />
-      </div>
+      <ToggleRow
+        label="Dithering"
+        description="Toglie il banding dai gradienti"
+        checked={render.dither}
+        onCheckedChange={(v) => render.set({ dither: v })}
+      />
 
-      <div className="flex items-center justify-between gap-3">
-        <div className="flex flex-col">
-          <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-            Buffer HDR
-          </span>
-          <span className="text-xs text-muted-foreground/70">
-            Mezza precisione float: niente clipping nei blend
-          </span>
-        </div>
-        <Switch checked={render.hdr} onCheckedChange={(v) => render.set({ hdr: v })} />
-      </div>
+      <ToggleRow
+        label="Buffer HDR"
+        description="Mezza precisione float: niente clipping nei blend"
+        checked={render.hdr}
+        onCheckedChange={(v) => render.set({ hdr: v })}
+      />
 
-      <Separator />
+      <div className="-mx-4 border-t border-sidebar-border/60" />
 
-      <div className="flex items-center justify-between gap-3">
-        <div className="flex flex-col">
-          <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-            Pannello diagnostico
-          </span>
-          <span className="text-xs text-muted-foreground/70">
-            Risoluzione reale e fps sulla finestra Output
-          </span>
-        </div>
-        <Switch checked={render.stats} onCheckedChange={(v) => render.set({ stats: v })} />
-      </div>
+      <ToggleRow
+        label="Pannello diagnostico"
+        description="Risoluzione reale e fps sulla finestra Output"
+        checked={render.stats}
+        onCheckedChange={(v) => render.set({ stats: v })}
+      />
 
-      <div className="flex items-center justify-between gap-3">
-        <div className="flex flex-col">
-          <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-            Cartello di prova
-          </span>
-          <span className="text-xs text-muted-foreground/70">Copre la scena su tutte le finestre</span>
-        </div>
-        <Switch
-          checked={render.qualityCard}
-          onCheckedChange={(v) => render.set({ qualityCard: v })}
-        />
-      </div>
+      <ToggleRow
+        label="Cartello di prova"
+        description="Copre la scena su tutte le finestre"
+        checked={render.qualityCard}
+        onCheckedChange={(v) => render.set({ qualityCard: v })}
+      />
       {render.qualityCard && (
         <p className="-mt-2 text-xs leading-relaxed text-muted-foreground">
           Dall'alto: righe da <strong className="font-medium text-foreground/80">un pixel</strong> —

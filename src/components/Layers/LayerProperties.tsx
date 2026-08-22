@@ -1,10 +1,10 @@
-import type { ReactNode } from "react";
-import { ZoomIn, ZoomOut, RotateCcw, HelpCircle, Crosshair } from "lucide-react";
+import type { ComponentProps } from "react";
+import { ZoomIn, ZoomOut, RotateCcw, Crosshair } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Slider } from "@/components/ui/slider";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { ControlRow as SharedControlRow } from "@/components/layout/ControlRow";
 import { useLayersStore, BLEND_MODES, type BlendMode } from "@/store/layersStore";
 import { DEFAULT_TRANSFORM } from "@/store/projectStore";
 import { LENS_LIMIT } from "@/lib/warp";
@@ -14,50 +14,12 @@ const ZOOM_MAX = 4;
 const ZOOM_STEP = 0.05;
 
 /**
- * Riga di un controllo continuo: etichetta a sinistra, valore corrente sulla stessa riga, comando
- * sotto. Un solo componente per tutte e quattro (§16 Craft: ciò che si somiglia si comporta uguale).
+ * Riga di un controllo, nella variante della colonna destra: identica a quella della sidebar
+ * sinistra ([ControlRow](../layout/ControlRow.tsx)), solo con il tooltip che esce verso il canvas
+ * invece che verso il bordo dello schermo.
  */
-function ControlRow({
-  label,
-  value,
-  hint,
-  children,
-}: {
-  label: string;
-  value: string;
-  hint?: ReactNode;
-  children: ReactNode;
-}) {
-  return (
-    <div className="flex flex-col gap-2">
-      <div className="flex items-baseline justify-between gap-2">
-        <span className="ui-sublabel flex items-center gap-1.5 text-muted-foreground">
-          {label}
-          {/* §16 (Simplicity): il percorso comune resta visibile, il contesto sta un livello più in
-              là. Le note stampate sotto ogni slider occupavano più spazio dei controlli stessi.
-              Il trigger è un button, così la spiegazione si raggiunge anche da tastiera. */}
-          {hint && (
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <button
-                  type="button"
-                  aria-label={`Cos'è "${label}"`}
-                  className="inline-flex cursor-help items-center text-muted-foreground/40 transition-colors duration-[--dur-fast] hover:text-foreground focus-visible:text-foreground focus-visible:outline-none"
-                >
-                  <HelpCircle className="size-3.5" />
-                </button>
-              </TooltipTrigger>
-              <TooltipContent side="left" className="max-w-64 leading-relaxed">
-                {hint}
-              </TooltipContent>
-            </Tooltip>
-          )}
-        </span>
-        <span className="ui-value shrink-0 text-foreground/80">{value}</span>
-      </div>
-      {children}
-    </div>
-  );
+function ControlRow(props: Omit<ComponentProps<typeof SharedControlRow>, "hintSide">) {
+  return <SharedControlRow {...props} hintSide="left" />;
 }
 
 /**

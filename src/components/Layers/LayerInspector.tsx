@@ -1,4 +1,3 @@
-import { useEffect, useRef, useState } from "react";
 import { Separator } from "@/components/ui/separator";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { LayerList } from "./LayerList";
@@ -8,6 +7,7 @@ import { MediaUploader } from "@/components/ControlPanel/MediaUploader";
 import { CameraPicker } from "@/components/ControlPanel/CameraPicker";
 import { MaskPanel } from "@/components/Mask/MaskPanel";
 import { useLayersStore } from "@/store/layersStore";
+import { useScrollShadow } from "@/hooks/use-scroll-shadow";
 
 /**
  * Colonna destra: tutto ciò che riguarda il layer selezionato, leggibile in un colpo d'occhio.
@@ -29,16 +29,7 @@ export function LayerInspector() {
 
   // §12: dove il contenuto passa sotto la chrome si sfuma il bordo invece di piantarci una riga
   // fissa da 1px — e lo si fa solo quando c'è davvero qualcosa di nascosto sopra.
-  const scrollRef = useRef<HTMLDivElement>(null);
-  const [scrolled, setScrolled] = useState(false);
-  useEffect(() => {
-    const viewport = scrollRef.current?.querySelector<HTMLElement>('[data-slot="scroll-area-viewport"]');
-    if (!viewport) return;
-    const onScroll = () => setScrolled(viewport.scrollTop > 2);
-    onScroll();
-    viewport.addEventListener("scroll", onScroll, { passive: true });
-    return () => viewport.removeEventListener("scroll", onScroll);
-  }, []);
+  const { ref: scrollRef, scrolled } = useScrollShadow<HTMLDivElement>();
 
   return (
     <div className="flex h-full flex-col">

@@ -51,13 +51,13 @@ export function AudioInputPanel() {
   }
 
   return (
-    <div className="flex flex-col gap-2 rounded-md border border-border p-2">
+    <div className="flex flex-col gap-2 rounded-lg border border-border bg-sidebar-accent/20 p-2.5">
       <div className="flex items-center justify-between gap-2">
-        <span className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
-          Ingresso audio
-        </span>
+        <span className="ui-eyebrow text-muted-foreground">Ingresso audio</span>
         {state.active && (
-          <span className="text-[10px] font-semibold uppercase tracking-wide text-emerald-400">
+          // il pallino pulsante dice "sta succedendo adesso" prima ancora che si legga la scritta
+          <span className="ui-eyebrow flex items-center gap-1.5 text-[10px] text-emerald-400">
+            <span className="size-1.5 animate-pulse rounded-full bg-emerald-400" />
             in ascolto
           </span>
         )}
@@ -66,7 +66,7 @@ export function AudioInputPanel() {
       <Button
         variant={state.active ? 'default' : 'outline'}
         size="sm"
-        className="h-7 w-full gap-1.5 px-2 text-xs"
+        className="press h-7 w-full gap-1.5 px-2 text-xs"
         disabled={busy}
         onClick={() => void toggle()}
       >
@@ -78,14 +78,14 @@ export function AudioInputPanel() {
       <div className="h-1.5 overflow-hidden rounded-full bg-muted">
         <div
           ref={meterRef}
-          className="h-full origin-left rounded-full bg-emerald-400"
+          className="h-full origin-left rounded-full bg-emerald-400 transition-transform duration-75 ease-linear"
           style={{ transform: 'scaleX(0)' }}
         />
       </div>
 
       {state.error && <p className="text-[11px] leading-relaxed text-red-400">{state.error}</p>}
 
-      <p className="text-[11px] leading-relaxed text-muted-foreground">
+      <p className="text-[11px] leading-relaxed text-muted-foreground/80">
         Questo effetto disegna il suono in ingresso. L'audio viene solo analizzato, mai
         registrato né riprodotto. Per il proiettore non serve fare nulla: la finestra Output apre
         l'ingresso da sé quando la scena contiene un effetto audio-reattivo.

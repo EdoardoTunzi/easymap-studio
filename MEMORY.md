@@ -2,6 +2,43 @@
 
 Ogni modifica al progetto va registrata qui con data, descrizione e motivazione. Le voci più recenti in alto dentro ogni giornata.
 
+## 2026-08-21 — Skill `apple-design` applicata alla sidebar sinistra (solo UI, nessuna logica toccata)
+
+Passata la colonna sinistra allo stesso linguaggio della destra: nessun handler, store o comportamento
+è cambiato, solo tipografia, gerarchia, feedback e larghezze.
+
+- **Ruoli tipografici unificati.** Tutti i pannelli usavano `text-xs uppercase tracking-wide` per
+  qualsiasi livello: titolo di sezione ed etichetta di slider gridavano uguale (§15). Ora i titoli
+  sono `.ui-eyebrow`, le etichette dei controlli `.ui-sublabel` in maiuscolo iniziale, i valori
+  `.ui-value` con cifre tabellari.
+- **`ControlRow` condiviso** (`src/components/layout/ControlRow.tsx`): la riga etichetta/valore/hint
+  esisteva in quattro copie leggermente diverse (EffectsPanel, FxControlsPanel, PalettePanel,
+  OutputLauncher) più quella di LayerProperties. Ora è una sola; LayerProperties la avvolge per far
+  uscire il tooltip a sinistra, verso il canvas. Il nome dell'uniform prende la maiuscola iniziale
+  con `first-letter:uppercase` (non `capitalize`, che maiuscolava ogni parola delle etichette scritte
+  a mano nella colonna destra).
+- **Note lunghe → tooltip** nel pannello Output: gli hint stampati sotto ogni cursore occupavano più
+  spazio dei controlli stessi. Stesso pattern `HelpCircle` già usato a destra (§16 Simplicity).
+- **Intestazione del pannello** allineata a quella della colonna destra (`.ui-eyebrow`, `px-4`,
+  stesso ritmo verticale) e bordo fisso sostituito dalla sfumatura che compare solo a scorrimento
+  iniziato (§12). La logica è in `useScrollShadow` (`src/hooks/use-scroll-shadow.ts`), estratta da
+  LayerInspector che la aveva inline.
+- **Feedback alla pressione** (§1): classe `.press` su lista effetti, chip delle famiglie, preset
+  palette, swatch, pulsanti dei pannelli; `focus-visible` sui bottoni custom che ne erano privi;
+  transizioni agganciate ai token `--dur-*` / `--ease-*` invece dei default del browser.
+- **Etichette più dirette** (§16): pannello "Sliders" → "Effetti" (descriveva il widget, non il
+  contenuto), "Size" → "Scala" con nota che la distingue da "Dimensione" della colonna destra,
+  "Controlli effetto" → "Controlli", tolto il titolo "Progetti" duplicato dentro il pannello
+  Progetti, empty state esplicito per la lista dei progetti salvati.
+- **Fix di larghezza (era un bug reale, non solo estetica).** Il Viewport di Radix ScrollArea rende
+  il contenuto come `display: table`, che non scende mai sotto il proprio min-content: stringendo la
+  sidebar il contenuto restava largo com'era e usciva oltre il bordo. In `ui/scroll-area.tsx` il
+  figlio è ora `!block !w-full` — verificato a 240px (il minimo) su entrambe le colonne. La riga
+  "Controlli" ha in più `flex-wrap`, perché i Button hanno `shrink-0` di serie e Reset/Random
+  sarebbero comunque usciti.
+- Verificato nel browser: i quattro pannelli (Effetti, Palette, Progetti, Output) a larghezza piena e
+  al minimo, tooltip inclusi. `npx tsc -b --noEmit` e `npm run build` puliti.
+
 ## 2026-08-21 — Intestazione della colonna destra: allineata ai ruoli tipografici del resto della UI
 
 Ripresa l'intestazione a due righe aggiunta a mano ("Layer Inspector" + "Layer selezionato: <nome>"),

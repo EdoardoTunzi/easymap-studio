@@ -79,13 +79,18 @@ export function ShaderPicker({ value, onChange, className }: ShaderPickerProps) 
           return (
             <Button
               key={c.id}
-              variant={isActive ? "default" : "outline"}
+              variant="outline"
+              size="xs"
               onClick={() => setCategory(c.id)}
               title={`${c.hint} (${count})`}
               aria-pressed={isActive}
               className={cn(
-                "flex items-center gap-1 rounded-lg border px-1.5 py-0.5 text-xs transition-colors",
-                isActive ? "border-primary/60 bg-secondary font-medium text-secondary-foreground" : "border-border text-muted-foreground hover:bg-accent/50"
+                // altezza e raggio arrivano dalla size del componente: prima erano riscritti a mano
+                // e i chip finivano più alti dei loro contenuti (§16 Craft)
+                "press gap-1 transition-colors duration-[--dur-fast] ease-[--ease-out]",
+                isActive
+                  ? "border-primary/60 bg-secondary font-medium text-secondary-foreground hover:bg-secondary"
+                  : "border-border text-muted-foreground hover:bg-accent/50"
               )}
             >
               {c.label}
@@ -98,7 +103,7 @@ export function ShaderPicker({ value, onChange, className }: ShaderPickerProps) 
       {/* overscroll-contain: arrivati a fondo lista lo scroll non prosegue trascinando la sidebar */}
       <div
         ref={listRef}
-        className={cn("flex flex-col gap-0.5 overflow-y-auto overscroll-contain rounded-md border border-border p-1", className ?? "h-56")}
+        className={cn("flex flex-col gap-0.5 overflow-y-auto overscroll-contain rounded-lg border border-border p-1", className ?? "h-56")}
         role="listbox"
         aria-label="Libreria effetti"
       >
@@ -113,8 +118,12 @@ export function ShaderPicker({ value, onChange, className }: ShaderPickerProps) 
               aria-selected={isActive}
               onClick={() => onChange(s.name)}
               className={cn(
-                "shrink-0 truncate rounded px-2 py-1 text-left text-sm transition-colors",
-                isActive ? "bg-secondary font-medium text-secondary-foreground" : "hover:bg-accent/50"
+                "press shrink-0 cursor-pointer truncate rounded-md border px-2 py-1 text-left text-sm",
+                "transition-colors duration-[--dur-fast] ease-[--ease-out]",
+                "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-sidebar-ring",
+                isActive
+                  ? "border-primary/60 bg-secondary font-medium text-secondary-foreground"
+                  : "border-transparent hover:bg-accent/50"
               )}
               title={s.name}
             >
@@ -132,7 +141,7 @@ export function ShaderPicker({ value, onChange, className }: ShaderPickerProps) 
         <button
           type="button"
           onClick={() => setCategory("all")}
-          className="self-start text-[11px] text-muted-foreground underline underline-offset-2 hover:text-foreground"
+          className="cursor-pointer self-start text-[11px] text-muted-foreground underline underline-offset-2 transition-colors duration-[--dur-fast] ease-[--ease-out] hover:text-foreground focus-visible:text-foreground focus-visible:outline-none"
         >
           {hiddenByCategory} {hiddenByCategory === 1 ? "risultato" : "risultati"} in altre famiglie — mostra tutti
         </button>

@@ -18,7 +18,12 @@ function ScrollArea({
     >
       <ScrollAreaPrimitive.Viewport
         data-slot="scroll-area-viewport"
-        className="size-full rounded-[inherit] transition-[color,box-shadow] outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-1"
+        // [&>div]:!block + !w-full — Radix rende il contenuto del viewport come `display: table`,
+        // che non scende mai sotto il proprio min-content: stringendo una colonna ridimensionabile
+        // il contenuto restava largo com'era e usciva oltre il bordo. Da blocco normale segue la
+        // larghezza del viewport, e il taglio torna dove deve stare: dentro i singoli elementi
+        // (truncate). Vale perché qui si scorre solo in verticale.
+        className="size-full rounded-[inherit] transition-[color,box-shadow] outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-1 [&>div]:!block [&>div]:!w-full"
       >
         {children}
       </ScrollAreaPrimitive.Viewport>
