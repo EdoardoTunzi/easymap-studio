@@ -32,6 +32,64 @@ export interface MediaTextureController {
   /** Da chiamare ogni frame con il tempo trascorso (s): avanza video/gif. */
   tick: (elapsed: number) => void
   dispose: () => void
+  /**
+   * Baricentro della sagoma in uv (0..1), pesato sull'alpha. Serve agli effetti che devono
+   * partire dal *centro dell'oggetto* e non dal centro del quad: su un palco o una statua
+   * scontornata i due punti non coincidono quasi mai, e collassare verso il centro geometrico
+   * fa scivolare il tunnel di lato.
+   *
+   * Opzionale: lo calcolano solo le sorgenti statiche, dove basta farlo una volta alla
+   * decodifica. Per video, camera e GIF il contenuto cambia a ogni frame e ricalcolarlo
+   * costerebbe una lettura di pixel per frame — lì si usa il centro del quad (0.5, 0.5).
+   */
+  getCentroid?: () => [number, number]
+}
+
+/** Lato della miniatura su cui si misura il baricentro: basta e avanza, e costa una sola lettura. */
+const CENTROID_SIZE = 96
+
+/**
+ * Baricentro dell'alpha di un'immagine, in coordinate uv della texture.
+ *
+ * Se l'immagine è praticamente tutta opaca — il caso degli asset con **sfondo nero** invece che
+ * trasparente, frequentissimo qui — l'alpha non descrive alcuna sagoma: si ripiega allora sulla
+ * luminanza, che è la stessa cosa che fa il luma key del layer.
+ *
+ * La Y è ribaltata perché le texture arrivano con `flipY` (default di Three): la riga 0 del
+ * canvas è l'ultima riga in uv.
+ */
+function computeCentroid(image: CanvasImageSource): [number, number] {
+  try {
+    const canvas = document.createElement('canvas')
+    canvas.width = CENTROID_SIZE
+    canvas.height = CENTROID_SIZE
+    const ctx = canvas.getContext('2d', { willReadFrequently: true })
+    if (!ctx) return [0.5, 0.5]
+    ctx.drawImage(image, 0, 0, CENTROID_SIZE, CENTROID_SIZE)
+    const { data } = ctx.getImageData(0, 0, CENTROID_SIZE, CENTROID_SIZE)
+    let alphaSum = 0
+    for (let i = 3; i < data.length; i += 4) alphaSum += data[i]
+    const opaque = alphaSum / (CENTROID_SIZE * CENTROID_SIZE * 255) > 0.98
+    let wx = 0
+    let wy = 0
+    let wsum = 0
+    for (let y = 0; y < CENTROID_SIZE; y++) {
+      for (let x = 0; x < CENTROID_SIZE; x++) {
+        const i = (y * CENTROID_SIZE + x) * 4
+        const a = data[i + 3] / 255
+        const lum = (0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2]) / 255
+        const w = opaque ? lum : a
+        wx += (x + 0.5) * w
+        wy += (y + 0.5) * w
+        wsum += w
+      }
+    }
+    if (wsum < 1e-4) return [0.5, 0.5]
+    return [wx / wsum / CENTROID_SIZE, 1 - wy / wsum / CENTROID_SIZE]
+  } catch {
+    // immagine da un'origine diversa: il canvas è "tainted" e getImageData lancia
+    return [0.5, 0.5]
+  }
 }
 
 const FALLBACK = (() => {
@@ -50,6 +108,8 @@ interface ImageEntry {
   texture: THREE.Texture
   /** Rilascio ritardato in corso (nessun riferimento attivo, ma la texture è ancora viva). */
   release: ReturnType<typeof setTimeout> | null
+  /** Baricentro dell'alpha, calcolato una volta alla decodifica (vedi computeCentroid). */
+  centroid: [number, number]
 }
 
 /**
@@ -82,7 +142,7 @@ function createImageController(media: MediaAsset): MediaTextureController {
       entry.release = null
     }
   } else {
-    entry = { refs: 0, texture: FALLBACK, release: null }
+    entry = { refs: 0, texture: FALLBACK, release: null, centroid: [0.5, 0.5] }
     imageCache.set(url, entry)
     new THREE.TextureLoader().load(url, (tex) => {
       tex.colorSpace = SOURCE_COLOR_SPACE
@@ -94,6 +154,7 @@ function createImageController(media: MediaAsset): MediaTextureController {
       // il corner-pin guarda l'immagine di sbieco: senza filtro anisotropico i lati inclinati
       // perdono dettaglio molto prima di quelli frontali (vedi textureQuality.ts)
       current.texture = trackTexture(tex)
+      if (tex.image) current.centroid = computeCentroid(tex.image as CanvasImageSource)
     })
   }
   entry.refs++
@@ -102,6 +163,7 @@ function createImageController(media: MediaAsset): MediaTextureController {
     // letta dalla mappa, non dalla chiusura: chi monta prima della fine della decodifica
     // deve vedere la texture non appena arriva
     getTexture: () => imageCache.get(url)?.texture ?? FALLBACK,
+    getCentroid: () => imageCache.get(url)?.centroid ?? [0.5, 0.5],
     tick: () => {},
     dispose: () => {
       if (released) return

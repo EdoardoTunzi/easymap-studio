@@ -2,6 +2,103 @@
 
 Ogni modifica al progetto va registrata qui con data, descrizione e motivazione. Le voci più recenti in alto dentro ogni giornata.
 
+## 2026-08-24 — `.gitignore`: configurazioni degli assistenti fuori dal repo
+
+Le regole scritte a mano non funzionavano per due motivi indipendenti, entrambi corretti:
+
+1. **Pattern sbagliato**: `*.claude` copre i file che *finiscono* in ".claude", non la cartella
+   nascosta `.claude/`. Per una directory serve il nome con la barra. Ora: `.agents/`, `agents/`,
+   `.claude/*`. La forma `.claude/*` (contenuto) e non `.claude/` (directory) è obbligatoria
+   perché git non scende dentro una directory esclusa, e l'eccezione `!.claude/launch.json` non
+   verrebbe mai valutata. `launch.json` resta tracciato di proposito: è la config del dev server,
+   citata in CLAUDE.md e utile a chi clona.
+2. **File già tracciati**: `.gitignore` non ha alcun effetto su ciò che è già nell'indice, e
+   `.claude/skills/apple-design/SKILL.md` lo era. Rimosso con `git rm -r --cached .claude/skills`
+   (resta sul disco, sparisce solo dal repo).
+
+Nota: `AGENTS.md` — il file di istruzioni, gemello di CLAUDE.md — **resta tracciato**, non è
+toccato da nessuna di queste regole. La cartella `.agents/` è un'altra cosa (contenitore locale di
+skill installate, qui vuoto).
+
+## 2026-08-24 — Shader "SD Shape Tunnel" (`src/shaders/sdShapeTunnel.glsl`) + uniform `uShapeCentroid`
+
+Nuovo effetto richiesto dall'utente: il **profilo esterno** della sagoma replicato in copie sempre
+più piccole che collassano verso il centro dell'oggetto (tunnel fatto con la forma dell'asset).
+
+Come funziona: la copia i-esima è la sagoma scalata di `s(i)` attorno al centro, quindi per sapere
+se il pixel appartiene a quella copia basta campionare la texture al punto de-scalato
+`p = centro + (vUv - centro) / s`. Nessun passaggio extra, nessuno stato: tutto il tunnel si
+disegna in un solo fragment. Il contorno **non** è un gradiente a differenze centrali (darebbe una
+riga spessa un texel, invisibile sul proiettore) ma la media della sagoma su un anello di raggio
+`lineWidth`: nel pieno vale 1, nel vuoto 0, sul bordo ~0.5 → `1 - |2m - 1|` è una banda centrata
+sul profilo, larga e senza direzione privilegiata. Fuori dall'intervallo uv la sagoma vale 0,
+altrimenti il ClampToEdge ripeterebbe i texel di bordo e ogni copia trascinerebbe quattro strisce.
+
+Controlli: copie 3–40, velocità, modalità ciclo, prospettiva (lineare ↔ geometrica), spessore e
+guadagno della linea, sfumatura verso il centro, glow, torsione progressiva, centro X/Y, scala
+minima, shapeKey, sourceAmount, colore vicino/lontano. Campiona su `vUv` come tutta la famiglia SD:
+la copia più grande deve coincidere esattamente con la sagoma, quindi Size/pan/kaleido non la
+spostano. Costo: 6 prelievi per copia attiva — a 40 copie sono ~240 per pixel, è il primo slider da
+abbassare se in Output cala il frame rate.
+
+Le due modalità di ciclo (`cycleMode`): **continuo** = copie equispaziate, il tunnel non si svuota
+mai; **a blocco** = le copie nascono **una dopo l'altra** dal bordo nella prima metà del ciclo e
+percorrono il tunnel nella seconda, poi il quadro si svuota e la sequenza riparte. Prima versione
+di "a blocco" sbagliata (`mix(offset, 1.0, f)`): comparivano tutte insieme e venivano aspirate
+verso il centro — corretta su segnalazione dell'utente. Fuori dal proprio intervallo di vita la
+copia viene saltata con `continue`, quindi non costa nemmeno un prelievo.
+
+**Nuovo uniform globale `uShapeCentroid`** (baricentro della sagoma in uv, pesato sull'alpha):
+serve perché il tunnel deve collassare verso il centro dell'**oggetto**, e su un palco o una
+statua scontornata quel punto non coincide quasi mai col centro del quad. Calcolato su CPU una
+volta alla decodifica dell'immagine (`computeCentroid` in `src/engine/mediaTexture.ts`, miniatura
+96×96, una sola lettura di pixel) ed esposto da `MediaTextureController.getCentroid()`. Se
+l'immagine è quasi tutta opaca — asset con sfondo **nero** invece che trasparente, caso frequente —
+l'alpha non descrive nessuna sagoma e si ripiega sulla luminanza, come fa il luma key. La Y è
+ribaltata perché le texture arrivano con `flipY`. Per video/camera/GIF il metodo è assente e resta
+(0.5, 0.5): ricalcolarlo a ogni frame costerebbe una lettura di pixel per frame.
+`ShaderPlane` rilegge il centroide ogni frame come fa con la texture, perché arriva in ritardo
+rispetto al montaggio (fine decodifica).
+
+**`holeFill` — solo il contorno esterno** (aggiunto subito dopo, su richiesta dell'utente): spegne
+i bordi che stanno *dentro* l'oggetto — fori, finestre, dettagli della texture — e lascia il solo
+profilo della silhouette. `stRim` da solo non li sa distinguere: per lui una finestra dentro il
+palco e il profilo del palco sono la stessa transizione pieno/vuoto. Il discriminante è
+l'**immersione** (`stFill`, media della sagoma su un anello LARGO di raggio `holeFill`): sul
+profilo esterno metà dell'anello cade nel vuoto attorno all'oggetto (~0.5), sul bordo di un foro
+più piccolo del raggio l'anello è quasi tutto dentro la sagoma (→1). Si tengono quindi i bordi con
+immersione bassa. Per questo il controllo è un **raggio** e non un interruttore: un foro più
+grande del raggio ha un bordo localmente indistinguibile da un profilo esterno e resta, quindi si
+alza lo slider finché i dettagli da togliere spariscono. A 0 il ramo non viene eseguito e non
+costa nulla; sopra sono 8 prelievi in più per copia.
+
+**`ringDistance` + nascita sul bordo esatto** (terza richiesta dell'utente). `ringDistance` regola
+la distanza fra le copie agendo sulla **profondità del percorso**: `u = v * ringDistance`, dove `v`
+è la progressione relativa della copia nel proprio giro (0 → 1). A 1 (default, comportamento
+precedente) il tunnel arriva fino al centro; sotto, le copie svaniscono a mezza strada e restano
+più fitte fra loro. `life` si misura su `v` e non su `u`, altrimenti con un tunnel corto la
+dissolvenza di fine giro non scatterebbe mai e le copie sparirebbero di colpo.
+
+Prima versione sbagliata (segnalata dall'utente come "non funziona più il selettore continuo/a
+blocco, resta sempre a blocco"): comprimeva gli **offset di partenza** (`i * ringDistance / N`).
+Matematicamente avvicinava le copie, ma le raggruppava in un plotone seguito da un vuoto rotante,
+quindi in "continuo" il risultato era indistinguibile da "a blocco" — il selettore funzionava
+(verificato leggendo lo stato dei bottoni), era il rendering delle due modalità a coincidere.
+Con la profondità il flusso resta continuo a qualsiasi distanza e le modalità tornano distinte.
+
+Le copie sembravano nascere **lontano dai bordi**: la causa era il fade-in di nascita
+(`smoothstep(0.0, 0.12, u)`), che le rendeva visibili solo dopo il 12% del percorso, quando erano
+già rimpicciolite. Ora la rampa è 0.02, cioè praticamente istantanea: a u = 0 la copia coincide
+esattamente con la silhouette ed è lì che si accende. Il pop non si vede perché la maschera del
+layer taglia comunque tutto sul contorno. La morte resta morbida (0.86 → 1), altrimenti le copie
+sparirebbero di scatto al centro.
+
+Verificato nel browser con un PNG scontornato di prova (sagoma di palco con fori interni):
+contorni concentrici che avanzano verso il baricentro in entrambe le modalità; con `holeFill` a ~25
+i bordi delle finestre e dei fori spariscono e resta la sola silhouette (confronto A/B fatto con
+`speed` quasi a zero, così le copie restano ferme fra i due scatti). Nessun errore in console,
+`npx tsc -b --noEmit` pulito.
+
 ## 2026-08-22 — Pagina 404 (`src/routes/not-found/NotFoundPage.tsx`)
 
 Qualunque URL fuori da `/control` e `/output` (prima cadeva su un `<Routes>` senza match, schermo

@@ -138,6 +138,10 @@ uniform float uMaskTexOn;            // 1 = usa la maschera-immagine
 // Rapporto larghezza/altezza del QUAD del layer (dai corner-pin, non del canvas): serve agli
 // shader che disegnano forme riconoscibili (cerchi, occhi…) e non devono deformarsi col mapping.
 uniform float uQuadAspect;
+// Baricentro della sagoma in uv (pesato sull'alpha, calcolato alla decodifica dell'immagine).
+// Per video/camera/GIF resta (0.5, 0.5). Serve agli effetti che devono partire dal centro
+// dell'OGGETTO e non del quad: su una sagoma scontornata i due punti non coincidono.
+uniform vec2 uShapeCentroid;
 // --- Stato della simulazione (solo effetti con //! SIMULATION; altrove resta una texture vuota) ---
 uniform sampler2D uSimState;         // RG = concentrazioni dei due morfogeni
 uniform vec2 uSimTexel;              // 1 / lato della griglia

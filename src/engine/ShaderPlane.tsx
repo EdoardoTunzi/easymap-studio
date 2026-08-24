@@ -94,6 +94,7 @@ export function buildUniforms(shader: ParsedShader | undefined): Record<string, 
     uMaskTex: { value: FALLBACK_TEXTURE },
     uMaskTexOn: { value: 0 },
     uQuadAspect: { value: 1 },
+    uShapeCentroid: { value: new THREE.Vector2(0.5, 0.5) },
     // stato degli effetti con simulazione: texture vuota per tutti gli altri, così il wrapper
     // compila comunque e il costo per chi non la usa è un sampler mai letto
     uSimState: { value: FALLBACK_TEXTURE },
@@ -291,6 +292,10 @@ function EffectPass({ layerId, variant, source, renderOrder, geometry, controlle
     u.uAudioOn.value = isAudioActive() ? 1 : 0
     // texture del contenuto (riassegnata ogni frame: sopravvive al rimontaggio del materiale)
     u.uTexture.value = controllerRef.current.getTexture()
+    // baricentro della sagoma: arriva in ritardo (dopo la decodifica), quindi si rilegge ogni
+    // frame come la texture invece di fissarlo al montaggio
+    const centroid = controllerRef.current.getCentroid?.() ?? [0.5, 0.5]
+    ;(u.uShapeCentroid.value as THREE.Vector2).set(centroid[0], centroid[1])
     for (const control of shader.controls) {
       const uniform = u[control.name]
       if (uniform) uniform.value = fx.params[control.name] ?? control.default
