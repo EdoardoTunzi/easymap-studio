@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { Layers2, RotateCcw, Video, VideoOff } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useLayersStore } from "@/store/layersStore";
 import type { Corners } from "@/store/projectStore";
 import {
@@ -175,7 +175,7 @@ export function CameraPicker() {
           disabled={busy}
           onClick={() => activate(selectable[0]?.deviceId ?? "")}
         >
-          <Video className="size-4 shrink-0" />
+          <Video data-icon="inline-start" />
           {busy ? "Apertura camera…" : "Attiva webcam / cam"}
         </Button>
       ) : (
@@ -186,22 +186,24 @@ export function CameraPicker() {
                 <SelectValue placeholder={media.name} />
               </SelectTrigger>
               <SelectContent>
-                {selectable.map((d) => (
-                  <SelectItem key={d.deviceId} value={d.deviceId}>
-                    {d.label}
-                  </SelectItem>
-                ))}
+                <SelectGroup>
+                  {selectable.map((d) => (
+                    <SelectItem key={d.deviceId} value={d.deviceId}>
+                      {d.label}
+                    </SelectItem>
+                  ))}
+                </SelectGroup>
               </SelectContent>
             </Select>
           )}
           <div className="flex gap-2">
-            <Button variant="secondary" className="h-8 flex-1 gap-2 px-2 text-xs" onClick={addFxLayer}>
+            <Button variant="secondary" className="flex-1 gap-2 px-2 text-xs" onClick={addFxLayer}>
               <Layers2 className="size-3.5 shrink-0" />
               Nuovo strato
             </Button>
             <Button
               variant="ghost"
-              className="h-8 px-2"
+              className="px-2"
               disabled={busy}
               onClick={() => void restart()}
               title="Riavvia la sorgente (se l'immagine si è piantata)"
@@ -210,7 +212,7 @@ export function CameraPicker() {
             </Button>
             <Button
               variant="ghost"
-              className="h-8 px-2"
+              className="px-2"
               onClick={() => setMedia(null)}
               title="Stacca la camera da questo layer"
             >

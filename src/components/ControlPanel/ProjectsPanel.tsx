@@ -68,7 +68,7 @@ export function ProjectsPanel() {
     <div className="flex flex-col gap-5">
       <Button variant="secondary" onClick={openNewProjectConfirm} aria-label="Nuovo progetto" className="press w-full justify-between">
         Nuovo progetto
-        <FilePlus2 className="size-4" />
+        <FilePlus2 data-icon="inline-end" />
       </Button>
 
       <div className="flex flex-col gap-2">
@@ -99,7 +99,7 @@ export function ProjectsPanel() {
                 <Button
                   variant="ghost"
                   onClick={() => loadProject(p.id)}
-                  className="press h-8 min-w-0 flex-1 justify-start px-2 text-sm font-normal"
+                  className="press min-w-0 flex-1 justify-start px-2 font-normal"
                   title={`Aperto l'ultima volta: ${new Date(p.updatedAt).toLocaleString()}`}
                 >
                   <span className="truncate">{p.name}</span>

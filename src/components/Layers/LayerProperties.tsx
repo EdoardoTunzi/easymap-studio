@@ -3,7 +3,7 @@ import { ZoomIn, ZoomOut, RotateCcw, Crosshair } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Slider } from "@/components/ui/slider";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ControlRow as SharedControlRow } from "@/components/layout/ControlRow";
 import { useLayersStore, BLEND_MODES, type BlendMode } from "@/store/layersStore";
 import { DEFAULT_TRANSFORM } from "@/store/projectStore";
@@ -87,11 +87,13 @@ export function LayerProperties() {
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            {BLEND_MODES.map((b) => (
-              <SelectItem key={b.value} value={b.value}>
-                {b.label}
-              </SelectItem>
-            ))}
+            <SelectGroup>
+              {BLEND_MODES.map((b) => (
+                <SelectItem key={b.value} value={b.value}>
+                  {b.label}
+                </SelectItem>
+              ))}
+            </SelectGroup>
           </SelectContent>
         </Select>
       </div>
@@ -141,7 +143,7 @@ export function LayerProperties() {
           onClick={() => setTransform({ zoom: DEFAULT_TRANSFORM.zoom })}
           disabled={transform.zoom === DEFAULT_TRANSFORM.zoom}
         >
-          <RotateCcw className="size-3.5" />
+          <RotateCcw data-icon="inline-start" />
           Reset
         </Button>
         {offCenter && (
@@ -152,7 +154,7 @@ export function LayerProperties() {
             onClick={() => setTransform({ offsetX: 0, offsetY: 0 })}
             title="Questo layer è stato spostato con il vecchio pad direzionale"
           >
-            <Crosshair className="size-3.5" />
+            <Crosshair data-icon="inline-start" />
             Ricentra la proiezione
           </Button>
         )}

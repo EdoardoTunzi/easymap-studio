@@ -386,7 +386,7 @@ export function CornerPinOverlay() {
               onPointerDown={handleEdgeDrag(edge)}
               className={cn(
                 'absolute -translate-x-1/2 -translate-y-1/2 rotate-45 border-2 border-white transition-[height,width]',
-                isSelected ? 'h-4 w-4 ring-2 ring-white/70' : 'h-3 w-3',
+                isSelected ? 'size-4 ring-2 ring-white/70' : 'size-3',
                 locked
                   ? 'cursor-not-allowed bg-amber-500'
                   : 'cursor-grab bg-purple-400 active:cursor-grabbing',
@@ -408,7 +408,7 @@ export function CornerPinOverlay() {
                 title={`${WARP_EDGE_LABELS[edge]}: curvatura (punto ${i + 1})`}
                 onPointerDown={handleWarpDrag(edge, i)}
                 className={cn(
-                  'absolute -translate-x-1/2 -translate-y-1/2 h-3.5 w-3.5 rounded-full border-2 border-white',
+                  'absolute -translate-x-1/2 -translate-y-1/2 size-3.5 rounded-full border-2 border-white',
                   locked
                     ? 'cursor-not-allowed bg-amber-400'
                     : 'cursor-grab bg-cyan-400 active:cursor-grabbing',
@@ -431,7 +431,7 @@ export function CornerPinOverlay() {
               title={`Nodo ${col + 1},${row + 1} del reticolo`}
               onPointerDown={handleGridDrag(col, row)}
               className={cn(
-                'absolute -translate-x-1/2 -translate-y-1/2 h-3 w-3 rounded-sm border-2 border-white',
+                'absolute -translate-x-1/2 -translate-y-1/2 size-3 rounded-sm border-2 border-white',
                 locked
                   ? 'cursor-not-allowed bg-amber-400'
                   : 'cursor-grab bg-cyan-400 active:cursor-grabbing',
@@ -453,7 +453,7 @@ export function CornerPinOverlay() {
             className={cn(
               'absolute -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-white transition-[height,width]',
               // l'angolo selezionato è più grande: è il bersaglio delle frecce, va riconosciuto subito
-              isSelected ? 'h-5 w-5 ring-2 ring-white/70' : 'h-4 w-4',
+              isSelected ? 'size-5 ring-2 ring-white/70' : 'size-4',
               locked
                 ? 'cursor-not-allowed bg-amber-500'
                 : 'cursor-grab bg-purple-500 active:cursor-grabbing',

@@ -103,7 +103,7 @@ export function EffectsPanel() {
         {layers.length > 1 && (
           <div className="flex flex-col gap-2">
             <Button variant={allSynced ? "default" : "outline"} size="sm" onClick={() => setSyncAll(!allSynced)} className="press gap-1.5">
-              <Link2 className="size-3.5" />
+              <Link2 data-icon="inline-start" />
               {allSynced ? "Rendi layer indipendenti" : "Applica a tutti i layer"}
             </Button>
             {/* Riquadro sempre visibile: spuntare un layer gli applica subito l'effetto del layer
@@ -190,10 +190,10 @@ export function EffectsPanel() {
           <Button
             variant="outline"
             size="sm"
-            className="press h-7 flex-1 gap-1.5 px-2 text-xs"
+            className="press flex-1 gap-1.5 px-2"
             onClick={() => setPaletteColors(randomPaletteColors(paletteCount), paletteCount)}
           >
-            <Dices className="size-3.5 shrink-0" />
+            <Dices data-icon="inline-start" />
             <span className="truncate">Genera</span>
           </Button>
           {[2, 3, 4, 5].map((n) => (
@@ -201,7 +201,7 @@ export function EffectsPanel() {
               key={n}
               variant={paletteCount === n ? "secondary" : "outline"}
               size="sm"
-              className="press h-7 w-7 shrink-0 px-0 text-xs tabular-nums"
+              className="press size-7 shrink-0 px-0 tabular-nums"
               onClick={() => setPaletteColors(randomPaletteColors(n), n)}
               title={`Palette casuale di ${n} colori`}
             >
@@ -216,7 +216,7 @@ export function EffectsPanel() {
           <Button
             variant={paletteLoop ? "default" : "outline"}
             size="sm"
-            className="press h-7 flex-1 gap-1.5 px-2 text-xs"
+            className="press flex-1 gap-1.5 px-2"
             onClick={() => activeLayerId && togglePaletteLoopFor(activeLayerId)}
             title={
               paletteLoop
@@ -287,21 +287,21 @@ export function EffectsPanel() {
               <Button
                 variant="outline"
                 size="sm"
-                className="press h-7 gap-1.5 px-2 text-xs"
+                className="press gap-1.5 px-2"
                 onClick={resetActiveParams}
                 title="Riporta controlli e colori di questo effetto ai valori di partenza (Size, palette e controlli globali non vengono toccati)"
               >
-                <RotateCcw className="size-3.5 shrink-0" />
+                <RotateCcw data-icon="inline-start" />
                 Reset
               </Button>
               <Button
                 variant="outline"
                 size="sm"
-                className="press h-7 gap-1.5 px-2 text-xs"
+                className="press gap-1.5 px-2"
                 onClick={randomizeActiveParams}
                 title="Valori casuali per tutti i controlli di questo effetto"
               >
-                <Dices className="size-3.5 shrink-0" />
+                <Dices data-icon="inline-start" />
                 Random
               </Button>
             </div>
@@ -326,7 +326,7 @@ export function EffectsPanel() {
                           key={label}
                           variant={selected ? "default" : "outline"}
                           size="sm"
-                          className="press h-7 flex-1 px-2 text-xs"
+                          className="press flex-1 px-2"
                           onClick={() => setParam(control.name, optionValue)}
                         >
                           {label}
@@ -345,11 +345,11 @@ export function EffectsPanel() {
                   key={control.name}
                   variant={on ? "default" : "outline"}
                   size="sm"
-                  className="press justify-between gap-2 px-3 text-xs capitalize"
+                  className="press justify-between gap-2 px-3 capitalize"
                   onClick={() => setParam(control.name, on ? 0 : 1)}
                 >
                   {control.name}
-                  <Power className="size-3.5 shrink-0" />
+                  <Power data-icon="inline-end" />
                 </Button>
               );
             }

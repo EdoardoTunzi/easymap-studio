@@ -292,7 +292,7 @@ function ClipEditor({ clip }: { clip: PlaylistClip }) {
 
       <div className="flex items-center gap-1.5">
         <Button variant="outline" size="sm" onClick={handleCapture} className="flex-1 gap-1.5">
-          <Camera className="size-3.5" />
+          <Camera data-icon="inline-start" />
           Cattura dal layer
         </Button>
         <Separator orientation="vertical" className="h-5" />
@@ -660,7 +660,7 @@ export function PlaylistBar() {
           title={smooth ? "Transizione smooth (crossfade): clicca per passare a secca" : "Transizione secca: clicca per passare a smooth"}
           className={cn("gap-1.5", !smooth && "text-muted-foreground")}
         >
-          {smooth ? <Blend className="size-3.5" /> : <Zap className="size-3.5" />}
+          {smooth ? <Blend data-icon="inline-start" /> : <Zap data-icon="inline-start" />}
           {smooth ? "Smooth" : "Secca"}
         </Button>
         {smooth && (

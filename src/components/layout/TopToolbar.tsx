@@ -1,4 +1,4 @@
-import { Move, Sparkles, Palette, FolderOpen, ListVideo, MonitorPlay, MonitorUp, Radio, PanelRight } from "lucide-react";
+import { Move, Sparkles, Palette, FolderOpen, ListVideo, MonitorPlay, MonitorUp, Radio, Layers } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 import { SidebarTrigger } from "@/components/ui/sidebar";
@@ -20,6 +20,19 @@ const NAV_BEFORE_PLAYLIST: NavItem[] = [
 
 const NAV_AFTER_PLAYLIST: NavItem[] = [{ id: "output", label: "Output", icon: MonitorPlay }];
 
+/**
+ * Sotto una certa larghezza le etichette della nav spariscono e restano le sole icone: la toolbar
+ * andava in overflow e l'ultimo pulsante (quello che apre la colonna destra) finiva sotto la
+ * sidebar, irraggiungibile. Le sole icone liberano 310px.
+ *
+ * La soglia è sulla larghezza della **toolbar**, non della finestra (`@container` sull'header):
+ * lo spazio utile cambia anche aprendo o chiudendo le due colonne a finestra ferma, e una media
+ * query non se ne accorgerebbe. Due valori perché in modalità Live compare anche "Esegui in
+ * output", che da solo vale quanto due pulsanti della nav.
+ */
+const NAV_LABEL = '@max-[660px]:hidden'
+const NAV_LABEL_LIVE = '@max-[860px]:hidden'
+
 export function TopToolbar() {
   const activePanel = useUiStore((s) => s.activePanel);
   const setActivePanel = useUiStore((s) => s.setActivePanel);
@@ -32,21 +45,27 @@ export function TopToolbar() {
   const playlistVisible = useUiStore((s) => s.playlistVisible);
   const togglePlaylist = useUiStore((s) => s.togglePlaylist);
 
+  // niente `data-icon` sui pulsanti della nav: serve al padding asimmetrico fra icona e testo, ma
+  // qui il testo sparisce sotto soglia e lascerebbe l'icona fuori centro. Il `px` simmetrico del
+  // variant la tiene centrata in entrambi gli stati.
+  const navLabel = live ? NAV_LABEL_LIVE : NAV_LABEL;
+
   const renderPanelButton = ({ id, label, icon: Icon }: NavItem) => (
     <Button
       key={id}
       variant={activePanel === id ? "secondary" : "ghost"}
       size="sm"
       onClick={() => setActivePanel(id)}
-      className={cn("gap-1.5 text-xs uppercase tracking-wide", activePanel === id ? "text-foreground" : "text-muted-foreground")}
+      title={label}
+      className={cn("gap-1.5 uppercase tracking-wide", activePanel === id ? "text-foreground" : "text-muted-foreground")}
     >
-      <Icon className="size-3.5" />
-      {label}
+      <Icon />
+      <span className={navLabel}>{label}</span>
     </Button>
   );
 
   return (
-    <header className="flex h-12 shrink-0 items-center justify-between border-b border-border bg-card px-3">
+    <header className="@container flex h-12 shrink-0 items-center justify-between border-b border-border bg-card px-3">
       <div className="flex items-center gap-1">
         <SidebarTrigger />
         {/* <Separator orientation="vertical" className="mx-1 h-5" /> */}
@@ -60,10 +79,10 @@ export function TopToolbar() {
           onClick={togglePlaylist}
           aria-pressed={playlistVisible}
           title={playlistVisible ? "Nascondi la barra playlist" : "Mostra la barra playlist"}
-          className={cn("gap-1.5 text-xs uppercase tracking-wide", playlistVisible ? "text-foreground" : "text-muted-foreground")}
+          className={cn("gap-1.5 uppercase tracking-wide", playlistVisible ? "text-foreground" : "text-muted-foreground")}
         >
-          <ListVideo className="size-3.5" />
-          Playlist
+          <ListVideo />
+          <span className={navLabel}>Playlist</span>
         </Button>
         {NAV_AFTER_PLAYLIST.map(renderPanelButton)}
       </nav>
@@ -74,10 +93,10 @@ export function TopToolbar() {
           variant={live ? "default" : "ghost"}
           size="sm"
           onClick={() => setLive(!live)}
-          className={cn("gap-1.5 text-xs uppercase tracking-wide", live && "bg-red-600 text-white hover:bg-red-600/90")}
+          className={cn("gap-1.5 uppercase tracking-wide", live && "bg-red-600 text-white hover:bg-red-600/90")}
           title={live ? "Live attivo: l’Output non si aggiorna finché non premi Esegui" : "Attiva la modalità Live"}
         >
-          <Radio className="size-3.5" />
+          <Radio data-icon="inline-start" />
           Live
         </Button>
 
@@ -87,10 +106,10 @@ export function TopToolbar() {
             size="sm"
             onClick={pushToOutput}
             disabled={!dirty}
-            className="relative gap-1.5 text-xs"
+            className="relative gap-1.5"
             title="Invia lo stato corrente alla finestra Output (Spazio)"
           >
-            <MonitorUp className="size-3.5" />
+            <MonitorUp data-icon="inline-start" />
             Esegui in output
             <kbd className="ml-0.5 rounded border border-current/30 px-1 text-[10px] leading-4 opacity-70">Spazio</kbd>
             {dirty && <span className="absolute -right-1 -top-1 size-2 rounded-full bg-amber-400" />}
@@ -106,7 +125,7 @@ export function TopToolbar() {
           className={cn(!rightSidebarOpen && "text-muted-foreground")}
           title={rightSidebarOpen ? "Nascondi il pannello del layer" : "Mostra il pannello del layer"}
         >
-          <PanelRight className="size-4" />
+          <Layers />
         </Button>
       </div>
     </header>

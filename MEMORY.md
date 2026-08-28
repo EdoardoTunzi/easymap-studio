@@ -2,6 +2,180 @@
 
 Ogni modifica al progetto va registrata qui con data, descrizione e motivazione. Le voci più recenti in alto dentro ogni giornata.
 
+## 2026-08-28 — TopToolbar: nav a sole icone quando lo spazio manca
+
+Chiude il bug preesistente annotato poco sopra: sotto i ~1200px di viewport la toolbar andava in
+overflow e l'ultimo pulsante — quello che apre la colonna destra — finiva sotto la sidebar `fixed`,
+**irraggiungibile proprio mentre la colonna era aperta**, cioè quando serviva per chiuderla.
+
+Le etichette dei cinque pulsanti della nav (Effetti, Palette, Progetti, Playlist, Output) spariscono
+sotto soglia e restano le sole icone: misurato, libera **310px** contro i 38 che mancavano, quindi
+copre con margine anche la modalità Live. Il nome resta nel `title`, che prima su quei pulsanti non
+c'era e ora serve davvero.
+
+**La soglia è sulla larghezza della toolbar, non della finestra** (`@container` sull'`<header>`,
+supportato da Tailwind v4 senza plugin). Lo spazio utile cambia anche aprendo o chiudendo le due
+colonne a finestra ferma: con una media query la toolbar non se ne sarebbe accorta. Verificato a
+1200px con Live attivo — colonna destra aperta: 592px, sole icone; chiusa: 912px, le etichette
+tornano; riaperta: spariscono di nuovo. Nessun overflow in nessuno dei tre stati.
+
+Due soglie (`@max-[660px]` e `@max-[860px]`) perché in Live compare anche "Esegui in output", che
+da solo vale quanto due pulsanti della nav.
+
+Tolto `data-icon` dai pulsanti della nav, contro la regola generale della skill: serve al padding
+asimmetrico fra icona e testo, ma qui il testo sparisce sotto soglia e lascerebbe l'icona fuori
+centro di un paio di pixel. Il `px` simmetrico del variant la tiene centrata in entrambi gli stati.
+
+## 2026-08-28 — La colonna destra diventa una Sidebar shadcn
+
+Il Layer Inspector era un `<aside>` scritto a mano, montato con `{rightSidebarOpen && …}`: si
+smontava di colpo invece di scivolare, non aveva `data-state`/`data-side`, e la maniglia di resize
+ne duplicava inline le classi invece di riusare `SidebarResizeHandle`. Ora usa lo stesso
+`<Sidebar side="right">` della colonna sinistra.
+
+**Perché serve un secondo `SidebarProvider`**: il context ne regge una sola. Quello destro è
+controllato dallo store (`open={rightSidebarOpen}` / `onOpenChange={setRightSidebarOpen}`), così il
+pulsante in `TopToolbar` resta la fonte di verità e non nasce un secondo stato parallelo.
+
+**Due prop nuove in `sidebar.tsx`**, entrambe con il default identico a prima, quindi la colonna
+sinistra non cambia comportamento:
+
+- `keyboardShortcut` (default `true`) — ogni provider registra il proprio listener su ⌘B chiamando
+  il *suo* `toggleSidebar`: con due provider la scorciatoia muoveva entrambe le colonne insieme.
+  Sul destro è `false`, ⌘B resta della sola sinistra (scelta dell'utente).
+- `cookieName` (default `SIDEBAR_COOKIE_NAME`) — due provider che scrivono `sidebar_state` si
+  sovrascriverebbero a vicenda. Al destro va `inspector_state`.
+
+È una divergenza dal file generato da shadcn: un futuro `shadcn add sidebar` la sovrascriverebbe.
+
+**Nota su quel cookie**: viene scritto ma **mai letto**. `defaultOpen` è sempre `true` e nessuno
+legge `document.cookie` — quella scrittura serve all'SSR di Next.js, dove il server legge il cookie
+e passa `defaultOpen`. In questa app, quindi, **nessuna delle due colonne ricorda il proprio stato
+al reload**: tornano sempre aperte. Se un giorno servisse la persistenza vera, va letto il cookie
+(o si usa localStorage come fa `playlistVisible`), non basta il componente.
+
+Altri due dettagli del montaggio: il wrapper del provider è `flex min-h-svh w-full`, e in quella
+riga flex `w-full` avrebbe preso tutta la larghezza — corretto con `className="w-auto min-h-0"`. E
+`SidebarContent` porta `overflow-auto`, che avrebbe aggiunto un secondo scroll sopra la `ScrollArea`
+già presente dentro `LayerInspector`: passato `overflow-hidden`.
+
+`SidebarResizeHandle` ha ora una prop `side` ('right' di default, il bordo esterno della colonna
+sinistra): la destra usa lo stesso componente invece delle 4 righe di classi duplicate.
+
+Verificato in browser: entrambe le sidebar espongono `data-side`/`data-state` e la transizione
+`left, right, width`; larghezze 288 e 320px, entrambe `position: fixed`. ⌘B porta la sinistra a
+`collapsed` lasciando la destra `expanded`. Il pulsante in toolbar porta la destra a `collapsed`
+**restando nel DOM** a `right: -320px` (prima si smontava), e il canvas si riprende lo spazio senza
+salti. Riaprendola torna a 320px con la maniglia al suo posto. Console pulita.
+
+
+Rifinitura successiva, sempre sulla stessa colonna:
+
+- Il titolo "Layer Inspector" esce da `LayerInspector.tsx` e diventa un `<SidebarHeader>` in
+  `ControlPage`, simmetrico all'header col logo della colonna sinistra. Con `h-12 p-0
+  items-center justify-center` (il componente porta `p-2 gap-2`, che centrerebbe male un titolo su
+  riga singola). Guadagnato anche un pixel di allineamento: la fascia era alta 49px contro i 48
+  della TopToolbar e dell'header sinistro, e il bordo cadeva più in basso. Ora le tre fasce in cima
+  chiudono tutte a 48px esatti, misurato.
+- L'icona del pulsante che apre la colonna passa da `PanelRight` a **`Layers`**: dice cosa c'è
+  dentro invece di dove si apre. Tolta anche la `size-4` scritta a mano, il variant `icon` la
+  applica da sé (verificato: 16px).
+
+**Bug preesistente trovato durante la verifica, non introdotto qui**: sotto i ~1200px di viewport
+la TopToolbar va in overflow (servono 630px, ce ne sono 592) e il pulsante che apre la colonna
+destra finisce sotto la sidebar, diventando **inaccessibile** quando la colonna è aperta. Misurato
+sullo stato originale con `git stash`: prima delle modifiche di oggi ne servivano **635**, quindi
+il problema c'era già ed era di 5px peggiore. Sopra i ~1350px non si manifesta. Annotato in
+`TODO.md`: la toolbar non ha una strategia per lo spazio stretto (né wrap, né overflow scrollabile,
+né riduzione a sole icone).
+
+## 2026-08-28 — Audit skill shadcn e allineamento dei Button ai variant
+
+Installata la skill `shadcn` (symlink `.claude/skills/shadcn` → `.agents/skills/shadcn`, tracciata da
+`skills-lock.json`, non ancora committata). Audit delle sue regole sui 39 `.tsx` applicativi: già a
+posto spacing (`gap-*`, zero `space-x/y-*`), `cn()`, dark mode, z-index. Restano da sistemare 69
+icone con classe di sizing manuale, 44 colori raw Tailwind, 17 `<button>` nativi, 5 divisori
+`border-t` al posto di `Separator`, 2 `SelectItem` fuori da `SelectGroup`.
+
+Applicato a 13 file, in due lotti. Primo lotto, `MediaUploader.tsx` e `OutputLauncher.tsx`:
+
+- Le icone nei `Button` passano da `className="size-4"` / `"size-3.5"` a `data-icon="inline-start"`.
+  Il `button.tsx` installato dimensiona già le icone **per variant**
+  (`[&_svg:not([class*='size-'])]:size-4`, `sm` → `size-3.5`, `xs` → `size-3`): il selettore è un
+  `:not([class*='size-'])`, quindi ogni classe di sizing scritta a mano **disattivava**
+  l'automatismo e bloccava l'icona su una misura che non seguiva più il variant. `data-icon` attiva
+  in più il padding asimmetrico (`has-data-[icon=inline-start]:pl-2`).
+- Il pulsante "Ripristina" aveva `size="sm"` **e** `className="h-7 gap-1.5 px-2 text-xs"`, cioè la
+  riscrittura a mano di ciò che il variant `sm` già fa. Rimossi: ora è `className="press
+  text-muted-foreground"`.
+
+Secondo lotto, 25 icone in 11 file (`TopToolbar`, `EffectsPanel`, `PalettePanel`, `MaskPanel`,
+`FxControlsPanel`, `PlaylistBar`, `LayerList`, `LayerProperties`, `AudioInputPanel`,
+`ProjectsPanel`, `CameraPicker`). Due scoperte hanno ristretto il lavoro rispetto alle 69
+occorrenze contate nell'audit:
+
+- **`data-icon` vale solo per i Button con icona *e* testo**: dà il padding asimmetrico fra i due.
+  Sui 35 `size="icon*"` non ha senso, non c'è padding da correggere. `MappingControls.tsx`, che
+  l'audit indicava come il file peggiore con 14 occorrenze, è **interamente icon-only**: non è
+  stato toccato. Le sue `size-3.5` su `size="icon-xs"` (che darebbe `size-3`) sono per giunta una
+  scelta deliberata, 14px invece di 12px su una toolbar di 30 pulsanti — la regola della skill
+  ammette esplicitamente le dimensioni custom.
+- Dei 29 Button con icona+testo, ne sono stati modificati **23**: quelli dove la classe scritta a
+  mano coincideva già con la dimensione del variant, quindi a rischio visivo zero. I 5 dove
+  differisce restano invariati e sono annotati in `TODO.md`.
+
+Rimosso anche `shrink-0` dove presente: è già nella base del Button (`[&_svg]:shrink-0`).
+
+Il fix è stato scritto come script (`re` + un parser dei tag JSX) e non a mano, ma la prima
+versione ha marcato `inline-end` una quindicina di icone che invece precedono il testo, per due
+motivi entrambi di parsing: la fine del tag `<Button …>` cercata col primo `>`, che però cade
+dentro le arrow function `() =>` degli `onClick`; e il prefisso dell'icona valutato senza
+distinguere un'espressione JSX chiusa (`{control.name}`, contenuto che conta) da una graffa ancora
+aperta (`{state.active ? <MicOff/> : …}`, wrapper che *contiene* l'icona e non la precede).
+Corretti entrambi, restano 2 soli `inline-end`, che sono i due pulsanti con `justify-between`
+(`ProjectsPanel` "Nuovo progetto", il toggle dei controlli booleani in `EffectsPanel`).
+
+Terzo lotto, le regole restanti a rischio visivo nullo:
+
+- **`SelectItem` dentro `SelectGroup`** in `CameraPicker.tsx` e `LayerProperties.tsx`: il gruppo è
+  il contenitore che Radix si aspetta, senza cambia nulla a video ma la lista resta senza il ruolo
+  ARIA corretto.
+- **`h-N w-N` uguali → `size-N`**: 4 in `CornerPinOverlay.tsx` (maniglie di corner, curvatura e
+  reticolo) e 1 in `EffectsPanel.tsx`. La `transition-[height,width]` delle maniglie continua a
+  funzionare, `size-*` genera comunque `width` e `height`.
+- **14 classi che riscrivevano il variant**: `h-8` su `size` default, `h-7` su `sm`, `text-sm` su
+  default (che è già la base del Button). Rimosse: erano identiche a ciò che il componente applica
+  da sé, quindi a video non cambia niente.
+
+Restano aperte solo scelte di aspetto, elencate in `TODO.md`: `text-xs` contro il `text-[0.8rem]`
+del variant `sm` (11 pulsanti), i colori raw, i divisori `border-t`, i `<button>` nativi.
+
+Quarto lotto, su decisione dell'utente: `text-xs` rimosso da 13 `Button` con `size="sm"` (il
+variant porta `text-[0.8rem]`, quindi il testo passa da 12px a 12,8px in top toolbar, pannello
+Effetti, Palette e ingresso audio). In `TopToolbar.tsx` la classe stava dentro `cn()` e non nella
+stringa letterale, quindi lo script non la vedeva: rimossa a parte in 3 punti.
+
+Sempre per decisione dell'utente **restano invariati**, e non vanno riproposti come difetti:
+
+- i **44 colori raw**: la palette dell'app è costruita su questi valori, e sugli overlay del canvas
+  sono marker che devono restare leggibili sopra qualunque proiezione;
+- i **5 divisori `border-t`**: `Separator` porta `data-horizontal:w-full`, che romperebbe lo
+  stretch nel flex-col, e servirebbe `data-horizontal:w-auto` più l'override del colore — più
+  codice del `div` attuale, per lo stesso risultato. Il commento in `ControlPage.tsx:53` già lo
+  documentava.
+
+Nota di metodo: gli script di sostituzione erano tre, e due hanno sbagliato qualcosa che il
+type-check non poteva vedere (i `data-icon` invertiti; poi un `re.sub(r'\s+>', '>')` che ha
+risucchiato il `>` di chiusura sulla riga dell'ultimo attributo, rompendo la formattazione
+multi-riga di 10 tag). Entrambi corretti rileggendo il diff, non l'output dello script: su
+modifiche di questo tipo il `git diff` è l'unica verifica che conta.
+
+Verificato in browser sulla `/control` leggendo gli stili calcolati: "Ripristina" h 28px, font
+12.8px (`text-[0.8rem]` del variant, prima 12px), gap 4px, `padding-left` 6px contro 10px a destra,
+icona 14×14; "Apri finestra Output" e "Carica media…" h 32px, icona 16×16, `padding-left` 8px contro
+10px. Il padding asimmetrico conferma che `data-icon` è attivo. `npx tsc -b --noEmit` pulito,
+console senza errori nuovi.
+
 ## 2026-08-24 — `.gitignore`: configurazioni degli assistenti fuori dal repo
 
 Le regole scritte a mano non funzionavano per due motivi indipendenti, entrambi corretti:

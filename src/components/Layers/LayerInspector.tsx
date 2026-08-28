@@ -31,14 +31,10 @@ export function LayerInspector() {
   // fissa da 1px — e lo si fa solo quando c'è davvero qualcosa di nascosto sopra.
   const { ref: scrollRef, scrolled } = useScrollShadow<HTMLDivElement>();
 
+  // Il titolo della colonna vive nel <SidebarHeader> in ControlPage, simmetrico all'header della
+  // colonna sinistra: qui resta il solo contenuto.
   return (
     <div className="flex h-full flex-col">
-      {/* Titolo della colonna: stesso maiuscoletto degli altri titoli (.ui-eyebrow, 11px) e stesso
-          px-4 del resto, altrimenti resta l'unico testo appoggiato al bordo. */}
-      <div className=" flex justify-center py-4.5 border-b border-sidebar-border bg-secondary/40">
-        <span className="ui-eyebrow text-muted-foreground">Layer Inspector</span>
-      </div>
-
       {/* §15: la gerarchia si costruisce con peso + corpo + colore insieme, non con il solo corpo.
           L'etichetta sta indietro (muted, 12px), il nome del layer viene avanti (15px semibold, con
           il tracking stretto che il testo grande richiede): l'informazione è il nome, non la parola

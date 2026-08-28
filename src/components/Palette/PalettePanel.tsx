@@ -51,7 +51,7 @@ export function PalettePanel() {
         }}
         className="press w-full gap-2"
       >
-        <Power className="size-4" />
+        <Power data-icon="inline-start" />
         {enabled ? 'Palette attiva' : 'Palette disattivata'}
       </Button>
 
@@ -95,7 +95,7 @@ export function PalettePanel() {
           onClick={() => setColors(randomPaletteColors(count), count)}
           className="press gap-1.5"
         >
-          <Dices className="size-3.5" />
+          <Dices data-icon="inline-start" />
           Palette casuale ({count} colori)
         </Button>
         <div className="flex items-center gap-1.5">
@@ -105,7 +105,7 @@ export function PalettePanel() {
               key={n}
               variant={count === n ? 'secondary' : 'outline'}
               size="sm"
-              className="press h-7 flex-1 px-0 text-xs tabular-nums"
+              className="press flex-1 px-0 tabular-nums"
               onClick={() => setColors(randomPaletteColors(n), n)}
               title={`Genera una palette casuale di ${n} colori`}
             >
