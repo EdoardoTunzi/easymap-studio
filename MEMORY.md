@@ -2,6 +2,136 @@
 
 Ogni modifica al progetto va registrata qui con data, descrizione e motivazione. Le voci più recenti in alto dentro ogni giornata.
 
+## 2026-08-28 — Dark: rampa non lineare, l'accento brillante torna
+
+Segnalato che selezionando Dark l'effetto si scuriva, con l'impressione che fosse solo un
+effetto visivo. Non lo era: `setPaletteCategory` scrive davvero solo `palette.category` e nessun
+uniform di brightness cambia, ma con `amount` al 100% il colore in uscita **è** la palette,
+quindi la luminanza della rampa è la luminanza dell'effetto. Misurata: Dark stava a 0,163 di
+luminanza media contro 0,399 di "Tutte", con lo stop più chiaro a 0,32 — il 59% in meno.
+
+Sotto c'era un difetto vero. Le palette "dark" reali non sono tutte scure: sono tre toni
+scurissimi **più un accento brillante**. Il rimappaggio tonale su [0.02, 0.32] lo cancellava:
+
+```
+originale (#222831 #393E46 #00ADB5 #EEEEEE)   0.15  0.24  0.48  0.93
+rimappata su [0.02, 0.32]                     0.02  0.04  0.07  0.09  0.32
+```
+
+L'accento a 0,93 finiva a 0,32 e i primi quattro stop si schiacciavano fra 0,02 e 0,09,
+percettivamente indistinguibili. In projection mapping è doppiamente grave: a quella luminanza
+l'effetto proiettato sulla superficie è quasi invisibile.
+
+Introdotto `lightCurve` (esponente della progressione di lightness, default 1 = lineare). Dark usa
+`2.4` con tetto alzato a 0,52–0,70: la rampa resta bassa a lungo e sale solo sull'ultimo stop,
+che è la struttura vera di quelle palette. Esito tipico: `0.02 0.04 0.12 0.27 0.53`.
+
+**La curva si applica solo al ramo procedurale**, non alle curate: quelle la distribuzione
+"scuro + accento" ce l'hanno già nei dati, e applicarla anche lì la schiaccerebbe due volte. Alle
+curate basta il tetto più alto — la stessa palette di prima ora dà `0.02 0.07 0.13 0.17 0.62`.
+
+Dopo: luminanza media da 0,163 a 0,239, stop più chiaro da 0,320 a 0,605. Dark resta comunque la
+più scura dopo Space (0,229) e mantiene il carattere notturno, ma con più contrasto. Monotonia
+per luminanza sempre rispettata: 0 rampe invertite su 2000.
+
+## 2026-08-28 — Categorie di palette (Forest, Autumn, Happy, Space, Dark, Neon)
+
+Sette bottoni di categoria nella sezione "Colori casuali" del pannello Shader e in Palette:
+indirizzano la generazione casuale — e il Loop — verso un genere di colori. "Tutte" è l'assenza
+di vincolo, cioè il generatore libero.
+
+Nuovo file `src/store/paletteCategories.ts`: per ogni categoria un **profilo generativo** (archi
+di tinta con pesi, intervallo di saturazione, rampe di lightness, armonie ammesse) e un **seed
+set** di 14 palette curate del genere. `randomPaletteColors(count, prev, category)` pesca dal
+seed set nel 35% dei casi e genera nel profilo nel resto.
+
+**Perché ibrido e non uno dei due puri.** Solo curate: con 14 palette e il Loop a 2s la sequenza
+si esaurisce in mezzo minuto e ricomincia — il problema appena risolto. Solo procedurale: Forest
+e Autumn hanno un'identità fatta di rapporti specifici (verde desaturato + marrone caldo) che la
+generazione libera non centra sempre. Il seed set fa da àncora, il profilo porta la varietà; il
+profilo tonale è riestratto anche sulle curate, quindi 14 palette × 3 rampe danno 42 esiti.
+
+**Le palette da galleria non sono utilizzabili così come sono.** Misurata la luminanza degli stop
+nell'ordine pubblicato: 4 su 6 palette campione non sono monotone e una (Happy di ColorHunt) è
+decrescente. Lì i colori sono campiture affiancate, non una rampa. `normalizeCuratedColors` le
+riordina per luminanza e rimappa l'escursione sul profilo tonale scelto — necessario anche
+perché l'escursione pubblicata è spesso troppo stretta (una halloween tipica sta fra 0,12 e
+0,47) e sull'effetto arriverebbe tutta scura. Si tocca solo la lightness: tinta e saturazione
+restano intatte.
+
+**Due difetti trovati dalla verifica, entrambi corretti:**
+
+1. **Un terzo delle rampe non era monotono per luminanza percettiva** — difetto preesistente,
+   non introdotto dalle categorie. La rampa cresce in lightness HSL, ma la gradient map indicizza
+   per luminanza percettiva, e le due non coincidono: a parità di lightness un giallo è molto più
+   luminoso di un blu, quindi con le armonie che spostano la tinta fra gli stop la gradient map
+   invertiva il contrasto a metà rampa. Ora la rampa viene riordinata per luminanza in
+   `randomPaletteColors`: non altera i colori né la tinta dominante (una media, indipendente
+   dall'ordine). Misurato dopo: 0 rampe non monotone su 4200.
+2. **La rotazione minima non si applicava al ramo curato**, che poteva restituire una palette a
+   pochi gradi dalla precedente. Ora `pickCurated` prova fino a 6 candidate.
+
+**Rotazione dentro una categoria.** `MIN_HUE_ROTATION = 70` non è applicabile tale e quale:
+Forest vive in ~190° di arco totale, Autumn in ~125°. Dentro una categoria la soglia scala al 35%
+dell'arco (`CATEGORY_ROTATION_SHARE`), e il vincolo resta comunque non sempre soddisfacibile —
+misurata la rotazione fra palette consecutive, la mediana va da 51° (Autumn, la categoria più
+stretta) a 126° (Happy, Neon), ma il minimo scende a 4–18°. È voluto: dentro una categoria stretta
+lo stacco lo portano saturazione e profilo tonale, non la tinta. Senza categoria resta garantita
+a 70°.
+
+`Palette.category` è opzionale, quindi i progetti e i preset effetti salvati prima la leggono come
+`undefined` → trattata come 'all': nessuna migrazione del database.
+
+**Peso**: il bundle passa da 5655,10 a 5663,72 KiB di precache, +8,6 KB per 84 palette curate,
+7 profili e la UI. Il costo a runtime resta quello di prima: il generatore gira una volta per
+ciclo di Loop per layer, non per frame.
+
+## 2026-08-28 — Generatore di palette casuali: varietà cromatica e tonale
+
+Le palette casuali "sembravano sempre le stesse". Analizzando `randomPaletteColors` in
+`src/store/paletteStore.ts` la causa non era una sola:
+
+- **Struttura tonale congelata**: la lightness era `0.07 + t * 0.62`, deterministica (per 5 stop
+  sempre `0.07 → 0.23 → 0.38 → 0.53 → 0.69`) e la saturazione sempre fra 0.75 e 1. Ogni palette
+  aveva quindi la stessa curva "quasi-nero → tinta satura → chiaro": variava solo la tinta.
+- **Tinta non percettivamente uniforme**: `Math.random() * 360` su HSL, dove il verde occupa 90°
+  del cerchio e il giallo 25. Misurato su 4000 estrazioni: verde+blu+ciano nel 51% dei casi.
+- **Nessuna memoria fra un'estrazione e l'altra**: due palette consecutive potevano cadere a
+  pochi gradi di distanza, e col Loop attivo la sequenza si leggeva come colori ripetuti.
+- **Solo 10 strutture cromatiche discrete** (5 armonie × 2 flip), che a `count` basso collassavano
+  ulteriormente (con 2 colori `0/30` e `0/15` sono indistinguibili, come `0/180` e `0/150`).
+
+Quattro interventi, tutti dentro `randomPaletteColors`:
+
+1. `TONAL_PROFILES` — quattro rampe di lightness (cupa, standard, high-key, contrastata) estratte
+   a caso al posto dell'unica fissa, e saturazione allargata a 0.35–1.0 così escono anche palette
+   tenui e non solo fluo.
+2. `HUE_FAMILIES` — la tinta si campiona scegliendo prima la famiglia percettiva (rosso, arancio,
+   giallo, verde, ciano, blu, viola, magenta) e poi un punto nel suo arco: ogni famiglia esce con
+   la stessa frequenza a prescindere da quanti gradi di cerchio occupa.
+3. `MIN_HUE_ROTATION = 70` — la nuova palette viene generata ad almeno 70° di tinta dalla
+   precedente, che ora `randomPaletteColors(count, prev)` riceve come secondo argomento.
+   Aggiornati i chiamanti: `PalettePanel`, `EffectsPanel`, `use-palette-loop`.
+4. `HARMONY_JITTER` — ±10° su ogni offset di armonia, così due estrazioni con la stessa armonia
+   non danno rapporti cromatici identici.
+
+**Il punto non ovvio**: il vincolo di rotazione e l'equalizzazione vanno ancorati alla tinta
+**dominante** della palette, non alla tinta base. Nella prima stesura agivano su `baseHue` e la
+verifica mostrava rotazione minima 0,0° e verde ancora al 20,6%: l'armonia sparpaglia gli stop
+anche di 240°, quindi allontanare la base non sposta il colore che si percepisce. La versione
+finale sceglie la dominante voluta e ricava la base per differenza — la media circolare pesata
+ruota rigidamente con gli stop, perché i pesi (`stopWeight`) dipendono solo dalla lightness e non
+dalla tinta, quindi la palette prodotta ha esattamente la dominante richiesta.
+
+Misure su 4000 estrazioni, prima → dopo: famiglie di tinta da 7,5–24,8% a 11,7–13,9% (piatta);
+freddi dal 51,4% al 35,5%; rotazione minima fra palette consecutive da 0° a 70°; combinazioni
+tonali distinte da 1 a ~340 su 400 estrazioni.
+
+**Costo**: nullo. Il generatore gira una volta per ciclo di loop per layer, non per frame: da 1167
+a 1407 ns per chiamata, cioè 0,011 ms/s di CPU nel caso peggiore (8 layer a 1s) contro i 16,67 ms
+di budget di un singolo frame a 60fps. Gli uniform restano cinque `vec3` e `easyvj_gradient` è
+invariata: sulla GPU non cambia nulla.
+
 ## 2026-08-28 — Tooltip sostituito da HoverCard, componente rimosso
 
 Installato `hover-card` con la CLI (`npx shadcn@latest add hover-card`) e rimosso

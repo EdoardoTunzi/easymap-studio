@@ -14,6 +14,7 @@ import { ALT_LABEL } from "@/hooks/use-effect-hotkeys";
 import { useLayersStore } from "@/store/layersStore";
 import { useUiStore, MIN_PALETTE_LOOP_INTERVAL, MAX_PALETTE_LOOP_INTERVAL } from "@/store/uiStore";
 import { rgbToHex, hexToRgb, randomPaletteColors } from "@/store/paletteStore";
+import { PALETTE_CATEGORY_OPTIONS } from "@/store/paletteCategories";
 
 export function EffectsPanel() {
   const shaders = useEffectsStore((s) => s.shaders);
@@ -29,8 +30,12 @@ export function EffectsPanel() {
   const setColorParam = useLayersStore((s) => s.setActiveColorParam);
   const setPaletteColors = useLayersStore((s) => s.setPaletteColors);
   const setPaletteEnabled = useLayersStore((s) => s.setPaletteEnabled);
+  const setPaletteCategory = useLayersStore((s) => s.setPaletteCategory);
   const paletteEnabled = activeLayer?.palette.enabled ?? false;
   const paletteCount = activeLayer?.palette.count ?? 5;
+  // passata al generatore casuale: la palette nuova viene estratta lontano di tinta da questa
+  const paletteColors = activeLayer?.palette.colors;
+  const paletteCategory = activeLayer?.palette.category ?? "all";
   const syncTargetIds = useLayersStore((s) => s.syncTargetIds);
   const toggleSyncTarget = useLayersStore((s) => s.toggleSyncTarget);
   const setSyncAll = useLayersStore((s) => s.setSyncAll);
@@ -186,12 +191,40 @@ export function EffectsPanel() {
             <Power className="size-3.5" />
           </button>
         </div>
+        {/* Categorie: indirizzano la generazione (e il Loop) verso un genere di colori.
+            Il click imposta la categoria E genera subito, altrimenti non si vedrebbe nulla
+            finché non si preme Genera, e il bottone sembrerebbe inerte. */}
+        <div className="grid grid-cols-4 gap-1">
+          {PALETTE_CATEGORY_OPTIONS.map(({ id, label, hint }) => (
+            <Button
+              key={id}
+              variant={paletteCategory === id ? "secondary" : "outline"}
+              size="sm"
+              className="press h-7 px-1 text-[10px] leading-none"
+              title={hint}
+              onClick={() => {
+                setPaletteCategory(id);
+                setPaletteColors(
+                  randomPaletteColors(paletteCount, paletteColors, id),
+                  paletteCount,
+                );
+              }}
+            >
+              <span className="truncate">{label}</span>
+            </Button>
+          ))}
+        </div>
         <div className="flex items-center gap-1.5">
           <Button
             variant="outline"
             size="sm"
             className="press flex-1 gap-1.5 px-2"
-            onClick={() => setPaletteColors(randomPaletteColors(paletteCount), paletteCount)}
+            onClick={() =>
+              setPaletteColors(
+                randomPaletteColors(paletteCount, paletteColors, paletteCategory),
+                paletteCount,
+              )
+            }
           >
             <Dices data-icon="inline-start" />
             <span className="truncate">Genera</span>
@@ -202,7 +235,9 @@ export function EffectsPanel() {
               variant={paletteCount === n ? "secondary" : "outline"}
               size="sm"
               className="press size-7 shrink-0 px-0 tabular-nums"
-              onClick={() => setPaletteColors(randomPaletteColors(n), n)}
+              onClick={() =>
+                setPaletteColors(randomPaletteColors(n, paletteColors, paletteCategory), n)
+              }
               title={`Palette casuale di ${n} colori`}
             >
               {n}
