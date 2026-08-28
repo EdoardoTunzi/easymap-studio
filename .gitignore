@@ -24,7 +24,16 @@ dist-ssr
 *.sw?
 
 
-.agents/
-agents/
+# Le skill degli assistenti restano fuori dal repo, tranne quelle installate nel progetto:
+# senza di esse `skills-lock.json` è solo un manifest e la skill non è utilizzabile altrove.
+# La forma `dir/*` (contenuto) e non `dir/` (directory) è obbligatoria: git non scende dentro
+# una directory esclusa, quindi le eccezioni `!` sotto non verrebbero mai valutate.
+.agents/*
+!.agents/skills/
+# `/agents/` ancorato alla radice: senza la barra iniziale la regola vale per QUALSIASI directory
+# chiamata "agents" a ogni profondità, e si portava via anche `.agents/skills/shadcn/agents/`,
+# che è un file della skill.
+/agents/
 .claude/*
 !.claude/launch.json
+!.claude/skills/
