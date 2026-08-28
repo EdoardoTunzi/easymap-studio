@@ -2,6 +2,58 @@
 
 Ogni modifica al progetto va registrata qui con data, descrizione e motivazione. Le voci più recenti in alto dentro ogni giornata.
 
+## 2026-08-28 — Tooltip sostituito da HoverCard, componente rimosso
+
+Installato `hover-card` con la CLI (`npx shadcn@latest add hover-card`) e rimosso
+`src/components/ui/tooltip.tsx`. Gli usi erano tre:
+
+- **`ControlRow.tsx`**, l'unico applicativo: l'icona "?" che apre la spiegazione di un controllo.
+- **`main.tsx`**: il `TooltipProvider` che avvolgeva l'app. HoverCard non richiede provider, quindi
+  è sparito e basta.
+- **`sidebar.tsx`**: la prop `tooltip` di `SidebarMenuButton`. Quel componente non è usato da
+  nessuna parte nel progetto, ma il ramo è stato convertito lo stesso per non lasciare il file
+  generato a metà. Seconda divergenza da shadcn in quel file, dopo `keyboardShortcut`/`cookieName`.
+
+Tre differenze fra i due componenti hanno richiesto una scelta, non una sostituzione meccanica:
+
+- **Ritardo**: il `TooltipProvider` era a `delayDuration={0}`, HoverCard aprirebbe a 700ms. Per un
+  aiuto contestuale 700ms si leggono come "non funziona", quindi `openDelay={150} closeDelay={100}`.
+- **Larghezza**: `HoverCardContent` porta `w-64` fissa, il Tooltip era `w-fit max-w-xs`. Passato
+  `w-auto max-w-64`, così un testo breve non resta in una card mezza vuota.
+- **Aspetto**: da pillola scura (`bg-foreground text-background`, 12px, con freccia) a card popover
+  (`bg-popover`, 14px, senza freccia). È il cambiamento voluto.
+
+**Il dubbio sull'accessibilità era infondato, verificato invece che dato per buono.** Il commento in
+`ControlRow` dice che il trigger è un `button` perché la spiegazione si raggiunga da tastiera, e la
+documentazione Radix presenta HoverCard come componente per chi usa il mouse. Ma il `Trigger` di
+Radix gestisce `onFocus`/`onBlur`, e provato nel browser: dando il focus al trigger (esattamente ciò
+che fa il Tab) la card si apre. Quel commento resta valido.
+
+Verificato anche l'hover reale: card a 256px, `data-side="right"` come da `hintSide`, zero nodi
+`data-slot="tooltip*"` rimasti nel DOM. `tsc` pulito, `oxlint` senza nuovi warning.
+
+## 2026-08-28 — Layer Inspector: il divisorio passa alla chrome fissa
+
+Il bordo sotto la lista dei layer spariva appena si cominciava a scorrere, e sembrava che la sezione
+"Proprietà" avesse un `border-t` che scivolava via col contenuto.
+
+Non era così: il bordo stava sulla **Root** della `ScrollArea` (`border-t`) ed era immobile —
+misurato, restava a y=239 prima e dopo lo scroll. A coprirlo era la **sfumatura**: parte dallo
+stesso identico pixel del bordo, è alta 24px, ha `z-10` e `from-sidebar`, cioè in cima è opaca.
+Accendendosi allo scroll si mangiava la riga sottostante. Da fuori l'effetto è indistinguibile da un
+bordo che scorre via.
+
+Ora il divisorio è il `border-b` del blocco fisso che contiene `LayerList`, cioè della chrome che
+non si muove: sta *sopra* la sfumatura invece che sotto, quindi non può più essere coperto. La
+sfumatura è rimasta identica. Verificato: divisorio a y=240, sfumatura da y=240 in giù, bordo
+visibile sia a scroll 0 sia a scroll 260.
+
+**Stesso schema, stesso difetto, nella colonna sinistra** (non toccato, fuori dalla richiesta): lì
+il titolo del pannello ha `border-b` (1px, `oklch(1 0 0 / 0.1)`) e la `ScrollArea` ha *anche* un
+`border-t` (1px, `/0.06`), entrambi sullo stesso pixel y=97. A riposo si vedono due righe adiacenti,
+scorrendo la sfumatura ne copre una e il bordo cambia spessore. Basterebbe togliere il `border-t`
+alla `ScrollArea`, come fatto a destra. Annotato in `TODO.md`.
+
 ## 2026-08-28 — TopToolbar: nav a sole icone quando lo spazio manca
 
 Chiude il bug preesistente annotato poco sopra: sotto i ~1200px di viewport la toolbar andava in

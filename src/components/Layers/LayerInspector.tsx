@@ -52,8 +52,12 @@ export function LayerInspector() {
         </span>
       </div>
 
-      {/* blocco fisso: la selezione non deve mai uscire dallo schermo mentre si scorre il resto */}
-      <div className="shrink-0 px-4 pb-3">
+      {/* Blocco fisso: la selezione non deve mai uscire dallo schermo mentre si scorre il resto.
+          Il divisorio sta qui, come border-b della chrome ferma, e non come border-t dell'area
+          scrollabile: là partiva esattamente sotto la sfumatura (stesso pixel, ma la sfumatura ha
+          z-10 e `from-sidebar` opaco in cima), e appena si iniziava a scorrere veniva coperto —
+          sembrava che il bordo della sezione "Proprietà" scivolasse via insieme al contenuto. */}
+      <div className="shrink-0 border-b border-sidebar-border/60 px-4 pb-3">
         <LayerList />
       </div>
 
@@ -64,7 +68,7 @@ export function LayerInspector() {
           className="pointer-events-none absolute inset-x-0 top-0 z-10 h-6 bg-linear-to-b from-sidebar to-transparent transition-opacity duration-[--dur-base] ease-[--ease-out]"
           style={{ opacity: scrolled ? 1 : 0 }}
         />
-        <ScrollArea className="h-full border-t border-sidebar-border/60">
+        <ScrollArea className="h-full">
           <CollapsibleSection section="properties" title="Proprietà">
             <LayerProperties />
           </CollapsibleSection>

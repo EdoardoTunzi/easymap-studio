@@ -18,10 +18,10 @@ import {
 } from "@/components/ui/sheet"
 import { Skeleton } from "@/components/ui/skeleton"
 import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from "@/components/ui/tooltip"
+  HoverCard,
+  HoverCardContent,
+  HoverCardTrigger,
+} from "@/components/ui/hover-card"
 import { PanelLeftIcon } from "lucide-react"
 
 const SIDEBAR_COOKIE_NAME = "sidebar_state"
@@ -515,7 +515,7 @@ function SidebarMenuButton({
 }: React.ComponentProps<"button"> & {
   asChild?: boolean
   isActive?: boolean
-  tooltip?: string | React.ComponentProps<typeof TooltipContent>
+  tooltip?: string | React.ComponentProps<typeof HoverCardContent>
 } & VariantProps<typeof sidebarMenuButtonVariants>) {
   const Comp = asChild ? Slot.Root : "button"
   const { isMobile, state } = useSidebar()
@@ -541,16 +541,20 @@ function SidebarMenuButton({
     }
   }
 
+  // Divergenza dal file generato da shadcn: il progetto usa HoverCard al posto di Tooltip, che è
+  // stato rimosso. `SidebarMenuButton` non è usato da nessuna parte qui, ma il ramo resta coerente
+  // così il componente continua a funzionare se un giorno servisse.
   return (
-    <Tooltip>
-      <TooltipTrigger asChild>{button}</TooltipTrigger>
-      <TooltipContent
+    <HoverCard openDelay={150} closeDelay={100}>
+      <HoverCardTrigger asChild>{button}</HoverCardTrigger>
+      <HoverCardContent
         side="right"
         align="center"
+        className="w-auto"
         hidden={state !== "collapsed" || isMobile}
         {...tooltip}
       />
-    </Tooltip>
+    </HoverCard>
   )
 }
 
