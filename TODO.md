@@ -27,6 +27,9 @@ Spuntare gli step completati; aggiungere nuovi step quando emergono. Tenere alli
 - [x] Supporto uniform vec3 nel parser ISF (colorControls) + fix 3D Surface Morph Spirals (spiralColor restava nero)
 - [x] Sistema palette colori (gradient map globale): 7 preset fluorescenti caldi + editor color picker + intensità, valido per ogni shader (tab Palette)
 - [x] Generatore di palette casuali più vario: profili tonali e saturazione variabili, tinte equalizzate per famiglia percettiva, rotazione minima di 70° dalla palette precedente (`randomPaletteColors(count, prev)`) e jitter sulle armonie
+- [x] Categorie di palette (Forest, Autumn, Happy, Space, Dark, Neon + Tutte): profilo generativo per categoria e seed set di 14 palette curate ciascuna (`src/store/paletteCategories.ts`), bottoni in EffectsPanel e PalettePanel, categoria per-layer rispettata anche dal Loop
+- [x] Fix: la rampa viene riordinata per luminanza percettiva e non per lightness HSL — un terzo delle palette generate aveva il contrasto invertito a metà rampa nella gradient map
+- [x] Dark: `lightCurve` (rampa non lineare) e tetto alzato, per la struttura "fondo scurissimo + accento brillante" delle palette notturne — prima l'accento veniva schiacciato e l'effetto risultava quasi invisibile in proiezione
 - [x] Preset degli effetti: salva/carica il look (shader + parametri + size + palette) su IndexedDB (store effectPresets, DB v2), pannello nel tab Shader
 - [x] Sidebar shadcn (Provider/Sidebar/Inset) con collapse nativo (SidebarTrigger) e resize via drag handle (localStorage, min 240/max 520px). Toolbar Move/Shader/Palette/Assets/Output spostata dentro SidebarInset, brand EASYVJ in SidebarHeader
 - [x] Toggle visibilità dei riferimenti di mapping (pulsante occhio nella toolbar del canvas): nasconde cornice corner-pin e maniglie/forme mask per valutare l'effetto senza sovrapposizioni. Solo in Control, l'Output non li disegna mai

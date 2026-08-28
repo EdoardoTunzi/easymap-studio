@@ -2,6 +2,90 @@
 
 Ogni modifica al progetto va registrata qui con data, descrizione e motivazione. Le voci più recenti in alto dentro ogni giornata.
 
+## 2026-08-28 — Dark: rampa non lineare, l'accento brillante torna
+
+Segnalato che selezionando Dark l'effetto si scuriva, con l'impressione che fosse solo un
+effetto visivo. Non lo era: `setPaletteCategory` scrive davvero solo `palette.category` e nessun
+uniform di brightness cambia, ma con `amount` al 100% il colore in uscita **è** la palette,
+quindi la luminanza della rampa è la luminanza dell'effetto. Misurata: Dark stava a 0,163 di
+luminanza media contro 0,399 di "Tutte", con lo stop più chiaro a 0,32 — il 59% in meno.
+
+Sotto c'era un difetto vero. Le palette "dark" reali non sono tutte scure: sono tre toni
+scurissimi **più un accento brillante**. Il rimappaggio tonale su [0.02, 0.32] lo cancellava:
+
+```
+originale (#222831 #393E46 #00ADB5 #EEEEEE)   0.15  0.24  0.48  0.93
+rimappata su [0.02, 0.32]                     0.02  0.04  0.07  0.09  0.32
+```
+
+L'accento a 0,93 finiva a 0,32 e i primi quattro stop si schiacciavano fra 0,02 e 0,09,
+percettivamente indistinguibili. In projection mapping è doppiamente grave: a quella luminanza
+l'effetto proiettato sulla superficie è quasi invisibile.
+
+Introdotto `lightCurve` (esponente della progressione di lightness, default 1 = lineare). Dark usa
+`2.4` con tetto alzato a 0,52–0,70: la rampa resta bassa a lungo e sale solo sull'ultimo stop,
+che è la struttura vera di quelle palette. Esito tipico: `0.02 0.04 0.12 0.27 0.53`.
+
+**La curva si applica solo al ramo procedurale**, non alle curate: quelle la distribuzione
+"scuro + accento" ce l'hanno già nei dati, e applicarla anche lì la schiaccerebbe due volte. Alle
+curate basta il tetto più alto — la stessa palette di prima ora dà `0.02 0.07 0.13 0.17 0.62`.
+
+Dopo: luminanza media da 0,163 a 0,239, stop più chiaro da 0,320 a 0,605. Dark resta comunque la
+più scura dopo Space (0,229) e mantiene il carattere notturno, ma con più contrasto. Monotonia
+per luminanza sempre rispettata: 0 rampe invertite su 2000.
+
+## 2026-08-28 — Categorie di palette (Forest, Autumn, Happy, Space, Dark, Neon)
+
+Sette bottoni di categoria nella sezione "Colori casuali" del pannello Shader e in Palette:
+indirizzano la generazione casuale — e il Loop — verso un genere di colori. "Tutte" è l'assenza
+di vincolo, cioè il generatore libero.
+
+Nuovo file `src/store/paletteCategories.ts`: per ogni categoria un **profilo generativo** (archi
+di tinta con pesi, intervallo di saturazione, rampe di lightness, armonie ammesse) e un **seed
+set** di 14 palette curate del genere. `randomPaletteColors(count, prev, category)` pesca dal
+seed set nel 35% dei casi e genera nel profilo nel resto.
+
+**Perché ibrido e non uno dei due puri.** Solo curate: con 14 palette e il Loop a 2s la sequenza
+si esaurisce in mezzo minuto e ricomincia — il problema appena risolto. Solo procedurale: Forest
+e Autumn hanno un'identità fatta di rapporti specifici (verde desaturato + marrone caldo) che la
+generazione libera non centra sempre. Il seed set fa da àncora, il profilo porta la varietà; il
+profilo tonale è riestratto anche sulle curate, quindi 14 palette × 3 rampe danno 42 esiti.
+
+**Le palette da galleria non sono utilizzabili così come sono.** Misurata la luminanza degli stop
+nell'ordine pubblicato: 4 su 6 palette campione non sono monotone e una (Happy di ColorHunt) è
+decrescente. Lì i colori sono campiture affiancate, non una rampa. `normalizeCuratedColors` le
+riordina per luminanza e rimappa l'escursione sul profilo tonale scelto — necessario anche
+perché l'escursione pubblicata è spesso troppo stretta (una halloween tipica sta fra 0,12 e
+0,47) e sull'effetto arriverebbe tutta scura. Si tocca solo la lightness: tinta e saturazione
+restano intatte.
+
+**Due difetti trovati dalla verifica, entrambi corretti:**
+
+1. **Un terzo delle rampe non era monotono per luminanza percettiva** — difetto preesistente,
+   non introdotto dalle categorie. La rampa cresce in lightness HSL, ma la gradient map indicizza
+   per luminanza percettiva, e le due non coincidono: a parità di lightness un giallo è molto più
+   luminoso di un blu, quindi con le armonie che spostano la tinta fra gli stop la gradient map
+   invertiva il contrasto a metà rampa. Ora la rampa viene riordinata per luminanza in
+   `randomPaletteColors`: non altera i colori né la tinta dominante (una media, indipendente
+   dall'ordine). Misurato dopo: 0 rampe non monotone su 4200.
+2. **La rotazione minima non si applicava al ramo curato**, che poteva restituire una palette a
+   pochi gradi dalla precedente. Ora `pickCurated` prova fino a 6 candidate.
+
+**Rotazione dentro una categoria.** `MIN_HUE_ROTATION = 70` non è applicabile tale e quale:
+Forest vive in ~190° di arco totale, Autumn in ~125°. Dentro una categoria la soglia scala al 35%
+dell'arco (`CATEGORY_ROTATION_SHARE`), e il vincolo resta comunque non sempre soddisfacibile —
+misurata la rotazione fra palette consecutive, la mediana va da 51° (Autumn, la categoria più
+stretta) a 126° (Happy, Neon), ma il minimo scende a 4–18°. È voluto: dentro una categoria stretta
+lo stacco lo portano saturazione e profilo tonale, non la tinta. Senza categoria resta garantita
+a 70°.
+
+`Palette.category` è opzionale, quindi i progetti e i preset effetti salvati prima la leggono come
+`undefined` → trattata come 'all': nessuna migrazione del database.
+
+**Peso**: il bundle passa da 5655,10 a 5663,72 KiB di precache, +8,6 KB per 84 palette curate,
+7 profili e la UI. Il costo a runtime resta quello di prima: il generatore gira una volta per
+ciclo di Loop per layer, non per frame.
+
 ## 2026-08-28 — Generatore di palette casuali: varietà cromatica e tonale
 
 Le palette casuali "sembravano sempre le stesse". Analizzando `randomPaletteColors` in

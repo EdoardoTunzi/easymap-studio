@@ -80,7 +80,7 @@ export function usePaletteLoop() {
           id,
           {
             from: palette?.colors ?? [],
-            to: randomPaletteColors(palette?.count ?? PALETTE_STOPS, palette?.colors),
+            to: randomPaletteColors(palette?.count ?? PALETTE_STOPS, palette?.colors, palette?.category),
             stepStart: start,
             settled: false,
             lastApply: 0,
@@ -117,7 +117,7 @@ export function usePaletteLoop() {
         if (elapsed >= interval) {
           state.from = palette.colors ?? state.to
           // si parte dai colori a schermo: il generatore li usa per allontanarsi di tinta
-          state.to = randomPaletteColors(palette.count ?? PALETTE_STOPS, state.from)
+          state.to = randomPaletteColors(palette.count ?? PALETTE_STOPS, state.from, palette.category)
           state.stepStart = now
           state.settled = false
         }

@@ -13,6 +13,7 @@ import {
   hexToRgb,
   type RGB,
 } from '@/store/paletteStore'
+import { PALETTE_CATEGORY_OPTIONS } from '@/store/paletteCategories'
 import { useLayersStore } from '@/store/layersStore'
 
 /** CSS linear-gradient dalle prime `count` fermate. */
@@ -29,6 +30,7 @@ export function PalettePanel() {
     useLayersStore((s) => s.layers.find((l) => l.id === s.activeLayerId)?.palette) ??
     createDefaultPalette()
   const { enabled, colors, count, amount, activePreset } = palette
+  const category = palette.category ?? 'all'
   const activeLayerId = useLayersStore((s) => s.activeLayerId)
   const stopPaletteLoopFor = useUiStore((s) => s.stopPaletteLoopFor)
   const setEnabled = useLayersStore((s) => s.setPaletteEnabled)
@@ -37,6 +39,7 @@ export function PalettePanel() {
   const setColor = useLayersStore((s) => s.setPaletteColor)
   const setColors = useLayersStore((s) => s.setPaletteColors)
   const applyPreset = useLayersStore((s) => s.applyPalettePreset)
+  const setCategory = useLayersStore((s) => s.setPaletteCategory)
 
   return (
     <div className="flex flex-col gap-5">
@@ -87,12 +90,33 @@ export function PalettePanel() {
             </button>
           ))}
         </div>
+        {/* Categoria: restringe tinte, saturazione e rampe della generazione casuale a un
+            genere. Vale anche per il Loop di questo layer. È lo stesso stato dei bottoni nel
+            pannello Shader, così passando da un pannello all'altro la scelta non cambia. */}
+        <span className="ui-eyebrow mt-2 text-muted-foreground">Categoria</span>
+        <div className="grid grid-cols-4 gap-1">
+          {PALETTE_CATEGORY_OPTIONS.map(({ id, label, hint }) => (
+            <Button
+              key={id}
+              variant={category === id ? 'secondary' : 'outline'}
+              size="sm"
+              className="press h-7 px-1 text-[10px] leading-none"
+              title={hint}
+              onClick={() => {
+                setCategory(id)
+                setColors(randomPaletteColors(count, colors, id), count)
+              }}
+            >
+              <span className="truncate">{label}</span>
+            </Button>
+          ))}
+        </div>
         {/* Generatore casuale: colori armonici da scuro ad acceso, attiva la palette.
             Il numero scelto diventa anche il conteggio degli stop attivi. */}
         <Button
           variant="outline"
           size="sm"
-          onClick={() => setColors(randomPaletteColors(count, colors), count)}
+          onClick={() => setColors(randomPaletteColors(count, colors, category), count)}
           className="press gap-1.5"
         >
           <Dices data-icon="inline-start" />
@@ -106,7 +130,7 @@ export function PalettePanel() {
               variant={count === n ? 'secondary' : 'outline'}
               size="sm"
               className="press flex-1 px-0 tabular-nums"
-              onClick={() => setColors(randomPaletteColors(n, colors), n)}
+              onClick={() => setColors(randomPaletteColors(n, colors, category), n)}
               title={`Genera una palette casuale di ${n} colori`}
             >
               {n}

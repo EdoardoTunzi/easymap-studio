@@ -37,6 +37,7 @@ import {
   type WarpMode,
 } from '../lib/warp'
 import { useUiStore } from './uiStore'
+import { type PaletteCategoryId } from './paletteCategories'
 import {
   type Palette,
   type RGB,
@@ -528,6 +529,11 @@ interface LayersState {
    * layer spuntati avviene solo se il layer indicato è quello attivo, come per ogni altro edit.
    */
   setLayerPaletteColors: (layerId: string, colors: RGB[], count?: number) => void
+  /**
+   * Categoria che guida il generatore casuale e il Loop di questo layer ('all' = nessun vincolo).
+   * Non tocca i colori a schermo: li cambia la generazione successiva.
+   */
+  setPaletteCategory: (category: PaletteCategoryId) => void
   applyPalettePreset: (name: string) => void
 
   // maschere del layer attivo
@@ -977,6 +983,8 @@ export const useLayersStore = create<LayersState>((set, get) => {
         colors[index] = rgb
         return { palette: { ...l.palette, colors, activePreset: CUSTOM_PRESET } }
       }),
+    setPaletteCategory: (category) =>
+      editEffect((l) => ({ palette: { ...l.palette, category } })),
     setPaletteColors: (colors, count) =>
       editEffect((l) => ({
         palette: {
