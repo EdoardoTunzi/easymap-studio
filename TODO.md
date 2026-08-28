@@ -26,6 +26,7 @@ Spuntare gli step completati; aggiungere nuovi step quando emergono. Tenere alli
 - [x] Famiglia Halo (12 shader): toggle `mirror` per disattivare lo specchio interno hardcoded (default acceso, invariato) + uniform `speed` dedicato dove non c'era già un controllo equivalente (`flow`/`pulse`); parser e `EffectsPanel` estesi con un marcatore `@step` per renderizzare i controlli booleani come bottone invece che slider
 - [x] Supporto uniform vec3 nel parser ISF (colorControls) + fix 3D Surface Morph Spirals (spiralColor restava nero)
 - [x] Sistema palette colori (gradient map globale): 7 preset fluorescenti caldi + editor color picker + intensità, valido per ogni shader (tab Palette)
+- [x] Generatore di palette casuali più vario: profili tonali e saturazione variabili, tinte equalizzate per famiglia percettiva, rotazione minima di 70° dalla palette precedente (`randomPaletteColors(count, prev)`) e jitter sulle armonie
 - [x] Preset degli effetti: salva/carica il look (shader + parametri + size + palette) su IndexedDB (store effectPresets, DB v2), pannello nel tab Shader
 - [x] Sidebar shadcn (Provider/Sidebar/Inset) con collapse nativo (SidebarTrigger) e resize via drag handle (localStorage, min 240/max 520px). Toolbar Move/Shader/Palette/Assets/Output spostata dentro SidebarInset, brand EASYVJ in SidebarHeader
 - [x] Toggle visibilità dei riferimenti di mapping (pulsante occhio nella toolbar del canvas): nasconde cornice corner-pin e maniglie/forme mask per valutare l'effetto senza sovrapposizioni. Solo in Control, l'Output non li disegna mai

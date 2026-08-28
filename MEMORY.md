@@ -2,6 +2,52 @@
 
 Ogni modifica al progetto va registrata qui con data, descrizione e motivazione. Le voci più recenti in alto dentro ogni giornata.
 
+## 2026-08-28 — Generatore di palette casuali: varietà cromatica e tonale
+
+Le palette casuali "sembravano sempre le stesse". Analizzando `randomPaletteColors` in
+`src/store/paletteStore.ts` la causa non era una sola:
+
+- **Struttura tonale congelata**: la lightness era `0.07 + t * 0.62`, deterministica (per 5 stop
+  sempre `0.07 → 0.23 → 0.38 → 0.53 → 0.69`) e la saturazione sempre fra 0.75 e 1. Ogni palette
+  aveva quindi la stessa curva "quasi-nero → tinta satura → chiaro": variava solo la tinta.
+- **Tinta non percettivamente uniforme**: `Math.random() * 360` su HSL, dove il verde occupa 90°
+  del cerchio e il giallo 25. Misurato su 4000 estrazioni: verde+blu+ciano nel 51% dei casi.
+- **Nessuna memoria fra un'estrazione e l'altra**: due palette consecutive potevano cadere a
+  pochi gradi di distanza, e col Loop attivo la sequenza si leggeva come colori ripetuti.
+- **Solo 10 strutture cromatiche discrete** (5 armonie × 2 flip), che a `count` basso collassavano
+  ulteriormente (con 2 colori `0/30` e `0/15` sono indistinguibili, come `0/180` e `0/150`).
+
+Quattro interventi, tutti dentro `randomPaletteColors`:
+
+1. `TONAL_PROFILES` — quattro rampe di lightness (cupa, standard, high-key, contrastata) estratte
+   a caso al posto dell'unica fissa, e saturazione allargata a 0.35–1.0 così escono anche palette
+   tenui e non solo fluo.
+2. `HUE_FAMILIES` — la tinta si campiona scegliendo prima la famiglia percettiva (rosso, arancio,
+   giallo, verde, ciano, blu, viola, magenta) e poi un punto nel suo arco: ogni famiglia esce con
+   la stessa frequenza a prescindere da quanti gradi di cerchio occupa.
+3. `MIN_HUE_ROTATION = 70` — la nuova palette viene generata ad almeno 70° di tinta dalla
+   precedente, che ora `randomPaletteColors(count, prev)` riceve come secondo argomento.
+   Aggiornati i chiamanti: `PalettePanel`, `EffectsPanel`, `use-palette-loop`.
+4. `HARMONY_JITTER` — ±10° su ogni offset di armonia, così due estrazioni con la stessa armonia
+   non danno rapporti cromatici identici.
+
+**Il punto non ovvio**: il vincolo di rotazione e l'equalizzazione vanno ancorati alla tinta
+**dominante** della palette, non alla tinta base. Nella prima stesura agivano su `baseHue` e la
+verifica mostrava rotazione minima 0,0° e verde ancora al 20,6%: l'armonia sparpaglia gli stop
+anche di 240°, quindi allontanare la base non sposta il colore che si percepisce. La versione
+finale sceglie la dominante voluta e ricava la base per differenza — la media circolare pesata
+ruota rigidamente con gli stop, perché i pesi (`stopWeight`) dipendono solo dalla lightness e non
+dalla tinta, quindi la palette prodotta ha esattamente la dominante richiesta.
+
+Misure su 4000 estrazioni, prima → dopo: famiglie di tinta da 7,5–24,8% a 11,7–13,9% (piatta);
+freddi dal 51,4% al 35,5%; rotazione minima fra palette consecutive da 0° a 70°; combinazioni
+tonali distinte da 1 a ~340 su 400 estrazioni.
+
+**Costo**: nullo. Il generatore gira una volta per ciclo di loop per layer, non per frame: da 1167
+a 1407 ns per chiamata, cioè 0,011 ms/s di CPU nel caso peggiore (8 layer a 1s) contro i 16,67 ms
+di budget di un singolo frame a 60fps. Gli uniform restano cinque `vec3` e `easyvj_gradient` è
+invariata: sulla GPU non cambia nulla.
+
 ## 2026-08-28 — Tooltip sostituito da HoverCard, componente rimosso
 
 Installato `hover-card` con la CLI (`npx shadcn@latest add hover-card`) e rimosso

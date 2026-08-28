@@ -31,6 +31,8 @@ export function EffectsPanel() {
   const setPaletteEnabled = useLayersStore((s) => s.setPaletteEnabled);
   const paletteEnabled = activeLayer?.palette.enabled ?? false;
   const paletteCount = activeLayer?.palette.count ?? 5;
+  // passata al generatore casuale: la palette nuova viene estratta lontano di tinta da questa
+  const paletteColors = activeLayer?.palette.colors;
   const syncTargetIds = useLayersStore((s) => s.syncTargetIds);
   const toggleSyncTarget = useLayersStore((s) => s.toggleSyncTarget);
   const setSyncAll = useLayersStore((s) => s.setSyncAll);
@@ -191,7 +193,9 @@ export function EffectsPanel() {
             variant="outline"
             size="sm"
             className="press flex-1 gap-1.5 px-2"
-            onClick={() => setPaletteColors(randomPaletteColors(paletteCount), paletteCount)}
+            onClick={() =>
+              setPaletteColors(randomPaletteColors(paletteCount, paletteColors), paletteCount)
+            }
           >
             <Dices data-icon="inline-start" />
             <span className="truncate">Genera</span>
@@ -202,7 +206,7 @@ export function EffectsPanel() {
               variant={paletteCount === n ? "secondary" : "outline"}
               size="sm"
               className="press size-7 shrink-0 px-0 tabular-nums"
-              onClick={() => setPaletteColors(randomPaletteColors(n), n)}
+              onClick={() => setPaletteColors(randomPaletteColors(n, paletteColors), n)}
               title={`Palette casuale di ${n} colori`}
             >
               {n}

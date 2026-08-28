@@ -92,7 +92,7 @@ export function PalettePanel() {
         <Button
           variant="outline"
           size="sm"
-          onClick={() => setColors(randomPaletteColors(count), count)}
+          onClick={() => setColors(randomPaletteColors(count, colors), count)}
           className="press gap-1.5"
         >
           <Dices data-icon="inline-start" />
@@ -106,7 +106,7 @@ export function PalettePanel() {
               variant={count === n ? 'secondary' : 'outline'}
               size="sm"
               className="press flex-1 px-0 tabular-nums"
-              onClick={() => setColors(randomPaletteColors(n), n)}
+              onClick={() => setColors(randomPaletteColors(n, colors), n)}
               title={`Genera una palette casuale di ${n} colori`}
             >
               {n}
