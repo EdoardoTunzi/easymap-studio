@@ -45,11 +45,11 @@ export function MaskPanel() {
         </span>
         <div className="grid grid-cols-2 gap-2">
           <Button variant="secondary" size="sm" className="gap-1.5" onClick={() => addMask('rectangle')}>
-            <Square className="size-3.5" />
+            <Square data-icon="inline-start" />
             Rettangolo
           </Button>
           <Button variant="secondary" size="sm" className="gap-1.5" onClick={() => addMask('ellipse')}>
-            <Circle className="size-3.5" />
+            <Circle data-icon="inline-start" />
             Ellisse
           </Button>
         </div>

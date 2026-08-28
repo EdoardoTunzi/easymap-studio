@@ -117,7 +117,7 @@ export function FxControlsPanel() {
           className="press flex-1 gap-1.5"
           onClick={() => setFx({ mirrorX: !fx.mirrorX })}
         >
-          <FlipHorizontal className="size-3.5" />
+          <FlipHorizontal data-icon="inline-start" />
           Mirror X
         </Button>
         <Button
@@ -126,7 +126,7 @@ export function FxControlsPanel() {
           className="press flex-1 gap-1.5"
           onClick={() => setFx({ mirrorY: !fx.mirrorY })}
         >
-          <FlipVertical className="size-3.5" />
+          <FlipVertical data-icon="inline-start" />
           Mirror Y
         </Button>
       </div>

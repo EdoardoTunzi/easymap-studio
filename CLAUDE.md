@@ -4,9 +4,9 @@ Webapp frontend per projection mapping e VJ live: l'utente carica una foto (PNG 
 
 ## Regole di lavoro (obbligatorie)
 
-1. **Ogni modifica al codice va registrata in `MEMORY.md`** — una riga per modifica con data, cosa è stato fatto e perché. Aggiornare il file nella stessa sessione in cui si fa la modifica, mai rimandare.
+1. **Ogni modifica al codice va registrata in `MEMORY.md`** — una riga per modifica con data, un breve e concisa descrizione di cosa è stato fatto e perché. Aggiornare il file nella stessa sessione in cui si fa la modifica, mai rimandare.
 2. **Dopo ogni modifica aggiornare `TODO.md`** — spuntare gli step completati e aggiungere eventuali nuovi step emersi.
-3. Verificare sempre le modifiche visivamente nel browser (dev server + screenshot) prima di considerarle complete.
+3. Se la modifica è corposa, chiedere sempre se verificare le modifiche visivamente nel browser (dev server + screenshot) prima di considerarle complete.
 4. Rispondere e commentare sempre in italiano; identificatori di codice in inglese.
 
 ## Stack

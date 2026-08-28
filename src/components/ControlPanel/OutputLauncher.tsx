@@ -95,7 +95,7 @@ export function OutputLauncher() {
       <div className="flex flex-col gap-2">
         <span className="ui-eyebrow text-muted-foreground">Finestra di proiezione</span>
         <Button onClick={openOutput} className="press w-full gap-2">
-          <MonitorPlay className="size-4" />
+          <MonitorPlay data-icon="inline-start" />
           Apri finestra Output
         </Button>
         <p className="ui-sublabel leading-relaxed text-muted-foreground/80">
@@ -112,11 +112,11 @@ export function OutputLauncher() {
         <Button
           variant="ghost"
           size="sm"
-          className="press h-7 gap-1.5 px-2 text-xs text-muted-foreground"
+          className="press text-muted-foreground"
           onClick={() => useRenderStore.getState().reset()}
           title="Riporta le impostazioni di resa ai valori di partenza"
         >
-          <RotateCcw className="size-3.5" />
+          <RotateCcw data-icon="inline-start" />
           Ripristina
         </Button>
       </div>

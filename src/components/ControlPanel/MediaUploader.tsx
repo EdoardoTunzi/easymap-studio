@@ -64,7 +64,7 @@ export function MediaUploader() {
     <div className="flex flex-col gap-2">
       <span className="ui-sublabel text-muted-foreground">Media del layer (immagine, GIF o video)</span>
       <Button variant="secondary" onClick={() => inputRef.current?.click()} className="w-full justify-start gap-2">
-        <ImageUp className="size-4 shrink-0" />
+        <ImageUp data-icon="inline-start" />
         <span className="truncate" title={media?.name}>
           {media ? truncateName(media.name) : "Carica media…"}
         </span>

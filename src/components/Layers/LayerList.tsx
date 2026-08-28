@@ -205,8 +205,8 @@ export function LayerList() {
     <div className="flex flex-col gap-2.5">
       <div className="flex items-center justify-between">
         <span className="ui-eyebrow text-muted-foreground">Layers</span>
-        <Button variant="secondary" size="sm" className="press h-7 gap-1.5" onClick={() => addLayer()}>
-          <Plus className="size-3.5" />
+        <Button variant="secondary" size="sm" className="press gap-1.5" onClick={() => addLayer()}>
+          <Plus data-icon="inline-start" />
           Nuovo
         </Button>
       </div>

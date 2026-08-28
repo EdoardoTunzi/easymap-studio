@@ -54,7 +54,7 @@ export function EffectPresetsPanel() {
               <Button
                 variant="ghost"
                 onClick={() => loadEffectPreset(p.id)}
-                className="press h-8 min-w-0 flex-1 justify-start px-2 text-sm font-normal"
+                className="press min-w-0 flex-1 justify-start px-2 font-normal"
                 title={`${p.shaderName} · ${new Date(p.updatedAt).toLocaleString()}`}
               >
                 <span className="truncate">{p.name}</span>

@@ -66,11 +66,11 @@ export function AudioInputPanel() {
       <Button
         variant={state.active ? 'default' : 'outline'}
         size="sm"
-        className="press h-7 w-full gap-1.5 px-2 text-xs"
+        className="press w-full gap-1.5 px-2"
         disabled={busy}
         onClick={() => void toggle()}
       >
-        {state.active ? <MicOff className="size-3.5 shrink-0" /> : <Mic className="size-3.5 shrink-0" />}
+        {state.active ? <MicOff data-icon="inline-start" /> : <Mic data-icon="inline-start" />}
         {state.active ? 'Chiudi ingresso' : busy ? 'Apertura…' : 'Attiva microfono / linea'}
       </Button>
 

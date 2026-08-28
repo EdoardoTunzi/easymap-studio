@@ -130,6 +130,8 @@ interface UiState {
   /** Colonna destra (ispettore del layer selezionato): apribile/richiudibile come la sidebar sinistra. */
   rightSidebarOpen: boolean
   toggleRightSidebar: () => void
+  /** Serve al SidebarProvider della colonna destra, che vuole un `onOpenChange` con il valore. */
+  setRightSidebarOpen: (open: boolean) => void
   /**
    * Barra playlist in fondo alla Control: nascondendola il canvas si riprende lo spazio.
    * È solo visibilità: la barra resta montata (display:none), così la riproduzione in corso
@@ -221,6 +223,7 @@ export const useUiStore = create<UiState>((set) => ({
   setActivePanel: (activePanel) => set({ activePanel }),
   rightSidebarOpen: true,
   toggleRightSidebar: () => set((s) => ({ rightSidebarOpen: !s.rightSidebarOpen })),
+  setRightSidebarOpen: (rightSidebarOpen) => set({ rightSidebarOpen }),
   playlistVisible: loadPlaylistVisible(),
   togglePlaylist: () =>
     set((s) => {

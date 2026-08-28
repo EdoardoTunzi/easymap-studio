@@ -83,6 +83,7 @@ export function ControlPage() {
   const overlaysVisible = useUiStore((s) => s.overlaysVisible);
   const gridVisible = useUiStore((s) => s.gridVisible);
   const rightSidebarOpen = useUiStore((s) => s.rightSidebarOpen);
+  const setRightSidebarOpen = useUiStore((s) => s.setRightSidebarOpen);
   // le maniglie delle maschere sostituiscono il corner-pin solo mentre se ne sta modificando una:
   // la maschera deve esistere davvero sul layer attivo, altrimenti il corner-pin resterebbe nascosto
   // dietro un MaskOverlay vuoto (selezione rimasta appesa a un altro layer)
@@ -142,7 +143,7 @@ export function ControlPage() {
             </div>
           </SidebarContent>
         </Sidebar>
-        <SidebarResizeHandle onPointerDown={startResize} />
+        <SidebarResizeHandle onPointerDown={startResize} side="right" />
       </div>
       {/* h-svh: altezza bloccata al viewport, così alzando la barra playlist è il canvas a comprimersi */}
       <SidebarInset className="h-svh min-w-0 overflow-hidden">
@@ -157,19 +158,36 @@ export function ControlPage() {
         </main>
         <PlaylistBar />
       </SidebarInset>
-      {rightSidebarOpen && (
-        // min-w-0 + overflow-hidden: senza, i contenuti larghi allargherebbero il pannello
-        // oltre la larghezza impostata (i flex item hanno min-width: auto)
-        <aside className="relative h-svh min-w-0 shrink-0 overflow-hidden border-l border-sidebar-border bg-sidebar" style={{ width: inspectorWidth }}>
-          <div
-            onPointerDown={startInspectorResize}
-            role="separator"
-            aria-orientation="vertical"
-            className="absolute inset-y-0 -left-1 z-30 w-2 cursor-col-resize touch-none select-none after:absolute after:inset-y-0 after:left-1/2 after:w-px after:-translate-x-1/2 after:bg-transparent after:transition-colors hover:after:bg-sidebar-ring active:after:bg-sidebar-ring"
-          />
-          <LayerInspector />
-        </aside>
-      )}
+      {/* Colonna destra: stesso componente della sinistra, così scivola invece di sparire di
+          colpo e porta gli stessi data-state/data-side. Serve un secondo SidebarProvider perché
+          il context ne regge una sola, ed è controllato dallo store: il pulsante in TopToolbar
+          resta la fonte di verità. `keyboardShortcut={false}` lascia ⌘B alla sola colonna
+          sinistra, `cookieName` evita che i due provider si sovrascrivano lo stato a vicenda.
+          w-auto: il wrapper del provider è `w-full`, che in questa riga flex prenderebbe tutto. */}
+      <SidebarProvider
+        open={rightSidebarOpen}
+        onOpenChange={setRightSidebarOpen}
+        keyboardShortcut={false}
+        cookieName="inspector_state"
+        className="w-auto min-h-0"
+        style={{ "--sidebar-width": `${inspectorWidth}px` } as CSSProperties}
+      >
+        <Sidebar side="right">
+          <SidebarResizeHandle onPointerDown={startInspectorResize} side="left" />
+          {/* Simmetrico all'header della colonna sinistra: stessa h-12 del logo e della TopToolbar,
+              così le tre fasce in cima chiudono sulla stessa riga (prima erano 49px contro 48 e il
+              bordo cadeva un pixel più in basso). p-0 e items-center annullano il `p-2 gap-2` del
+              componente, che qui centrerebbe male un titolo su riga singola. */}
+          <SidebarHeader className="h-12 shrink-0 items-center justify-center border-b border-sidebar-border bg-secondary/40 p-0">
+            <span className="ui-eyebrow text-muted-foreground">Layer Inspector</span>
+          </SidebarHeader>
+          {/* overflow-hidden: lo scorrimento lo governa la ScrollArea dentro LayerInspector,
+              il contenitore non deve aggiungerne un secondo */}
+          <SidebarContent className="overflow-hidden">
+            <LayerInspector />
+          </SidebarContent>
+        </Sidebar>
+      </SidebarProvider>
     </SidebarProvider>
   );
 }

@@ -22,7 +22,7 @@ export function OscilloscopePresets() {
             key={preset.id}
             variant="outline"
             size="sm"
-            className="press h-7 justify-center px-1 text-[11px]"
+            className="press justify-center px-1 text-[11px]"
             onClick={() => setActiveParams(preset.params)}
             title={`${preset.hint} (${ALT_LABEL}${i + 1})`}
           >

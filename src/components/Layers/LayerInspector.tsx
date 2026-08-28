@@ -31,14 +31,10 @@ export function LayerInspector() {
   // fissa da 1px — e lo si fa solo quando c'è davvero qualcosa di nascosto sopra.
   const { ref: scrollRef, scrolled } = useScrollShadow<HTMLDivElement>();
 
+  // Il titolo della colonna vive nel <SidebarHeader> in ControlPage, simmetrico all'header della
+  // colonna sinistra: qui resta il solo contenuto.
   return (
     <div className="flex h-full flex-col">
-      {/* Titolo della colonna: stesso maiuscoletto degli altri titoli (.ui-eyebrow, 11px) e stesso
-          px-4 del resto, altrimenti resta l'unico testo appoggiato al bordo. */}
-      <div className=" flex justify-center py-4.5 border-b border-sidebar-border bg-secondary/40">
-        <span className="ui-eyebrow text-muted-foreground">Layer Inspector</span>
-      </div>
-
       {/* §15: la gerarchia si costruisce con peso + corpo + colore insieme, non con il solo corpo.
           L'etichetta sta indietro (muted, 12px), il nome del layer viene avanti (15px semibold, con
           il tracking stretto che il testo grande richiede): l'informazione è il nome, non la parola
@@ -56,8 +52,12 @@ export function LayerInspector() {
         </span>
       </div>
 
-      {/* blocco fisso: la selezione non deve mai uscire dallo schermo mentre si scorre il resto */}
-      <div className="shrink-0 px-4 pb-3">
+      {/* Blocco fisso: la selezione non deve mai uscire dallo schermo mentre si scorre il resto.
+          Il divisorio sta qui, come border-b della chrome ferma, e non come border-t dell'area
+          scrollabile: là partiva esattamente sotto la sfumatura (stesso pixel, ma la sfumatura ha
+          z-10 e `from-sidebar` opaco in cima), e appena si iniziava a scorrere veniva coperto —
+          sembrava che il bordo della sezione "Proprietà" scivolasse via insieme al contenuto. */}
+      <div className="shrink-0 border-b border-sidebar-border/60 px-4 pb-3">
         <LayerList />
       </div>
 
@@ -68,7 +68,7 @@ export function LayerInspector() {
           className="pointer-events-none absolute inset-x-0 top-0 z-10 h-6 bg-linear-to-b from-sidebar to-transparent transition-opacity duration-[--dur-base] ease-[--ease-out]"
           style={{ opacity: scrolled ? 1 : 0 }}
         />
-        <ScrollArea className="h-full border-t border-sidebar-border/60">
+        <ScrollArea className="h-full">
           <CollapsibleSection section="properties" title="Proprietà">
             <LayerProperties />
           </CollapsibleSection>
