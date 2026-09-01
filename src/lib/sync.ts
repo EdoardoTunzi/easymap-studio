@@ -4,6 +4,7 @@ import { useOutputStore } from '../store/outputStore'
 import { usePlaylistStore } from '../store/playlistStore'
 import { renderSettingsOf, useRenderStore, type RenderSettings } from '../store/renderStore'
 import type { RGB } from '../store/paletteStore'
+import type { MediaAsset } from '../store/projectStore'
 
 const CHANNEL_NAME = 'easyvj-sync'
 
@@ -11,6 +12,13 @@ const CHANNEL_NAME = 'easyvj-sync'
 interface PalettePayload {
   type: 'palette'
   entries: [string, RGB[]][]
+}
+
+/** Cambio di clip della playlist di asset di un layer (vedi applyAssetTick). */
+interface MediaPayload {
+  type: 'media'
+  layerId: string
+  media: MediaAsset
 }
 
 /**
@@ -67,6 +75,16 @@ let controlChannel: BroadcastChannel | null = null
  */
 let paletteTickInFlight = false
 
+/** Come `paletteTickInFlight`, per i cambi di clip della playlist di asset. */
+let mediaTickInFlight = false
+
+/**
+ * Ultima clip mandata in onda da una playlist di asset, per layer. Serve solo a rispondere agli
+ * "hello": una finestra Output aperta a metà rotazione deve trovare la clip corrente, non quella
+ * che c'era all'ultimo invio di scena.
+ */
+const lastAssetMedia = new Map<string, MediaAsset>()
+
 /**
  * Scrive una palette generata dal loop e la propaga all'Output come aggiornamento isolato.
  *
@@ -103,6 +121,35 @@ export function applyPaletteTick(layerId: string, colors: RGB[]) {
 }
 
 /**
+ * Manda in onda il media di turno della playlist di asset di un layer.
+ *
+ * Stesso ragionamento di `applyPaletteTick`: un cambio di clip non è una modifica in preparazione,
+ * è il contenuto della scena **già in onda** che scorre. Quindi viaggia anche in modalità Live,
+ * senza far scattare il badge delle modifiche non inviate, e sostituisce la ripubblicazione
+ * dell'intera scena (all'Output serve un solo layer, non l'elenco completo).
+ *
+ * Il blob non c'è per costruzione (vedi `assetUrl`): all'Output arriva l'object URL, che è
+ * risolvibile cross-window finché la finestra Control lo tiene vivo.
+ */
+export function applyAssetTick(layerId: string, media: MediaAsset) {
+  mediaTickInFlight = true
+  try {
+    useLayersStore.getState().setLayerMedia(layerId, media)
+  } finally {
+    mediaTickInFlight = false
+  }
+  lastAssetMedia.set(layerId, media)
+  if (!controlChannel) return
+  const payload: MediaPayload = { type: 'media', layerId, media }
+  controlChannel.postMessage(payload)
+}
+
+/** La playlist di quel layer si è fermata: l'Output torna a seguire lo stato di scena. */
+export function forgetAssetMedia(layerId: string) {
+  lastAssetMedia.delete(layerId)
+}
+
+/**
  * Da chiamare nella finestra di Controllo: pubblica lo stato all'Output.
  * In modalità Live gli aggiornamenti automatici sono sospesi: l'Output resta all'ultimo stato
  * inviato (memorizzato in lastPayload) finché non si preme "Esegui in output" o si esce da Live.
@@ -131,7 +178,7 @@ export function useBroadcastPublisher() {
 
     // ad ogni modifica dei layer: se Live, marca "in sospeso"; altrimenti invia subito
     const onLayersChange = () => {
-      if (paletteTickInFlight) return // già in viaggio sul canale 'palette'
+      if (paletteTickInFlight || mediaTickInFlight) return // già in viaggio sul suo canale dedicato
       if (useOutputStore.getState().live) useOutputStore.getState().markDirty()
       else publishNow()
     }
@@ -176,7 +223,12 @@ export function useBroadcastPublisher() {
         ...lastPayload,
         layers: lastPayload.layers.map((l) => {
           const palette = current.get(l.id)
-          return palette ? { ...l, palette: { ...l.palette, colors: palette.colors } } : l
+          const withPalette = palette ? { ...l, palette: { ...l.palette, colors: palette.colors } } : l
+          // stesso discorso per la playlist di asset: le sue clip viaggiano sul canale 'media' e
+          // non passano da lastPayload. Si ripara solo il media messo dalla playlist, non quello
+          // cambiato a mano, che in Live è a tutti gli effetti una modifica non ancora inviata.
+          const clip = lastAssetMedia.get(l.id)
+          return clip ? { ...withPalette, media: clip } : withPalette
         }),
       })
     }
@@ -220,6 +272,15 @@ export function useBroadcastSubscriber() {
         for (const [layerId, colors] of (event.data as PalettePayload).entries) {
           if (layers.some((l) => l.id === layerId)) setLayerPaletteColors(layerId, colors)
         }
+        return
+      }
+      // clip della playlist di asset: come i tick di palette, si applica solo se quel layer fa
+      // parte della scena in onda, così in Live il contenuto di una scena ancora in preparazione
+      // non entra dalla porta di servizio
+      if (event.data?.type === 'media') {
+        const { layerId, media } = event.data as MediaPayload
+        const { layers, setLayerMedia } = useLayersStore.getState()
+        if (layers.some((l) => l.id === layerId)) setLayerMedia(layerId, media)
         return
       }
       // impostazioni di resa: si applicano subito, anche mentre l'Output è congelato in Live

@@ -1,7 +1,18 @@
 import { openDB, type DBSchema, type IDBPDatabase } from 'idb'
 import { useEffect } from 'react'
 import { useLayersStore, createLayer, type Layer } from '../store/layersStore'
-import { usePlaylistStore, playlistSnapshot, type PlaylistData } from '../store/playlistStore'
+import {
+  usePlaylistStore,
+  playlistsSnapshot,
+  migrateLegacyPlaylist,
+  type PlaylistData,
+  type PlaylistsData,
+} from '../store/playlistStore'
+import {
+  useAssetPlaylistStore,
+  assetPlaylistsSnapshot,
+  type AssetPlaylists,
+} from '../store/assetPlaylistStore'
 import { loadDefaultStageIfFirstVisit } from './defaultAsset'
 import { DEFAULT_SIZE } from '../store/effectsStore'
 import { type Palette, type RGB } from '../store/paletteStore'
@@ -41,8 +52,20 @@ export interface StoredProject {
   updatedAt: number
   layers: StoredLayer[]
   activeLayerId: string
-  /** Playlist di effetti del progetto (assente nei progetti salvati prima della feature). */
+  /**
+   * Playlist di effetti, una per layer. Assente nei progetti salvati prima del per-layer: lì c'è
+   * `playlist`, e al caricamento viene convertita (vedi `migrateLegacyPlaylist`).
+   */
+  playlists?: PlaylistsData
+  /** Forma legacy: una playlist sola per tutto il progetto. Si legge, non si scrive più. */
   playlist?: PlaylistData
+  /**
+   * Playlist di asset, per layer. Contiene l'handle della cartella (structured-clonable, quindi
+   * IndexedDB lo salva com'è) ma **non** i file: alla riapertura il permesso va riconcesso e le
+   * clip si rileggono dal disco. È il motivo per cui il progetto resta di pochi KB anche con
+   * cartelle di video.
+   */
+  assetPlaylists?: AssetPlaylists
 }
 
 /** Preset di un effetto: cattura il "look" (shader + parametri + size + palette), riusabile su qualsiasi layer. */
@@ -144,13 +167,41 @@ function deserializeLayer(stored: StoredLayer): Layer {
 /** Fotografa la scena corrente in un oggetto persistibile. */
 function snapshot(id: string, name: string): StoredProject {
   const { layers, activeLayerId } = useLayersStore.getState()
+  // le playlist sono indicizzate per layer: quelle dei layer eliminati resterebbero nello snapshot
+  // per sempre, crescendo a ogni salvataggio. Si potano qui, l'unico punto in cui si scrive.
+  const alive = new Set(layers.map((l) => l.id))
+  const onlyAlive = <T,>(byLayer: Record<string, T>) =>
+    Object.fromEntries(Object.entries(byLayer).filter(([layerId]) => alive.has(layerId)))
+  const playlists = playlistsSnapshot()
   return {
     id,
     name,
     updatedAt: Date.now(),
     layers: layers.map(serializeLayer),
     activeLayerId,
-    playlist: playlistSnapshot(),
+    playlists: { ...playlists, byLayer: onlyAlive(playlists.byLayer) },
+    assetPlaylists: onlyAlive(assetPlaylistsSnapshot()),
+  }
+}
+
+/**
+ * Scrive il progetto, riprovando senza gli handle delle cartelle se la prima scrittura fallisce.
+ *
+ * Gli handle sono structured-clonable e IndexedDB li accetta, ma è l'unico pezzo dello snapshot
+ * che non controlliamo noi: se un browser si rifiutasse di serializzarli, l'eccezione farebbe
+ * fallire il salvataggio **dell'intero progetto**, cioè si perderebbe tutto per un riferimento a
+ * una cartella. Meglio salvare il resto e chiedere di ricollegarla.
+ */
+async function putProject(db: IDBPDatabase<EasyVjDB>, project: StoredProject): Promise<void> {
+  try {
+    await db.put('projects', project)
+  } catch {
+    await db.put('projects', {
+      ...project,
+      assetPlaylists: Object.fromEntries(
+        Object.entries(project.assetPlaylists ?? {}).map(([id, d]) => [id, { ...d, dir: undefined }]),
+      ),
+    })
   }
 }
 
@@ -158,8 +209,15 @@ function snapshot(id: string, name: string): StoredProject {
 function applyProject(project: StoredProject) {
   const layers = project.layers.map(deserializeLayer)
   useLayersStore.getState().setScene(layers, project.activeLayerId)
-  // progetti pre-playlist: undefined → playlist vuota coi default
-  usePlaylistStore.getState().setPlaylistData(project.playlist)
+  // progetti pre-playlist: undefined → nessuna playlist. Quelli con la playlist unica salvata
+  // prima del per-layer se la ritrovano sul layer che era attivo, cioè l'unico su cui girava.
+  usePlaylistStore
+    .getState()
+    .setPlaylistsData(
+      project.playlists ??
+        (project.playlist ? migrateLegacyPlaylist(project.playlist, project.activeLayerId) : undefined),
+    )
+  useAssetPlaylistStore.getState().setAssetPlaylists(project.assetPlaylists)
 }
 
 /** La scena è "vuota" se ha un solo layer senza contenuto: allora l'autosave può ripristinare. */
@@ -172,13 +230,14 @@ function isSceneEmpty(): boolean {
 export function newProject(): void {
   const layer = createLayer({ name: 'Layer 1' })
   useLayersStore.getState().setScene([layer], layer.id)
-  usePlaylistStore.getState().setPlaylistData(undefined)
+  usePlaylistStore.getState().setPlaylistsData(undefined)
+  useAssetPlaylistStore.getState().setAssetPlaylists(undefined)
 }
 
 export async function saveProject(name: string): Promise<string> {
   const id = crypto.randomUUID()
   const db = await getDb()
-  await db.put('projects', snapshot(id, name))
+  await putProject(db, snapshot(id, name))
   return id
 }
 
@@ -283,7 +342,7 @@ export function useAutosave() {
     const flush = async () => {
       timer = null
       const db = await getDb()
-      await db.put('projects', snapshot(AUTOSAVE_ID, 'Autosave'))
+      await putProject(db, snapshot(AUTOSAVE_ID, 'Autosave'))
       lastWrite = performance.now()
     }
 
@@ -305,11 +364,21 @@ export function useAutosave() {
 
     // la playlist cambia anche a ogni frame di riproduzione (playing/progress): salva solo
     // quando cambia il sottoinsieme persistibile (clip, transizione, loop)
-    let lastPlaylistJson = JSON.stringify(playlistSnapshot())
+    let lastPlaylistJson = JSON.stringify(playlistsSnapshot())
     const unsubPlaylist = usePlaylistStore.subscribe(() => {
-      const json = JSON.stringify(playlistSnapshot())
+      const json = JSON.stringify(playlistsSnapshot())
       if (json === lastPlaylistJson) return
       lastPlaylistJson = json
+      persist()
+    })
+
+    // stessa guardia per le playlist di asset: l'indice della clip avanza a ogni cambio e
+    // risveglierebbe il salvataggio senza che sia cambiato nulla di persistibile
+    let lastAssetJson = JSON.stringify(assetPlaylistsSnapshot())
+    const unsubAssets = useAssetPlaylistStore.subscribe(() => {
+      const json = JSON.stringify(assetPlaylistsSnapshot())
+      if (json === lastAssetJson) return
+      lastAssetJson = json
       persist()
     })
 
@@ -336,6 +405,7 @@ export function useAutosave() {
       if (timer) clearTimeout(timer)
       unsub()
       unsubPlaylist()
+      unsubAssets()
     }
   }, [])
 }

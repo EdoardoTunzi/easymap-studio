@@ -2,18 +2,11 @@ import { useRef } from "react";
 import { ImageUp } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useLayersStore } from "@/store/layersStore";
-import type { MediaType } from "@/store/projectStore";
-import { isFullyOpaque } from "@/lib/mediaDetect";
+import { detectType, isFullyOpaque } from "@/lib/mediaDetect";
 
 const AUTO_LUMA_KEY = 0.12;
 // nomi file troppo lunghi (es. da fotocamera) mandano la colonna della sidebar fuori dai bordi
 const MAX_NAME_LENGTH = 20;
-
-function detectType(file: File): MediaType {
-  if (file.type === "image/gif") return "gif";
-  if (file.type.startsWith("video/")) return "video";
-  return "image";
-}
 
 function truncateName(name: string): string {
   if (name.length <= MAX_NAME_LENGTH) return name;
