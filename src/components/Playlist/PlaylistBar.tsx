@@ -4,13 +4,16 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Slider } from "@/components/ui/slider";
 import { Separator } from "@/components/ui/separator";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { AssetPlaylistBar } from "@/components/Playlist/AssetPlaylistBar";
 import { ShaderPicker } from "@/components/EffectsLibrary/ShaderPicker";
 import { cn } from "@/lib/utils";
 import { useEffectsStore, defaultParamsFor, defaultColorsFor } from "@/store/effectsStore";
-import { useLayersStore, type EffectSnapshot } from "@/store/layersStore";
+import { useLayersStore } from "@/store/layersStore";
 import { rgbToHex, hexToRgb, type Palette, type RGB } from "@/store/paletteStore";
 import { usePlaylistStore, DEFAULT_CLIP_DURATION, MIN_CLIP_DURATION, type PlaylistClip } from "@/store/playlistStore";
+import { applyClip, clipToEffect } from "@/hooks/use-effect-playlist";
 import { useUiStore } from "@/store/uiStore";
 import { listEffectPresets, type EffectPreset } from "@/lib/persistence";
 import { effectThumbnail } from "@/engine/effectThumbnail";
@@ -19,12 +22,20 @@ import { effectThumbnail } from "@/engine/effectThumbnail";
 const PX_PER_SEC = 18;
 const MIN_CLIP_PX = 72;
 
-/** Altezza della barra: ridimensionabile trascinando il bordo superiore. */
-const MIN_BAR_H = 96;
-const MAX_BAR_H = 192;
+/**
+ * Altezza della barra: ridimensionabile trascinando il bordo superiore. I 36px in più rispetto
+ * ai valori originali (96/192) sono la riga del selettore Effetti/Assets, che ora sta sopra i
+ * controlli: senza, i clip perderebbero in altezza quanto occupa lei.
+ */
+const MIN_BAR_H = 132;
+const MAX_BAR_H = 228;
 const BAR_HEIGHT_KEY = "easyvj-playlist-height";
+const BAR_TAB_KEY = "easyvj-playlist-tab";
 
 const clampBarHeight = (h: number) => Math.min(MAX_BAR_H, Math.max(MIN_BAR_H, h));
+
+/** Riferimento stabile per i layer senza playlist: un `[]` nuovo a ogni render rirenderizza sempre. */
+const EMPTY_CLIPS: PlaylistClip[] = [];
 
 /**
  * Sfuma i bordi di una lista scrollabile invece di tagliarla di netto, e solo dove c'è davvero
@@ -56,98 +67,8 @@ function clonePalette(p: Palette): Palette {
   return { ...p, colors: p.colors.map((c) => [...c] as RGB) };
 }
 
-function clipToEffect(clip: PlaylistClip): EffectSnapshot {
-  return {
-    shaderName: clip.shaderName,
-    params: { ...clip.params },
-    colors: { ...(clip.colors ?? {}) },
-    size: clip.size,
-    palette: clip.palette
-  };
-}
-
-/** Applica il look del clip al layer attivo (+ layer spuntati), secco o in crossfade. */
-function applyClip(clip: PlaylistClip, smooth: boolean) {
-  useLayersStore.getState().applyEffectSnapshot(clipToEffect(clip), smooth);
-}
-
-/**
- * Motore di riproduzione (solo finestra Control): avanza il tempo del clip corrente,
- * al cambio clip applica l'effetto al layer (secco o crossfade) e anima la dissolvenza.
- */
-function usePlaylistPlayback() {
-  const playing = usePlaylistStore((s) => s.playing);
-
-  useEffect(() => {
-    if (!playing) return;
-    let raf = 0;
-    let last = performance.now();
-    let clipElapsed = 0;
-    /** Timestamp di inizio del crossfade in corso, null se nessuno. */
-    let transitionStart: number | null = null;
-
-    // avvio: applica subito il clip corrente, secco
-    {
-      const s = usePlaylistStore.getState();
-      const clip = s.clips[Math.min(s.currentIndex, s.clips.length - 1)];
-      if (!clip) {
-        s.setPlaying(false);
-        return;
-      }
-      applyClip(clip, false);
-    }
-
-    const tick = (now: number) => {
-      const s = usePlaylistStore.getState();
-      if (!s.playing) return;
-      const dt = (now - last) / 1000;
-      last = now;
-      if (s.clips.length === 0) {
-        s.setPlaying(false);
-        return;
-      }
-
-      if (transitionStart != null) {
-        const p = (now - transitionStart) / 1000 / Math.max(s.transitionDuration, 0.01);
-        useLayersStore.getState().setTransitionProgress(Math.min(p, 1));
-        if (p >= 1) transitionStart = null;
-      }
-
-      let index = Math.min(s.currentIndex, s.clips.length - 1);
-      let clip = s.clips[index];
-      clipElapsed += dt;
-
-      if (clipElapsed >= clip.duration) {
-        const nextIndex = index + 1;
-        if (nextIndex >= s.clips.length && !s.loop) {
-          s.setClipProgress(1);
-          s.setPlaying(false);
-          return;
-        }
-        index = nextIndex % s.clips.length;
-        clip = s.clips[index];
-        clipElapsed = 0;
-        const smooth = s.transitionMode === "smooth";
-        applyClip(clip, smooth);
-        if (smooth) transitionStart = now;
-        s.setCurrentIndex(index);
-      }
-
-      s.setClipProgress(Math.min(clipElapsed / clip.duration, 1));
-      raf = requestAnimationFrame(tick);
-    };
-
-    raf = requestAnimationFrame(tick);
-    return () => {
-      cancelAnimationFrame(raf);
-      // chiude di colpo un eventuale crossfade rimasto a metà
-      useLayersStore.getState().setTransitionProgress(1);
-    };
-  }, [playing]);
-}
-
 /** Editor del clip dentro il popover: nome, durata, shader, parametri, size. */
-function ClipEditor({ clip }: { clip: PlaylistClip }) {
+function ClipEditor({ clip, layerId }: { clip: PlaylistClip; layerId: string }) {
   const shaders = useEffectsStore((s) => s.shaders);
   const updateClip = usePlaylistStore((s) => s.updateClip);
   const duplicateClip = usePlaylistStore((s) => s.duplicateClip);
@@ -156,9 +77,9 @@ function ClipEditor({ clip }: { clip: PlaylistClip }) {
 
   // ogni modifica dall'editor viene anche applicata subito al layer come anteprima
   const patch = (p: Partial<Omit<PlaylistClip, "id">>) => {
-    updateClip(clip.id, p);
-    const updated = usePlaylistStore.getState().clips.find((c) => c.id === clip.id);
-    if (updated) applyClip(updated, false);
+    updateClip(layerId, clip.id, p);
+    const updated = usePlaylistStore.getState().playlists[layerId]?.clips.find((c) => c.id === clip.id);
+    if (updated) applyClip(layerId, updated, false);
   };
 
   const handleShaderChange = (shaderName: string) => {
@@ -193,7 +114,7 @@ function ClipEditor({ clip }: { clip: PlaylistClip }) {
       <div className="flex items-end gap-2">
         <div className="flex flex-1 flex-col gap-1">
           <span className="ui-eyebrow text-muted-foreground">Nome</span>
-          <Input value={clip.name} onChange={(e) => updateClip(clip.id, { name: e.target.value })} className="h-8" />
+          <Input value={clip.name} onChange={(e) => updateClip(layerId, clip.id, { name: e.target.value })} className="h-8" />
         </div>
         <div className="flex w-20 flex-col gap-1">
           <span className="ui-eyebrow text-muted-foreground">Durata (s)</span>
@@ -204,7 +125,7 @@ function ClipEditor({ clip }: { clip: PlaylistClip }) {
             value={Number(clip.duration.toFixed(1))}
             onChange={(e) => {
               const v = Number(e.target.value);
-              if (Number.isFinite(v)) updateClip(clip.id, { duration: v });
+              if (Number.isFinite(v)) updateClip(layerId, clip.id, { duration: v });
             }}
             className="h-8"
           />
@@ -296,13 +217,13 @@ function ClipEditor({ clip }: { clip: PlaylistClip }) {
           Cattura dal layer
         </Button>
         <Separator orientation="vertical" className="h-5" />
-        <Button variant="ghost" size="icon-sm" onClick={() => duplicateClip(clip.id)} aria-label="Duplica clip">
+        <Button variant="ghost" size="icon-sm" onClick={() => duplicateClip(layerId, clip.id)} aria-label="Duplica clip">
           <Copy className="size-3.5" />
         </Button>
         <Button
           variant="ghost"
           size="icon-sm"
-          onClick={() => removeClip(clip.id)}
+          onClick={() => removeClip(layerId, clip.id)}
           className="text-muted-foreground hover:text-destructive"
           aria-label="Elimina clip"
         >
@@ -316,6 +237,7 @@ function ClipEditor({ clip }: { clip: PlaylistClip }) {
 /** Un clip nella timeline: blocco largo quanto la durata, playhead, resize, editor al click. */
 function ClipBlock({
   clip,
+  layerId,
   index,
   onDragStart,
   onDragOverIndex,
@@ -324,6 +246,7 @@ function ClipBlock({
   isDragOver
 }: {
   clip: PlaylistClip;
+  layerId: string;
   index: number;
   onDragStart: () => void;
   onDragOverIndex: () => void;
@@ -331,9 +254,9 @@ function ClipBlock({
   onDragEnd: () => void;
   isDragOver: boolean;
 }) {
-  const currentIndex = usePlaylistStore((s) => s.currentIndex);
-  const clipProgress = usePlaylistStore((s) => s.clipProgress);
-  const playing = usePlaylistStore((s) => s.playing);
+  const currentIndex = usePlaylistStore((s) => s.currentIndex[layerId] ?? 0);
+  const clipProgress = usePlaylistStore((s) => s.clipProgress[layerId] ?? 0);
+  const playing = usePlaylistStore((s) => s.playing[layerId] ?? false);
   const editingClipId = usePlaylistStore((s) => s.editingClipId);
   const setEditingClip = usePlaylistStore((s) => s.setEditingClip);
   const updateClip = usePlaylistStore((s) => s.updateClip);
@@ -357,7 +280,7 @@ function ClipBlock({
     const startDuration = clip.duration;
     const onMove = (ev: PointerEvent) => {
       const d = startDuration + (ev.clientX - startX) / PX_PER_SEC;
-      updateClip(clip.id, { duration: d });
+      updateClip(layerId, clip.id, { duration: d });
     };
     const onUp = () => {
       window.removeEventListener("pointermove", onMove);
@@ -430,7 +353,7 @@ function ClipBlock({
           onOpenChange={(open) => {
             setEditingClip(open ? clip.id : null);
             // aprire l'editor mostra subito il look del clip sul layer (anteprima)
-            if (open) applyClip(clip, false);
+            if (open) applyClip(layerId, clip, false);
           }}
         >
           <PopoverTrigger asChild>
@@ -444,14 +367,14 @@ function ClipBlock({
             </button>
           </PopoverTrigger>
           <PopoverContent side="top" align="start" className="w-72">
-            <ClipEditor clip={clip} />
+            <ClipEditor clip={clip} layerId={layerId} />
           </PopoverContent>
         </Popover>
         <button
           type="button"
           aria-label="Rimuovi dalla playlist"
           title="Rimuovi dalla playlist (l'effetto resta nella libreria)"
-          onClick={() => removeClip(clip.id)}
+          onClick={() => removeClip(layerId, clip.id)}
           className="press flex size-5 items-center justify-center rounded text-muted-foreground transition-colors duration-[--dur-fast] ease-[--ease-out] hover:bg-destructive/15 hover:text-destructive"
         >
           <Trash2 className="size-3.5" />
@@ -473,7 +396,7 @@ function ClipBlock({
 }
 
 /** Popover "+" per aggiungere un clip: da effetto della libreria o da preset salvato. */
-function AddClipButton({ onAdded }: { onAdded: () => void }) {
+function AddClipButton({ onAdded, layerId }: { onAdded: () => void; layerId: string }) {
   const [open, setOpen] = useState(false);
   const [presets, setPresets] = useState<EffectPreset[]>([]);
   const shaders = useEffectsStore((s) => s.shaders);
@@ -485,7 +408,7 @@ function AddClipButton({ onAdded }: { onAdded: () => void }) {
   }, [open]);
 
   const addFromPreset = (p: EffectPreset) => {
-    addClip({
+    addClip(layerId, {
       name: p.name,
       shaderName: p.shaderName,
       params: { ...p.params },
@@ -531,7 +454,7 @@ function AddClipButton({ onAdded }: { onAdded: () => void }) {
                 key={s.name}
                 type="button"
                 onClick={() => {
-                  addClipFromShader(s);
+                  addClipFromShader(layerId, s);
                   setOpen(false);
                   onAdded();
                 }}
@@ -549,12 +472,15 @@ function AddClipButton({ onAdded }: { onAdded: () => void }) {
 
 /** Barra playlist in fondo alla Control page: trasporto + timeline dei clip. */
 export function PlaylistBar() {
-  usePlaylistPlayback();
+  // entrambe le sequenze della barra sono del LAYER ATTIVO: la barra mostra quella del layer
+  // selezionato, ma i motori (montati nella pagina) continuano a far girare anche le altre
+  const layerId = useLayersStore((s) => s.activeLayerId);
+  const layerName = useLayersStore((s) => s.layers.find((l) => l.id === s.activeLayerId)?.name ?? "");
 
-  const clips = usePlaylistStore((s) => s.clips);
-  const playing = usePlaylistStore((s) => s.playing);
+  const clips = usePlaylistStore((s) => s.playlists[layerId]?.clips ?? EMPTY_CLIPS);
+  const playing = usePlaylistStore((s) => s.playing[layerId] ?? false);
   const setPlaying = usePlaylistStore((s) => s.setPlaying);
-  const loop = usePlaylistStore((s) => s.loop);
+  const loop = usePlaylistStore((s) => s.playlists[layerId]?.loop ?? true);
   const setLoop = usePlaylistStore((s) => s.setLoop);
   const transitionMode = usePlaylistStore((s) => s.transitionMode);
   const setTransitionMode = usePlaylistStore((s) => s.setTransitionMode);
@@ -563,11 +489,16 @@ export function PlaylistBar() {
   const reorderClips = usePlaylistStore((s) => s.reorderClips);
   const playlistVisible = useUiStore((s) => s.playlistVisible);
 
+  // due sequenze indipendenti condividono la barra, entrambe per layer: gli EFFETTI (che shader
+  // gira) e gli ASSET (che contenuto scorre, da una cartella). Possono girare insieme sullo
+  // stesso layer. I motori stanno nella pagina, non qui: cambiando tab questo ramo si smonta.
+  const [tab, setTab] = useState<"fx" | "assets">(() => (localStorage.getItem(BAR_TAB_KEY) === "assets" ? "assets" : "fx"));
+
   const dragIndex = useRef<number | null>(null);
   const [dragOver, setDragOver] = useState<number | null>(null);
 
   const handleDrop = (to: number) => {
-    if (dragIndex.current != null) reorderClips(dragIndex.current, to);
+    if (dragIndex.current != null) reorderClips(layerId, dragIndex.current, to);
     dragIndex.current = null;
     setDragOver(null);
   };
@@ -605,7 +536,8 @@ export function PlaylistBar() {
     };
     el.addEventListener("wheel", onWheel, { passive: false });
     return () => el.removeEventListener("wheel", onWheel);
-  }, []);
+    // cambiando tab la timeline è un altro nodo: il listener va riagganciato
+  }, [tab]);
 
   const scrollToEnd = () => {
     // dopo il render del nuovo clip, porta la timeline in fondo per mostrarlo
@@ -621,9 +553,9 @@ export function PlaylistBar() {
     <div
       style={{ height: barHeight }}
       className={cn(
-        "relative flex shrink-0 items-stretch gap-3 border-t border-sidebar-border bg-sidebar px-3 py-2.5",
-        // nascosta ma montata: il motore di riproduzione (usePlaylistPlayback) vive qui
-        // e smontarlo fermerebbe la sequenza in corso
+        "relative flex shrink-0 flex-col gap-2 border-t border-sidebar-border bg-sidebar px-3 py-2.5",
+        // nascosta ma montata: i motori vivono nella pagina, ma tenerla montata conserva
+        // l'altezza e la posizione di scorrimento della timeline fra un'apertura e l'altra
         !playlistVisible && "hidden"
       )}
     >
@@ -632,12 +564,52 @@ export function PlaylistBar() {
       <div onPointerDown={handleBarResize} className="group/vgrip absolute inset-x-0 -top-1.5 z-10 flex h-3 cursor-ns-resize items-center justify-center">
         <span className="h-1 w-9 rounded-full bg-foreground/15 transition-colors duration-[--dur-fast] ease-[--ease-out] group-hover/vgrip:bg-primary/60" />
       </div>
+      {/* quale sequenza si sta preparando: gli effetti o i contenuti del layer. Sta in cima, sopra
+          il proprio trasporto, perché è la scelta che governa tutta la fascia sottostante: da
+          dentro la riga dei controlli si sarebbe letta come un controllo fra gli altri. */}
+      <ToggleGroup
+        type="single"
+        value={tab}
+        onValueChange={(v) => {
+          if (!v) return; // click sulla voce già attiva: non si resta senza tab
+          setTab(v as "fx" | "assets");
+          localStorage.setItem(BAR_TAB_KEY, v);
+        }}
+        size="sm"
+        className="shrink-0 self-start"
+      >
+        {/* lo stato attivo del variant (`bg-muted`) su `bg-sidebar` è a un passo di luminanza dal
+            fondo: dal vivo non si legge quale sequenza si sta guardando. Si usa lo stesso segnale
+            pieno della toolbar di mapping ("Tutti", "Medio"), che è inequivocabile a colpo d'occhio. */}
+        {(
+          [
+            ["fx", "Effetti", "Playlist effetti"],
+            ["assets", "Assets", "Playlist asset del layer"]
+          ] as const
+        ).map(([value, label, aria]) => (
+          <ToggleGroupItem
+            key={value}
+            value={value}
+            aria-label={aria}
+            className="text-muted-foreground data-[state=on]:bg-primary data-[state=on]:text-primary-foreground"
+          >
+            {label}
+          </ToggleGroupItem>
+        ))}
+      </ToggleGroup>
+
+      {/* riga dei controlli: trasporto + timeline della sequenza scelta sopra */}
+      <div className="flex min-h-0 flex-1 items-stretch gap-3">
+      {tab === "assets" ? (
+        <AssetPlaylistBar scrollRef={scrollRef} />
+      ) : (
+        <>
       {/* trasporto */}
       <div className="flex shrink-0 items-center gap-1.5">
         <Button
           size="icon"
           variant={playing ? "default" : "secondary"}
-          onClick={() => setPlaying(!playing)}
+          onClick={() => setPlaying(layerId, !playing)}
           disabled={clips.length === 0}
           aria-label={playing ? "Pausa" : "Play"}
         >
@@ -646,7 +618,7 @@ export function PlaylistBar() {
         <Button
           size="icon"
           variant="ghost"
-          onClick={() => setLoop(!loop)}
+          onClick={() => setLoop(layerId, !loop)}
           aria-label="Loop"
           title={loop ? "Loop attivo: la sequenza si ripete" : "Loop spento: si ferma sull’ultimo clip"}
           className={cn(loop ? "text-primary" : "text-muted-foreground")}
@@ -689,14 +661,15 @@ export function PlaylistBar() {
       <div ref={scrollRef} className="timeline-scroll flex min-w-0 flex-1 items-stretch gap-1.5 overflow-x-auto pb-1">
         {clips.length === 0 ? (
           <p className="ui-sublabel self-center leading-relaxed text-muted-foreground/80">
-            Aggiungi effetti alla sequenza con il pulsante +. Trascina il bordo destro di un clip per cambiarne la durata, passaci sopra e usa i tre puntini per
-            modificarlo.
+            La sequenza di effetti di <strong className="font-medium text-foreground">{layerName}</strong> è vuota: aggiungi clip col pulsante +. Trascina il
+            bordo destro di un clip per cambiarne la durata, passaci sopra e usa i tre puntini per modificarlo. Ogni layer ha la sua sequenza.
           </p>
         ) : (
           clips.map((clip, i) => (
             <ClipBlock
               key={clip.id}
               clip={clip}
+              layerId={layerId}
               index={i}
               isDragOver={dragOver === i}
               onDragStart={() => (dragIndex.current = i)}
@@ -711,7 +684,10 @@ export function PlaylistBar() {
         )}
       </div>
 
-      <AddClipButton onAdded={scrollToEnd} />
+      <AddClipButton onAdded={scrollToEnd} layerId={layerId} />
+        </>
+      )}
+      </div>
     </div>
   );
 }

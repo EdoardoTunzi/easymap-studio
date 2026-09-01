@@ -153,6 +153,28 @@ body,
   border-radius: 3px;
 }
 
+/* Playhead della playlist di asset: quanto manca al cambio di clip. È un'animazione CSS invece
+   di un rAF perché il conto è lineare e prevedibile — farlo in JS costerebbe un re-render per
+   frame durante un live. Si riavvia col `key` del blocco a ogni cambio, quindi resta allineata. */
+.asset-playhead {
+  animation: asset-playhead linear forwards;
+}
+@keyframes asset-playhead {
+  from {
+    transform: scaleX(0);
+  }
+  to {
+    transform: scaleX(1);
+  }
+}
+/* §14: con il moto ridotto la barra scatterebbe a pieno in 1ms (vedi la regola globale sotto);
+   il pallino "in onda" basta a dire quale clip è attiva. */
+@media (prefers-reduced-motion: reduce) {
+  .asset-playhead {
+    display: none;
+  }
+}
+
 /* ─── Fondamenta di motion e tipografia (skill apple-design) ─────────────────
    Un solo posto per le curve e le durate: ogni transizione dell'interfaccia
    pesca da qui, così i tempi si assomigliano invece di essere scelti a caso

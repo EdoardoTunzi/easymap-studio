@@ -246,3 +246,22 @@ Modello: scena = pila di Layer indipendenti; ogni layer ha contenuto (img/gif/vi
 - [x] Tutti i `Tooltip` sostituiti da `HoverCard` e `src/components/ui/tooltip.tsx` eliminato. Tre usi: `ControlRow` (l'aiuto "?"), il provider in `main.tsx` (HoverCard non ne ha bisogno) e la prop `tooltip` di `SidebarMenuButton`, mai usata ma convertita per non lasciare il file generato incoerente
 - [x] Verificato che HoverCard si apra anche da **focus di tastiera** (il `Trigger` di Radix gestisce `onFocus`), quindi la scelta del `button` come trigger in `ControlRow` conserva il suo scopo
 - [ ] Gli attributi `title=""` HTML nativi sparsi nei pulsanti non sono stati toccati: non erano `Tooltip` shadcn. Se si vuole uniformare anche quelli alla hover card è un lavoro a sé, e ce ne sono molti
+
+## Playlist di asset per layer
+
+- [x] Rotazione di contenuti per singolo layer da una cartella su disco (File System Access), in parallelo alla playlist degli effetti: nuova tab "Assets" nella barra playlist, store `assetPlaylistStore`, motore `use-asset-playlist.ts` (un rAF per tutti i layer, come `usePaletteLoop`), azione `setLayerMedia` per scrivere su un layer non attivo senza richiedere un fit
+- [x] I file restano su disco: `assetFolder.ts` legge i soli nomi e apre un object URL solo per l'asset in onda (pinned, mai revocato: l'Output ne possiede solo l'url) e per le anteprime visibili, con cache LRU di 24
+- [x] Anteprime pigre via IntersectionObserver; per i video si usa il poster nativo (`src#t=0.1`, `preload=metadata`) invece di generare thumbnail
+- [x] Il cambio di clip raggiunge l'Output anche in modalità Live (canale `media` in `sync.ts`, come `applyPaletteTick`) senza marcare la scena come "da inviare"
+- [x] Playlist di asset persistite col progetto (`StoredProject.assetPlaylists`, campo opzionale: nessuna migrazione di schema) con la stessa guardia JSON dell'autosave usata per la playlist effetti
+- [x] Self-check di `nextAssetIndex` senza framework: `node --experimental-strip-types src/lib/assetRotation.check.ts` (i `*.check.ts` sono esclusi da `tsconfig.app.json`)
+- [ ] Nessun preload della clip successiva: video e GIF non hanno cache in `mediaTexture.ts` (hanno un playhead per istanza), quindi al cambio si vede un lampo di texture FALLBACK durante la decodifica. Upgrade path: montare in anticipo il controller della clip successiva
+- [ ] Nessun crossfade tra asset: servirebbe una seconda texture media in `ShaderPlane`, che oggi ne campiona una sola
+- [ ] Solo Chrome/Edge (File System Access): altrove la barra mostra l'avviso e il picker resta disabilitato
+- [ ] La chiave della cache degli url è `nome cartella + nome file`: due cartelle omonime collegate a layer diversi si confonderebbero (gli handle non espongono un id stabile e `isSameEntry` è asincrono)
+- [ ] Alla riapertura di un progetto il layer resta senza media finché non si preme "Riconnetti": è il prezzo di non duplicare i blob nello snapshot. Da rivedere insieme allo store separato dei media (voce sopra)
+- [x] Selettore Effetti/Assets spostato in cima alla barra playlist (sotto la maniglia di resize, sopra il trasporto): la barra diventa una colonna e i limiti di altezza salgono di 36px (132/228) per non rubare spazio ai clip
+- [x] **Fix: la playlist degli effetti seguiva il layer selezionato.** `applyEffectSnapshot` leggeva il layer attivo a ogni tick, quindi cambiare selezione durante un set dirottava la sequenza su un altro layer. Ora è per layer come quella degli asset (`playlists: Record<layerId, {clips, loop}>`), il motore è `use-effect-playlist.ts` (un rAF su tutti i layer in play, montato in ControlPage), e i progetti col vecchio formato vengono convertiti assegnando la sequenza al layer che era attivo
+- [x] `transitionMode`/`transitionDuration` restano globali: sono il modo della transizione, non la sequenza, e `sync.ts` li usa anche per la dissolvenza degli invii manuali all'Output
+- [x] `snapshot()` pota le playlist (effetti e asset) dei layer eliminati: indicizzate per layer, sarebbero rimaste nello snapshot per sempre
+- [ ] Nella barra si vede solo la playlist del layer selezionato: valutare un segnale nella lista dei layer (un puntino) per quelli che hanno una sequenza in riproduzione, oggi invisibili finché non li si seleziona

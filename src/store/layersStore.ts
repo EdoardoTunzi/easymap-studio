@@ -433,6 +433,12 @@ interface LayersState {
   setLayerVisible: (id: string, visible: boolean) => void
   setLayerOpacity: (id: string, opacity: number) => void
   setLayerBlendMode: (id: string, mode: BlendMode) => void
+  /**
+   * Come `setActiveMedia` ma su un layer indicato, che può non essere quello attivo: serve alla
+   * playlist di asset, che gira per-layer e non deve seguire la selezione. Non richiede un fit:
+   * cambiare clip non deve spostare il mapping già allineato sull'oggetto reale.
+   */
+  setLayerMedia: (id: string, media: MediaAsset | null) => void
 
   // editing del layer attivo
   setActiveMedia: (media: MediaAsset | null) => void
@@ -545,13 +551,22 @@ interface LayersState {
 
   // playlist / transizioni
   /**
-   * Applica un effetto completo al layer attivo (+ layer spuntati in syncTargetIds).
+   * Applica un effetto completo a un layer (+ layer spuntati in syncTargetIds).
    * Con smooth=true avvia un crossfade: l'effetto precedente resta in `transition` e va
    * animato con setTransitionProgress fino a 1.
+   *
+   * `layerId` omesso = layer attivo. Lo indica invece la playlist degli effetti, che è per-layer
+   * e non deve seguire la selezione: leggendo il layer attivo a ogni cambio di clip, cambiare
+   * selezione durante un set faceva riscrivere l'effetto del layer sbagliato. I layer spuntati
+   * seguono comunque solo il layer attivo, come in `setLayerPaletteColors`.
    */
-  applyEffectSnapshot: (effect: EffectSnapshot, smooth: boolean) => void
-  /** Aggiorna l'avanzamento di tutti i crossfade in corso; a >=1 li chiude. */
-  setTransitionProgress: (progress: number) => void
+  applyEffectSnapshot: (effect: EffectSnapshot, smooth: boolean, layerId?: string) => void
+  /**
+   * Aggiorna l'avanzamento dei crossfade in corso; a >=1 li chiude.
+   * `layerId` omesso = tutti (invio di scena); indicato = solo quel layer, perché con più
+   * playlist in riproduzione ogni layer ha la sua dissolvenza con i suoi tempi.
+   */
+  setTransitionProgress: (progress: number, layerId?: string) => void
 
   // sincronizzazione effetto (guidata dalle spunte)
   toggleSyncTarget: (layerId: string) => void
@@ -719,6 +734,11 @@ export const useLayersStore = create<LayersState>((set, get) => {
     setLayerBlendMode: (id, blendMode) =>
       set((state) => ({
         layers: state.layers.map((l) => (l.id === id ? { ...l, blendMode } : l)),
+      })),
+
+    setLayerMedia: (id, media) =>
+      set((state) => ({
+        layers: state.layers.map((l) => (l.id === id ? { ...l, media } : l)),
       })),
 
     setActiveMedia: (media) => patchActive(() => ({ media })),
@@ -1050,9 +1070,13 @@ export const useLayersStore = create<LayersState>((set, get) => {
 
     setMaskImage: (media) => patchActive(() => ({ maskImage: media })),
 
-    applyEffectSnapshot: (effect, smooth) =>
+    applyEffectSnapshot: (effect, smooth, layerId) =>
       set((state) => {
-        const targets = new Set([state.activeLayerId, ...state.syncTargetIds])
+        const target = layerId ?? state.activeLayerId
+        // i layer spuntati seguono solo il layer attivo: una playlist che gira su un layer di
+        // sfondo non deve trascinarsi dietro la selezione di sincronizzazione
+        const targets =
+          target === state.activeLayerId ? new Set([target, ...state.syncTargetIds]) : new Set([target])
         return {
           layers: state.layers.map((l) => {
             if (!targets.has(l.id)) return l
@@ -1079,15 +1103,16 @@ export const useLayersStore = create<LayersState>((set, get) => {
         }
       }),
 
-    setTransitionProgress: (progress) =>
+    setTransitionProgress: (progress, layerId) =>
       set((state) => {
-        if (!state.layers.some((l) => l.transition)) return state
+        const affected = (l: Layer) => l.transition && (layerId == null || l.id === layerId)
+        if (!state.layers.some(affected)) return state
         return {
           layers: state.layers.map((l) =>
-            l.transition
+            affected(l)
               ? progress >= 1
                 ? { ...l, transition: null }
-                : { ...l, transition: { ...l.transition, progress } }
+                : { ...l, transition: { ...l.transition!, progress } }
               : l,
           ),
         }

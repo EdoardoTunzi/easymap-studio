@@ -22,6 +22,8 @@ import { useResizableWidth } from "@/hooks/use-resizable-width";
 import { useEffectHotkeys } from "@/hooks/use-effect-hotkeys";
 import { useOutputHotkeys } from "@/hooks/use-output-hotkeys";
 import { usePaletteLoop } from "@/hooks/use-palette-loop";
+import { useAssetPlaylist } from "@/hooks/use-asset-playlist";
+import { useEffectPlaylist } from "@/hooks/use-effect-playlist";
 import { useUiStore } from "@/store/uiStore";
 import { useScrollShadow } from "@/hooks/use-scroll-shadow";
 import { useLayersStore } from "@/store/layersStore";
@@ -79,6 +81,10 @@ export function ControlPage() {
   useOutputHotkeys();
   // il motore del loop palette sta qui e non nel pannello: i pannelli si smontano al cambio tab
   usePaletteLoop();
+  // stesso motivo per le due playlist: le loro barre sono due tab, e passando dall'una all'altra
+  // il componente si smonterebbe fermando la sequenza a metà set
+  useEffectPlaylist();
+  useAssetPlaylist();
   const activePanel = useUiStore((s) => s.activePanel);
   const overlaysVisible = useUiStore((s) => s.overlaysVisible);
   const gridVisible = useUiStore((s) => s.gridVisible);

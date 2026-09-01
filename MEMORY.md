@@ -2,6 +2,97 @@
 
 Ogni modifica al progetto va registrata qui con data, descrizione e motivazione. Le voci più recenti in alto dentro ogni giornata.
 
+## 2026-09-01 — Bug: la playlist degli effetti seguiva il layer selezionato
+
+Segnalato che impostando una playlist di effetti veniva applicata a tutti i layer. Confermato in
+codice: `applyClip` chiamava `applyEffectSnapshot`, che scriveva sul layer **attivo letto a ogni
+tick**. Cambiare selezione durante un set spostava la sequenza sul layer appena selezionato e ne
+riscriveva l'effetto — e con una sola playlist per progetto non era comunque possibile dare
+sequenze diverse a due layer. È lo stesso difetto che il loop delle palette aveva già risolto per
+conto suo (vedi il commento in `use-palette-loop.ts`).
+
+La playlist degli effetti è ora **per layer**, come quella degli asset:
+
+- `playlistStore` passa a `playlists: Record<layerId, { clips, loop }>`, con `playing`,
+  `currentIndex` e `clipProgress` per layer.
+- `transitionMode` e `transitionDuration` restano **globali**: non sono la sequenza, sono come si
+  passa da un clip al successivo — e quella durata la usa anche `sync.ts` per la dissolvenza degli
+  invii manuali all'Output, che non appartiene a nessun layer.
+- `applyEffectSnapshot` e `setTransitionProgress` accettano un `layerId` opzionale (omesso =
+  comportamento di prima). Con un id, i layer spuntati in `syncTargetIds` seguono solo se è il
+  layer attivo, come già faceva `setLayerPaletteColors`.
+- Il motore esce da `PlaylistBar` e diventa `use-effect-playlist.ts`, un rAF unico su tutti i
+  layer in riproduzione, montato in `ControlPage`: la barra ora ha due tab e non è il posto dove
+  tenere in vita un set. Gli stati vivono in una ref, così mettere in play un secondo layer non
+  azzera il conto del primo.
+- Persistenza: `StoredProject.playlists`, col vecchio `playlist` letto ancora in sola lettura e
+  convertito da `migrateLegacyPlaylist`, che assegna la sequenza al layer che era attivo — l'unico
+  su cui poteva davvero girare. Verificato caricando un progetto nel vecchio formato.
+- `snapshot()` pota le playlist dei layer eliminati: essendo indicizzate per layer sarebbero
+  rimaste nello snapshot per sempre, crescendo a ogni salvataggio.
+
+Nota di metodo, per la prossima volta: i primi test dal browser risultavano "il motore non parte".
+Era falso — `import('/src/store/playlistStore.ts')` dalla console carica una **seconda istanza**
+del modulo quando Vite serve all'app la versione con `?t=` dopo un HMR. Per pilotare gli store da
+DevTools va usato l'URL che l'app ha davvero caricato (`performance.getEntriesByType('resource')`),
+oppure un reload completo.
+
+## 2026-09-01 — Playlist di asset per layer (rotazione di contenuti da una cartella)
+
+Un layer poteva mostrare **un solo** media fisso (`Layer.media` è uno slot singolo). Nel progetto
+"TV frame" serviva che il layer dentro lo schermo alternasse da solo gif e video brevi, in
+parallelo alla playlist degli effetti, che continua a cambiare lo *shader* sullo stesso layer.
+
+Vincolo di partenza: non caricare tutta la cartella nel browser. La feature quindi **punta** a una
+cartella (File System Access, `showDirectoryPicker`) e ne legge i soli nomi; un file diventa un
+object URL solo quando va in onda o quando la sua anteprima entra nella parte visibile della barra.
+
+Perché è costata poco: `ShaderPlane` ricrea già il controller di texture quando cambia
+`media.url`/`id` e `mediaTexture.ts` gestisce già image/video/gif, quindi cambiare clip è solo
+scrivere un `MediaAsset` diverso nel layer — **nessuna modifica al motore di rendering**.
+
+Decisioni non ovvie, tutte prese per non pagare due volte cose già risolte altrove:
+
+- **Store separato** (`assetPlaylistStore`) e non un campo di `Layer`: l'elenco non deve entrare
+  nel payload che il publisher spedisce all'Output a ogni modifica, e l'handle della cartella non
+  ha senso fuori dalla finestra che ne ha il permesso.
+- **Motore per-layer con un solo rAF** (`use-asset-playlist.ts`), copiato da `usePaletteLoop` e non
+  dalla playlist effetti, che è un singleton sul layer *attivo*: qui la rotazione non deve seguire
+  la selezione. Montato in `ControlPage`, non nella barra, che ora ha due tab e si smonterebbe.
+- **Canale `media` in `sync.ts`**, gemello di `applyPaletteTick`: un cambio di clip è il contenuto
+  della scena *già in onda* che scorre, non una modifica in preparazione, quindi viaggia anche in
+  modalità Live senza far scattare il badge. Gli "hello" ricevono la clip corrente da
+  `lastAssetMedia`, non lo stato del layer, altrimenti in Live un media cambiato **a mano** (che è
+  a tutti gli effetti una modifica non inviata) sarebbe finito su una nuova finestra Output.
+- **Niente `blob` nei MediaAsset di playlist**: se i byte finissero nel layer, l'autosave
+  riscriverebbe ogni video nello snapshot ogni 5 s (è lo stesso problema che ha prodotto
+  `AUTOSAVE_MIN_INTERVAL_MS`). Il prezzo è che alla riapertura del progetto la cartella va
+  riautorizzata — il browser non conserva il permesso, solo l'handle.
+- **Cache LRU di 24 object URL** con pin sull'asset in onda: `stripBlobs` manda all'Output il solo
+  url, quindi revocare la clip in onda lascerebbe il proiettore su una texture vuota.
+- **Playhead in CSS** (`@keyframes asset-playhead`, riavviato dal `key` del blocco) invece di un
+  rAF: il conto è lineare e non merita un re-render per frame durante un live.
+- Cambio **secco**, senza crossfade tra asset: sarebbe servita una seconda texture media in
+  `ShaderPlane`, che oggi ne campiona una sola. Su una cornice TV il taglio è anche più credibile.
+
+`detectType` era duplicato in `MediaUploader`: spostato in `mediaDetect.ts` con una variante per
+nome file, perché i file letti da una cartella possono arrivare col MIME vuoto.
+
+Due difetti emersi solo provandola nel browser, non previsti dal piano:
+
+- Lo stato attivo del `ToggleGroup` (`data-[state=on]:bg-muted`) su `bg-sidebar` è a un passo di
+  luminanza dal fondo: non si capiva quale sequenza si stesse guardando. Ora usa il segnale pieno
+  della toolbar di mapping.
+- Se la scrittura dell'handle della cartella fosse fallita, l'eccezione avrebbe fatto fallire il
+  salvataggio **dell'intero progetto** (visto succedere con un handle di prova non clonabile).
+  `putProject` ora riprova senza gli handle: si perde il riferimento alla cartella, non il lavoro.
+
+**Su richiesta, il selettore Effetti/Assets è passato in cima alla barra**, sotto la maniglia di
+resize e sopra il proprio trasporto: governa tutta la fascia sottostante, e in linea coi controlli
+si leggeva come un controllo fra gli altri. La barra è diventata una colonna e i suoi limiti di
+altezza salgono di 36px (96/192 → 132/228), cioè esattamente quanto occupa la nuova riga: senza,
+i clip avrebbero perso in altezza quello che prende lei.
+
 ## 2026-08-28 — Dark: rampa non lineare, l'accento brillante torna
 
 Segnalato che selezionando Dark l'effetto si scuriva, con l'impressione che fosse solo un

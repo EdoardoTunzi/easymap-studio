@@ -1,3 +1,26 @@
+import type { MediaType } from '../store/projectStore'
+
+/** Estensioni accettate come asset: le stesse dell'`accept` del MediaUploader. */
+export const ASSET_EXTENSIONS = ['png', 'webp', 'jpg', 'jpeg', 'gif', 'mp4', 'webm', 'ogg', 'ogv', 'mov']
+
+/**
+ * Tipo di sorgente da un file. Il MIME basta per i file scelti da `<input>`; quelli letti da una
+ * cartella (File System Access) possono arrivare col MIME vuoto, quindi si ricade sull'estensione.
+ */
+export function detectType(file: File): MediaType {
+  return detectTypeByName(file.name, file.type)
+}
+
+/** Come `detectType` ma dal solo nome del file (con MIME opzionale): serve prima di aprire il file. */
+export function detectTypeByName(name: string, mime = ''): MediaType {
+  if (mime === 'image/gif') return 'gif'
+  if (mime.startsWith('video/')) return 'video'
+  const ext = name.split('.').pop()?.toLowerCase() ?? ''
+  if (ext === 'gif') return 'gif'
+  if (['mp4', 'webm', 'ogg', 'ogv', 'mov'].includes(ext)) return 'video'
+  return 'image'
+}
+
 /**
  * Verifica se l'immagine ha un canale alpha realmente trasparente. Campiona l'alpha su
  * una versione ridotta: se ogni pixel è opaco, l'immagine ha lo sfondo "pieno" (es. nero)
