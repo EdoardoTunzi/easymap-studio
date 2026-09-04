@@ -247,6 +247,44 @@ Modello: scena = pila di Layer indipendenti; ogni layer ha contenuto (img/gif/vi
 - [x] Verificato che HoverCard si apra anche da **focus di tastiera** (il `Trigger` di Radix gestisce `onFocus`), quindi la scelta del `button` come trigger in `ControlRow` conserva il suo scopo
 - [ ] Gli attributi `title=""` HTML nativi sparsi nei pulsanti non sono stati toccati: non erano `Tooltip` shadcn. Se si vuole uniformare anche quelli alla hover card è un lavoro a sé, e ce ne sono molti
 
+## Import shader da Shadertoy (27 effetti, uno alla volta)
+
+Un effetto per volta: domande sul soggetto (nome, categoria, uniform da esporre) prima di ogni implementazione, verifica in browser sempre a carico dell'utente.
+
+- [x] 1. https://www.shadertoy.com/view/ffyXWc — **saltato su richiesta dell'utente** (raymarch 3D pesante, "Inception Tunnel")
+- [x] 2. https://www.shadertoy.com/view/tsXBzS — "Fractal Pyramid" → `psyFractalPyramid.glsl` (Psy)
+- [x] 3. https://www.shadertoy.com/view/w323DK — **saltato su richiesta dell'utente** (nessun codice fornito)
+- [x] 4. https://www.shadertoy.com/view/fcyXD3 — "Wire Grid Zoom" (nome non nel codice fornito, scelto da Claude) → `psyWireGridZoom.glsl` (Psy)
+- [x] 5. https://www.shadertoy.com/view/XsXXDn — "Silexar Globe" (rinominato su richiesta dell'utente) → `psySilexarGlobe.glsl` (Psy)
+- [x] 6. https://www.shadertoy.com/view/mtyGWy — "Palette Fract Loop" (nome non nel codice fornito, scelto da Claude) → `psyPaletteFractLoop.glsl` (Psy)
+- [x] 7. https://www.shadertoy.com/view/4dcGW2 — **saltato** ("Expansive Reaction": solo il pass Image, mancano Buffer A/B con la vera simulazione)
+- [x] 8. https://www.shadertoy.com/view/sctXDn — "Kaleido Cloud Tunnel" (nome non nel codice fornito, scelto da Claude) → `psyKaleidoCloudTunnel.glsl` (Psy)
+- [x] 9. https://www.shadertoy.com/view/ftt3R7 — "Starleidoscope" → `psyStarleidoscope.glsl` (Psy)
+- [x] 10. https://www.shadertoy.com/view/7cfGzn — "Disco Sun Vortex" → `morphDiscoSunVortex.glsl` (Morph, su richiesta dell'utente)
+- [x] 11. https://www.shadertoy.com/view/sfsSDs — "Morphing Abstract" → `morphMorphingAbstract.glsl` (Morph)
+- [x] 12. https://www.shadertoy.com/view/Xtcyzr — "Lotka-Volterra" → `morphLotkaVolterra.glsl` (Morph, con stato) — **cancellato dall'utente successivamente, file non più presente**
+- [x] 13. https://www.shadertoy.com/view/ldlXRS — "Noise Animation - Electric" → `psyNoiseAnimationElectric.glsl` (Psy)
+- [x] 14. https://www.shadertoy.com/view/NddSWs — "Botanical Fireworks" → `psyBotanicalFireworks.glsl` (Psy, senza la scia temporale dell'originale)
+- [ ] 15. https://www.shadertoy.com/view/wlGXRD
+- [x] 16. https://www.shadertoy.com/view/MdBGDK — "Ribbon Assault" (nome corretto da "Ribbon assult") → `morphRibbonAssault.glsl` (Morph, su richiesta dell'utente)
+- [ ] 16. https://www.shadertoy.com/view/MdBGDK
+- [x] 17. https://www.shadertoy.com/view/ldlSzX — "Synthetic Aperture Sun" → `psySyntheticApertureSun.glsl` (Psy)
+- [x] 18. https://www.shadertoy.com/view/4l2XWK — "Bumped Sinusoidal Warp" → `morphBumpedSinusoidalWarp.glsl` (Morph, texture sostituita con l'asset stesso)
+- [x] 19. https://www.shadertoy.com/view/4sl3Dr — **saltato su richiesta dell'utente**
+- [x] 20. https://www.shadertoy.com/view/lslXRS — "Noise Animation - Lava" → `morphNoiseAnimationLava.glsl` (Morph, su richiesta dell'utente)
+- [x] 21. https://www.shadertoy.com/view/3sfczf — **saltato su richiesta dell'utente**
+- [x] 22. https://www.shadertoy.com/view/4sK3RD — **saltato su richiesta dell'utente**
+- [x] extra. "Hexagone" di Martijn Steinrucken/BigWings — fuori dai 27 link originali, codice incollato direttamente dall'utente → `psyHexagone.glsl` (Psy)
+- [x] extra. "Smooth Life" — automa cellulare continuo con stato (fuori lista, codice incollato dall'utente) → `morphSmoothLife.glsl` (Morph, famiglia Morphogen/con stato) — **cancellato dall'utente successivamente, file non più presente** (verosimilmente per il costo prestazionale segnalato)
+- [x] extra. "VHS" — filtro simil videocassetta (fuori lista, codice incollato dall'utente) → `vhs.glsl` (Altri, su richiesta dell'utente)
+- [x] Sessione conclusa qui su richiesta dell'utente: `README.md` aggiornato con il conteggio reale (123 shader: Halo 12, Liquid 12, Psy 40, Morph 31, SD 12, Altri 15, Audio 1). Restano in sospeso il 15° link (wlGXRD) e i link dal 23° al 27°
+- [x] Verificati i file `.glsl` ancora da committare dopo che l'utente ne ha cancellati due (Lotka-Volterra, Smooth Life): 16 file nuovi rimasti (`git status` → `??`), README corretto di conseguenza (i numeri erano già giusti, corretta solo la menzione testuale dei due effetti cancellati come esempi di Morph con stato)
+- [ ] 23. https://www.shadertoy.com/view/4dlBDn
+- [ ] 24. https://www.shadertoy.com/view/wsl3WB
+- [ ] 25. https://www.shadertoy.com/view/XtdSDn
+- [ ] 26. https://www.shadertoy.com/view/XtBXDt
+- [ ] 27. https://www.shadertoy.com/view/4ldGDB
+
 ## Playlist di asset per layer
 
 - [x] Rotazione di contenuti per singolo layer da una cartella su disco (File System Access), in parallelo alla playlist degli effetti: nuova tab "Assets" nella barra playlist, store `assetPlaylistStore`, motore `use-asset-playlist.ts` (un rAF per tutti i layer, come `usePaletteLoop`), azione `setLayerMedia` per scrivere su un layer non attivo senza richiedere un fit

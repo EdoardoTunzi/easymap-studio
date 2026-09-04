@@ -2,6 +2,299 @@
 
 Ogni modifica al progetto va registrata qui con data, descrizione e motivazione. Le voci più recenti in alto dentro ogni giornata.
 
+## 2026-09-04 — Correzione: "Lotka-Volterra" e "Smooth Life" cancellati dall'utente
+
+L'utente ha cancellato `src/shaders/morphLotkaVolterra.glsl` e `src/shaders/morphSmoothLife.glsl`
+(mai committati, quindi spariti senza lasciare traccia in git) — presumibilmente per il costo
+prestazionale segnalato per entrambi al momento dell'implementazione (convoluzione a 441 texel/
+cella per Smooth Life; simulazione a 3 canali per Lotka-Volterra). Le voci di log precedenti su
+questi due effetti restano come cronologia di ciò che è stato fatto, ma **i file non esistono
+più**: non ripartire da lì assumendo che siano ancora nella libreria. Il conteggio in `README.md`
+era già stato calcolato sullo stato **dopo** la cancellazione (123 file, morph=31), quindi i
+numeri risultavano già corretti; corretta invece la menzione testuale di "Lotka-Volterra" e
+"Smooth Life" come esempi di Morph con stato (riga sui Morph e riga nelle Funzionalità principali),
+rimasta per errore — ora cita solo i tre Morphogen (Growth/Mitosis/Turing), gli unici automi con
+stato rimasti in libreria. Restano invece confermati e presenti: Fractal Pyramid, Wire Grid Zoom,
+Silexar Globe, Palette Fract Loop, Kaleido Cloud Tunnel, Starleidoscope, Disco Sun Vortex,
+Morphing Abstract, Noise Animation - Electric, Botanical Fireworks, Ribbon Assault, Synthetic
+Aperture Sun, Bumped Sinusoidal Warp, Noise Animation - Lava, Hexagone, VHS (16 file, tutti ancora
+da committare — `git status` li mostra come `??`).
+
+## 2026-09-04 — README aggiornato con il conteggio reale della libreria (123 shader)
+
+Fine sessione di import: contati i file `.glsl` effettivi e ricalcolate le famiglie con la stessa
+logica di `shaderCategoryOf` (prefisso file + regex `usesAudio`) invece di fidarsi del numero
+scritto a mano nel README, ormai disallineato (106, risalente a prima di questa sessione).
+
+Conteggio finale: **123 shader** — Halo 12, Liquid 12, Psy 40, Morph 31 (di cui 3 con stato:
+Morphogen, Lotka-Volterra, Smooth Life), SD 12, Altri 15, Audio 1. Aggiornati tutti i riferimenti
+numerici in `README.md` (righe con "106 shader", i conteggi per famiglia Psy/Morph/SD, il numero
+di shader che campionano davvero la sorgente per l'uso con la camera live — ricalcolato a ~66
+contando solo i file che chiamano `texture2D(tex...)`, non l'intera famiglia per assunzione).
+
+17 shader aggiunti in questa sessione (9 dai 27 link Shadertoy forniti + 8 extra fuori lista
+richiesti a parte): Fractal Pyramid, Wire Grid Zoom, Silexar Globe, Palette Fract Loop, Kaleido
+Cloud Tunnel, Starleidoscope, Disco Sun Vortex, Morphing Abstract, Lotka-Volterra, Noise Animation
+- Electric, Botanical Fireworks, Ribbon Assault, Synthetic Aperture Sun, Bumped Sinusoidal Warp,
+Noise Animation - Lava, Hexagone, Smooth Life, VHS.
+
+**Restano in sospeso**: il 15° link (`wlGXRD`, mai affrontato) e i link dal 23° al 27° della lista
+originale — vedi `TODO.md` per l'elenco completo con gli URL.
+
+## 2026-09-04 — Shader extra fuori lista: "VHS" (categoria Altri)
+
+Richiesto dall'utente per l'uso su clip (video), con l'esigenza esplicita che "si veda lo sfondo".
+Chiarito che il modo corretto per un layer VHS trasparente sopra una clip sottostante è già
+disponibile negli strumenti esistenti (blend mode + opacità per-layer), indipendenti dal singolo
+file .glsl — nessuno shader individuale riceve "cosa c'è sotto" a parte i pochi blend mode
+avanzati (`uBackdrop`, meccanismo separato). Aggiunto invece uno slider `intensity` che miscela
+l'immagine pulita del layer con la versione distorta: a qualunque valore il colore deriva sempre
+dal contenuto reale (onda del nastro, piega, bloom cromatico, switching noise), mai sostituito da
+un pattern estraneo — è quello che garantisce "si vede lo sfondo/il contenuto" nel senso pratico
+di un filtro applicato direttamente sulla clip.
+
+→ `src/shaders/vhs.glsl`, categoria **Altri** su richiesta esplicita (nome file senza prefisso di
+famiglia riconosciuto, cade automaticamente in 'other' via `shaderCategoryOf`). Nessuna
+dipendenza da texture/canali esterni: tutto procedurale (hash + noise a 8 ottave), quindi porting
+1:1 senza semplificazioni.
+
+## 2026-09-04 — Shader extra fuori lista: "Smooth Life" (con stato, famiglia Morphogen)
+
+Richiesto esplicitamente dall'utente "insieme ai morphogen tipo growth, mitosis, turing" →
+`src/shaders/morphSmoothLife.glsl`, categoria Morph, terzo effetto della libreria a usare il
+meccanismo `//! SIMULATION` (ping-pong 320×320) dopo Morphogen Growth e Lotka-Volterra.
+
+**Il più pesante finora lato simulazione**: la convoluzione SmoothLife campiona un vicinato
+circolare di raggio fino a 10 (441 texel per cella) a ogni passo — contro i pochi texel del
+laplaciano 9-punti di Gray-Scott. Raggio di default abbassato a 6 (154 texel) con slider fino a
+10; il ciclo interno resta comunque a 21×21 iterazioni per il vincolo WebGL1 sui loop a bound
+costante, ma un `continue` salta il campionamento vero e proprio oltre il raggio impostato,
+quindi il costo scala comunque con lo slider anche se il ciclo "gira a vuoto" per il resto.
+**Da verificare le prestazioni nel browser prima di considerarlo pronto**, specialmente con più
+layer attivi o supersampling alto in Output.
+
+`iMouse` (disegno interattivo) e `iChannel2` (tasti di debug/reset di Shadertoy) rimossi;
+`iChannel1` (rumore extra per l'innesco casuale) sostituito con un secondo hash procedurale
+(differenza di due hash, come l'originale usava due texture di rumore diverse). Esposte le 4
+soglie "genoma" dell'automa (`birthLow/High`, `deathLow/High`) che ne decidono il comportamento
+(macchie, onde, glider-like) — è il cuore esplorativo di SmoothLife, coerente con l'ampiezza di
+controllo già data a Morphogen Growth. `sourceInfluence` fa nascere l'automa con più densità dove
+l'immagine è più chiara, stesso schema degli altri Morph con stato.
+
+## 2026-09-04 — Shader extra fuori lista: "Hexagone" (saltati 21° e 22°)
+
+- Effetti 21 (`3sfczf`) e 22 (`4sK3RD`): **saltati su richiesta dell'utente**.
+- "Hexagone" di Martijn Steinrucken/BigWings (licenza CC BY-NC-SA 3.0), **fuori dai 27 link
+  originali** — codice incollato direttamente dall'utente → `src/shaders/psyHexagone.glsl`,
+  categoria Psy. Piano esagonale animato visto dall'alto tramite intersezione raggio-piano (non un
+  vero raymarch: un solo `p = ro + rd*(ro.y/rd.y)`, economico), 3 "fiori" di 7 esagoni ciascuno
+  impilati in profondità e ciclati nel tempo, con bordi pulsanti e colore per-id. `iMouse` (pan
+  orizzontale) rimosso, non disponibile nel motore. Diversi parametri fissi dell'originale
+  (larghezza del bordo, soglie di dissolvenza in lontananza) accorpati in singoli slider con un
+  rapporto fisso fra le due costanti originali, per tenere il numero di controlli ragionevole.
+
+## 2026-09-04 — Import shader da Shadertoy: "Noise Animation - Lava" (20/27, saltato il 19°)
+
+- Effetto 19 (`4sl3Dr`): **saltato su richiesta dell'utente**.
+- Effetto 20 (`lslXRS`) → `src/shaders/psyNoiseAnimationLava.glsl`, categoria Psy. Stesso autore
+  (nimitz) e stessa dipendenza da `iChannel0` di "Noise Animation - Electric" (13/27): sostituito
+  con lo stesso value-noise procedurale (hash + interpolazione bilineare). Flow noise (ogni ottava
+  spostata da un campo vettoriale ruotato invece che sommata come in un fbm classico) — qui il
+  conteggio del loop originale (`i=1.;i<7.` → 6 iterazioni) corrisponde esattamente al default
+  `octaves=6.0` della porta, a differenza del caso Electric dove serviva -1.
+
+**Aggiornamento nella stessa sessione**: su richiesta dell'utente, spostato in famiglia Morph
+(`psyNoiseAnimationLava.glsl` → `morphNoiseAnimationLava.glsl`). Aggiunti `morphDepth`/
+`blackThreshold` standard: la luminanza della sorgente spinge la fase del flow noise
+(`time += lum*morphDepth*0.05`), blend finale con `mix(source.rgb, fx+source.rgb*fx, 0.85)` come
+Disco Sun Vortex/Morphing Abstract.
+
+## 2026-09-04 — Import shader da Shadertoy: "Bumped Sinusoidal Warp" (18/27)
+
+Effetto 18 (`4l2XWK`) → `src/shaders/morphBumpedSinusoidalWarp.glsl`, categoria Morph su richiesta
+dell'utente ("deve essere anche morph se serve"). A differenza degli altri Morph, qui l'adattamento
+all'asset non passa solo da `lum*morphDepth` (comunque presente, spinge la fase del warp): la
+texture campionata per il materiale bump-mapped (`iChannel0` nell'originale, generica) è **l'asset
+stesso**, campionato con un piccolo offset deformato dalla stessa funzione di warp che genera la
+mappa di rilievo — la superficie increspata e illuminata mostra letteralmente la foto dell'utente,
+non un pattern estraneo. Rimossa la doppia conversione gamma manuale dell'originale (`texCol*=texCol`
+in entrata, `sqrt()` finale in uscita, auto-descritta nel commento come "2.0 gamma correction"):
+stessa ragione di Lotka-Volterra, la pipeline colore del progetto lavora già in spazio gamma e
+applicarla avrebbe scurito/schiarito il risultato in modo scorretto rispetto agli altri shader.
+
+## 2026-09-04 — Import shader da Shadertoy: "Synthetic Aperture Sun" (17/27)
+
+Effetto 17 (`ldlSzX`) → `src/shaders/psySyntheticApertureSun.glsl`, categoria Psy. **Lettura
+attenta necessaria**: il file dichiara `int MODE = 5;` come default globale, ma dentro
+`mainImage` viene subito sovrascritto da un'espressione che dipende dai toggle da tastiera
+speciali di Shadertoy (`iChannel2`), sempre "spenti" finché l'utente non preme un tasto —
+risultato: il comportamento realmente visibile di default è `MODE=4` (23 sorgenti d'onda su un
+anello, spaziatura quasi-casuale) in modalità "energia" (il doppio ciclo O(n²) che calcola
+l'interferenza vera fra ogni coppia di sorgenti, non la somma semplice delle onde). `MODE=5`
+(sorgenti a griglia) è codice morto, mai raggiunto. Portato il comportamento di default realmente
+osservabile, con gli switch da tastiera (`waveMode`, `randomSpacing`, `driftSpeed`) trasformati in
+slider veri invece che nascosti dietro tasti. `iMouse` sostituito dal ramo sintetico che
+l'originale già usava quando il mouse non è premuto (stesso schema degli effetti precedenti).
+`sourceCount` (default 23, il numero pieno originale) permette di abbassare il costo O(n²) se
+serve più margine di fps con più layer attivi.
+
+## 2026-09-04 — Import shader da Shadertoy: "Ribbon Assault" (16/27, saltato temporaneamente il 15°)
+
+Effetto 16 (`MdBGDK`, David Hoskins, licenza CC BY-NC-SA 3.0) → `src/shaders/morphRibbonAssault.glsl`,
+categoria Morph **su richiesta esplicita dell'utente**. Frattale di Möbius (20 iterazioni di
+inversione + fold) attorno a un punto attrattore che nell'originale segue il mouse o, in sua
+assenza, un moto Lissajous sintetico — usato sempre quest'ultimo (`iMouse` non disponibile). La
+luminanza della sorgente sposta l'attrattore (`p += (lum-0.5)*morphDepth*0.03`), stesso schema
+`lum*morphDepth` degli altri Morph. L'utente ha dato il codice del 16° link (`MdBGDK`) saltando
+il 15° (`wlGXRD`), non ancora affrontato — resta in sospeso in `TODO.md`, non segnato come saltato.
+
+## 2026-09-04 — Import shader da Shadertoy: "Botanical Fireworks" (14/27, architettura non replicabile in pieno)
+
+Effetto 14 (`NddSWs`) → `src/shaders/psyBotanicalFireworks.glsl`, categoria Psy. Prima richiesta di
+questo lotto con un problema architetturale reale, non solo di dipendenze mancanti: l'originale
+(Leon Denise, "taste of noise 7") fa girare un raymarch 3D completo (IFS caleidoscopica di sfere,
+30 step) **dentro un Buffer A con feedback**, accumulando `max(nuovo, precedente-0.01)` per
+ammorbidire nel tempo il rumore che varia a ogni frame in una scia organica sfumata. Il meccanismo
+`//! SIMULATION` di questo progetto (usato da Morphogen Growth e Lotka-Volterra) gira invece su
+una griglia fissa 320×320 pensata per campi di concentrazione economici, non per un raymarch 3D a
+piena risoluzione — infilarcelo sarebbe stato sproporzionato (fino a 8 passi di simulazione/frame,
+ciascuno un raymarch a 30 step) e comunque a risoluzione/aspect sbagliati.
+
+**Scelta (concordata con l'utente)**: portato senza stato, ricalcolato ogni frame. Per attenuare lo
+sfarfallio che il rumore per-frame (`rng`, usato per il seed, il wobble delle sfere e il dithering
+del passo) avrebbe causato senza il buffer, il seed si aggiorna a `flickerRate` scatti al secondo
+(default 3) invece che a ogni frame — resa più "a scatti" e meno vellutata dell'originale, ma senza
+build engine aggiuntive. `iMouse` (controllo camera) rimosso come per Starleidoscope. Prima
+richiesta di questo lotto in cui l'utente ha incollato per errore il file common di un altro
+shader (nimitz, effetto 13): richiesto e ottenuto il file corretto prima di procedere.
+
+## 2026-09-04 — Import shader da Shadertoy: "Noise Animation - Electric" (13/27)
+
+Effetto 13 (`ldlXRS`) → `src/shaders/psyNoiseAnimationElectric.glsl`, categoria Psy. Nimitz
+(stormoid.com), licenza CC BY-NC-SA 3.0. `iChannel0` (texture di rumore fornita da Shadertoy)
+sostituito con value-noise procedurale hash+bilineare (`ecNoise`): la turbolenza dell'fbm a
+domain-warping ne risulta pressoché identica. **Bug evitato in porting**: il loop originale
+`for(i=1.;i<6.;i++)` esegue 5 iterazioni (i=1..5), non 6 — l'uniform `octaves` di default è 5.0,
+non 6.0, altrimenti il pattern sarebbe stato visibilmente più fitto del dovuto.
+
+## 2026-09-04 — Import shader da Shadertoy: "Lotka-Volterra" (12/27, primo con stato dopo Morphogen)
+
+Effetto 12 (`Xtcyzr`) → `src/shaders/morphLotkaVolterra.glsl`, categoria Morph. Simulazione vera
+preda-predatore-vegetazione a tre canali (non calcolabile in un solo pass): usa il meccanismo
+`//! SIMULATION`/`//! DISPLAY` già introdotto per Morph Morphogen Growth (ping-pong FBO 320×320,
+vedi `engine/simulation.ts`/`SimulationPass.tsx`) — **secondo effetto della libreria a usarlo**.
+Diffusione a 4 vicini diretti (non `easyvj_lap`, che è il laplaciano 9-punti dei Morphogen: qui
+l'originale usa uno schema più ruvido che fa parte del regime di oscillazione). Il gradiente
+spaziale di riproduzione/predazione dell'originale (basato su `fragCoord/iResolution`) diventa
+`uv.x`/`uv.y` della griglia di simulazione, quadrata e toroidale per costruzione. `sourceInfluence`
+fa spingere la vegetazione locale dove l'immagine è più chiara (stesso schema di
+`morphMorphogenGrowth.glsl`). **Omessa** la barra di avanzamento stagionale a righe fisse in fondo
+allo schermo dell'originale (non ha senso su una proiezione ritagliata sui bordi dell'asset) e la
+correzione gamma manuale finale (`pow(col,1/2.2)`: la pipeline colore del progetto è già in spazio
+gamma, raddoppiarla avrebbe schiarito tutto). Uniform `speed`/`scale` non letti dentro il GLSL:
+sono letti da `SimulationPass.tsx` lato TS (passi/secondo, mapping uv↔griglia), stesso pattern già
+presente in Morphogen Growth. Attribuzione hash di David Hoskins (CC BY-SA 4.0) lasciata in testa
+al file.
+
+## 2026-09-04 — Import shader da Shadertoy: "Morphing Abstract" (11/27)
+
+Effetto 11 (`sfsSDs`) → `src/shaders/morphMorphingAbstract.glsl`. Stesso autore (Frostbyte, licenza
+CC-BY-NC-SA-4.0) e stesso trattamento Morph di "Disco Sun Vortex": la luminanza spinge la profondità
+di partenza del raymarch (`p.z += lum*morphDepth*0.3`). Raymarch con rumore "Xor's Dot Noise"
+(wfsyRX) e tonemap ACES (Xc3yzM), entrambi portati come funzioni proprie. **Rimosso il
+supersampling 2×2 interno dell'originale** (girava il raymarch 4 volte per pixel, campionando su
+una griglia 2×2): l'Output di questo progetto ha già il proprio supersampling regolabile, farlo
+due volte sarebbe solo costo GPU sprecato senza differenza percepibile.
+
+## 2026-09-04 — Import shader da Shadertoy: "Disco Sun Vortex" (10/27)
+
+Effetto 10 (`7cfGzn`) → `src/shaders/morphDiscoSunVortex.glsl`. **Richiesto esplicitamente in
+famiglia Morph** (non Psy come gli altri raymarch portati finora): a differenza degli effetti Psy
+puramente generativi, qui la luminanza della sorgente spinge la profondità di partenza nel tunnel
+(`p.z = t + lum*morphDepth`, stesso schema di `morphTunnelDepth.glsl`/`3DSurfaceMorphSpirals.glsl`
+— `lum*morphDepth` sommato a un termine di "z"/profondità), quindi il pattern reagisce alla forma
+dell'asset invece di ignorarlo. Raymarch fedele all'originale "Abstract Shine" di @Frostbyte
+(remixato da @WorkingClassHacker): tunnel a corkscrew, palette IQ, strato di shimmer/interferenza,
+vignetta e bagliore centrale, compressione finale con `tanh` (stesso fix `exp`-based già usato per
+Kaleido Cloud Tunnel, GLSL ES 1.00 non ha `tanh` nativo). **Licenza CC-BY-NC-SA-4.0** (non
+commerciale, attribuzione richiesta, più restrittiva delle altre finora) — attribuzione lasciata
+in testa al file.
+
+## 2026-09-04 — Import shader da Shadertoy: "Starleidoscope" (9/27)
+
+Effetto 9 (`ftt3R7`) → `src/shaders/psyStarleidoscope.glsl`, categoria Psy. Sfondo a fiocco di neve
+da fold ricorsivo (mirror + abs, 5 iterazioni) con 10 strati di campo stellare in parallasse
+(ciclano in profondità via `fract(i+t)`), ogni stella con raggi/flare e tinta hash-based che
+cangia. Due dipendenze non disponibili nel motore: `iMouse` (pan del mouse, rimosso — il pan
+globale del layer già copre lo stesso bisogno) e `iChannel0` (piccola variazione di tinta da
+audio/webcam su Shadertoy, sostituita con una deriva procedurale lenta `sin/cos(time)`). Esposti
+`foldIterations`/`foldScale` sul fold di sfondo, `starDensity`/`flareIntensity`/`twinkleSpeed`
+sulle stelle, `brightness`/`colorIntensity`/`tint` sul colore finale.
+
+## 2026-09-04 — Import shader da Shadertoy: "Kaleido Cloud Tunnel" (8/27, con salto)
+
+- Effetto 7 (`4dcGW2`, "Expansive Reaction"): **saltato** — solo il pass Image incollato, la vera
+  simulazione (Buffer A, presumibilmente reaction-diffusion) e la sfocatura (Buffer B) mancano,
+  oltre a una texture di rumore su `iChannel3`. Impossibile ricostruirlo senza quel codice.
+- Effetto 8 (`sctXDn`) → `src/shaders/psyKaleidoCloudTunnel.glsl`, categoria Psy. Shader Gaijin
+  Entertainment (licenza: libero, non rivendibile come prodotto a sé — attribuzione lasciata in
+  testa al file), un raymarch caleidoscopico a specchio (default 3 spicchi) con "nuvola" fractal
+  noise-like e sequenza di rivelazione a scatti (apertura di 15s poi uno scatto di rotazione ogni
+  4s, guidata da `time` quindi rispetta lo slider `speed`). **Fix necessario**: l'originale usa
+  `tanh()` per il tonemap finale, non disponibile in GLSL ES 1.00 (WebGL1/three.js `ShaderMaterial`
+  di default) — sostituito con un'approssimazione via `exp` che non overflowa (`kctTanh`), nessun
+  altro shader della libreria usava funzioni iperboliche finora. Y non flippata (l'originale fa
+  `iResolution.y - fragCoord.y`, omesso per coerenza con l'orientamento uv del resto della
+  libreria — differenza puramente estetica, l'effetto ha comunque simmetria radiale).
+
+## 2026-09-04 — Import shader da Shadertoy: "Palette Fract Loop" (6/27)
+
+Effetto 6 (`mtyGWy`) → `src/shaders/psyPaletteFractLoop.glsl`, categoria Psy. Il celebre shader del
+tutorial YouTube di kishimisu (loop `fract(uv*zoom)-0.5` a 4 iterazioni + palette coseno di iq).
+Nessun titolo nel codice incollato: nome descrittivo scelto da Claude. Portato fedele con
+`speed`/`zoomFactor`/`iterations`/`ringFreq`/`glowPow` al posto delle costanti fisse (`1.5`, `4`,
+`8.`, `1.2`), palette esposta come due vec3 (`colorFreq`/`colorPhase`) al posto dei parametri `c`/`d`
+fissi della formula di iq (`a`/`b` restano `0.5` fissi, sono l'offset/ampiezza della palette).
+
+## 2026-09-04 — Import shader da Shadertoy: "Silexar Globe" (5/27)
+
+Effetto 5 (`XsXXDn`) → `src/shaders/psySilexarGlobe.glsl`, categoria Psy. Il classico minimale
+della demoscene di Danilo Guanabara "Creation by Silexars" (3 iterazioni, formula compattissima),
+**rinominato "Silexar Globe" su richiesta dell'utente** (file+NAME rinominati insieme). Portato
+fedele con `speed`/`scale`/`swirl`/`colorSpread`/`brightness` al posto delle costanti fisse
+dell'originale (`.07`, `9.`, `.01`). L'originale scrive `fragColor.a = iTime` (probabilmente
+ignorato da Shadertoy): **non riprodotto**, l'alpha del nostro wrapper moltiplica l'opacità finale
+del layer, quindi avrebbe fatto pulsare/sparire l'effetto nel tempo — impostato a 1.0.
+
+## 2026-09-04 — Import shader da Shadertoy: "Wire Grid Zoom" (4/27, con salti)
+
+- Effetto 3 (`w323DK`): **saltato** — nessun codice fornito dall'utente.
+- Effetto 4 (`fcyXD3`) → `src/shaders/psyWireGridZoom.glsl`, categoria Psy. Nel codice incollato
+  non c'era il blocco `SHADERDATA` con il titolo Shadertoy: nome scelto da Claude ("Wire Grid
+  Zoom", descrittivo). Rete di nodi/segmenti generata per cella (stesso trucco hash-per-cella di
+  `wireNetwork.glsl`, ma qui un solo segmento a direzione casuale per cella invece della
+  triangolazione a link) disposta su 2-6 strati che si susseguono in uno zoom infinito ciclico
+  (stessa struttura di `psyInfiniteZoom.glsl`: `layerProgress`/`fract(time)`/dissolvenza in
+  ingresso e uscita), con trattini di impulso che scorrono lungo i fili e vignettatura finale.
+  Colori fissi ciano/blu dell'originale esposti come `colorA`/`colorB`.
+
+## 2026-09-04 — Import shader da Shadertoy: "Fractal Pyramid" (2/27)
+
+Avviato l'import di una lista di 27 shader Shadertoy scelti dall'utente, un effetto alla volta con
+conferma prima di ogni implementazione (vedi sezione dedicata in `TODO.md`).
+
+- Effetto 1 (`ffyXWc`, "Inception Tunnel"): **saltato su richiesta dell'utente** — raymarch 3D con
+  PBR/AO/soft-shadow annidati, troppo pesante per l'uso live.
+- Effetto 2 (`tsXBzS`, "Fractal Pyramid") → `src/shaders/psyFractalPyramid.glsl`, categoria Psy.
+  Primo shader della libreria con un **vero raymarch 3D** (camera che orbita attorno a un frattale
+  IFS a fold ricorsivo): finora tutti gli effetti "fractal"/"tunnel" (Kali Fractal, Psy Vortex
+  Fractal, Star Nest...) erano trucchi in screen-space 2D, più economici. Scelto di portarlo fedele
+  (64 step, nessun AO/shadow quindi comunque leggero) invece di appiattirlo in 2D, su conferma
+  esplicita dell'utente. Uniform aggiunti: `speed`, `orbitSpeed`, `camDist`, `fov`, `scale` (scala
+  lo spazio di campionamento e divide il passo di marcia per restare stabile), `fold`, `iterations`
+  (loop troncato con `break`, come `psyVortexFractal`), `glow`, due colori `colorA`/`colorB` al
+  posto della `palette()` fissa ciano→magenta dell'originale.
+
 ## 2026-09-01 — Bug: la playlist degli effetti seguiva il layer selezionato
 
 Segnalato che impostando una playlist di effetti veniva applicata a tutti i layer. Confermato in
