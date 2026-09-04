@@ -1,4 +1,4 @@
-// NAME: Morph Chrome Folds
+// NAME: Chrome Folds
 uniform float speed; // @min -10.0 @max 10.0 @default 1.0
 uniform float folds; // @min 1.0 @max 20.0 @default 6.0
 uniform float shine; // @min 0.5 @max 10.0 @default 4.0

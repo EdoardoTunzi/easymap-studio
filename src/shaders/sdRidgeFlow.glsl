@@ -1,4 +1,4 @@
-// NAME: SD Ridge Flow
+// NAME: Ridge Flow
 uniform float speed; // @min -6.0 @max 6.0 @default 1.5
 uniform float ridgeDensity; // @min 2.0 @max 60.0 @default 18.0
 uniform float morphDepth; // @min 0.0 @max 10.0 @default 3.0

@@ -1,4 +1,4 @@
-// NAME: Morph Morphogen Mycelium
+// NAME: Morphogen Mycelium
 uniform float speed; // @min 0.0 @max 3.0 @default 1.0
 uniform float density; // @min 4.0 @max 48.0 @default 16.0
 uniform float branching; // @min 0.0 @max 1.0 @default 0.8

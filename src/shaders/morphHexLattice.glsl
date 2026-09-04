@@ -1,4 +1,4 @@
-// NAME: Morph Hex Lattice
+// NAME: Hex Lattice
 uniform float speed; // @min -10.0 @max 10.0 @default 1.5
 uniform float density; // @min 2.0 @max 30.0 @default 10.0
 uniform float edge; // @min 0.01 @max 0.5 @default 0.15

@@ -1,4 +1,4 @@
-// NAME: Morph Concentric Waves
+// NAME: Concentric Waves
 uniform float speed; // @min -10.0 @max 10.0 @default 2.0
 uniform float rings; // @min 1.0 @max 40.0 @default 12.0
 uniform float sharpness; // @min 0.5 @max 8.0 @default 2.0

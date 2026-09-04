@@ -1,4 +1,4 @@
-// NAME: Psy Fractal Mandala
+// NAME: Fractal Mandala
 uniform float speed; // @min 0.0 @max 2.0 @default 0.4
 uniform float segments; // @min 3.0 @max 24.0 @default 8.0
 uniform float zoom; // @min 0.5 @max 6.0 @default 2.0

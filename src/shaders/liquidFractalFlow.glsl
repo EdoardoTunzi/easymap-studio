@@ -1,4 +1,4 @@
-// NAME: Liquid Fractal Flow
+// NAME: Fractal Flow
 uniform float speed; // @min -10.0 @max 10.0 @default 2.0
 uniform float iterations; // @min 1.0 @max 6.0 @default 4.0
 uniform float foldScale; // @min 1.1 @max 3.0 @default 1.7

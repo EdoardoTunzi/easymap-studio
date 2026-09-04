@@ -279,6 +279,7 @@ Un effetto per volta: domande sul soggetto (nome, categoria, uniform da esporre)
 - [x] extra. "VHS" — filtro simil videocassetta (fuori lista, codice incollato dall'utente) → `vhs.glsl` (Altri, su richiesta dell'utente)
 - [x] Sessione conclusa qui su richiesta dell'utente: `README.md` aggiornato con il conteggio reale (123 shader: Halo 12, Liquid 12, Psy 40, Morph 31, SD 12, Altri 15, Audio 1). Restano in sospeso il 15° link (wlGXRD) e i link dal 23° al 27°
 - [x] Verificati i file `.glsl` ancora da committare dopo che l'utente ne ha cancellati due (Lotka-Volterra, Smooth Life): 16 file nuovi rimasti (`git status` → `??`), README corretto di conseguenza (i numeri erano già giusti, corretta solo la menzione testuale dei due effetti cancellati come esempi di Morph con stato)
+- [x] Rimosso il prefisso di categoria ripetuto nel `// NAME:` di tutti gli shader (es. "Psy Chrome Ripple" → "Chrome Ripple"): 90 file su 123, nessun nome duplicato risultante
 - [ ] 23. https://www.shadertoy.com/view/4dlBDn
 - [ ] 24. https://www.shadertoy.com/view/wsl3WB
 - [ ] 25. https://www.shadertoy.com/view/XtdSDn

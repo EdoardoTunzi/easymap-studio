@@ -1,4 +1,4 @@
-// NAME: Morph Aurora Depth
+// NAME: Aurora Depth
 uniform float speed; // @min -10.0 @max 10.0 @default 1.0
 uniform float veils; // @min 1.0 @max 10.0 @default 4.0
 uniform float waviness; // @min 0.0 @max 3.0 @default 1.0

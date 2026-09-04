@@ -1,4 +1,4 @@
-// NAME: Psy Trippy Spiral
+// NAME: Trippy Spiral
 uniform float speed; // @min 0.0 @max 5.0 @default 1.0
 uniform float arms; // @min 1.0 @max 20.0 @default 5.0
 uniform float twist; // @min 0.0 @max 20.0 @default 6.0

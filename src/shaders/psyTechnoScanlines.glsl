@@ -1,4 +1,4 @@
-// NAME: Psy Techno Scanlines
+// NAME: Techno Scanlines
 uniform float speed; // @min 0.0 @max 8.0 @default 2.0
 uniform float lines; // @min 20.0 @max 300.0 @default 90.0
 uniform float sweepWidth; // @min 0.02 @max 0.8 @default 0.2

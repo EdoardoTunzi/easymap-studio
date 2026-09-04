@@ -1,4 +1,4 @@
-// NAME: Psy Liquid Mercury
+// NAME: Liquid Mercury
 uniform float speed; // @min 0.0 @max 3.0 @default 0.7
 uniform float scale; // @min 1.0 @max 10.0 @default 3.5
 uniform float ripple; // @min 0.0 @max 3.0 @default 1.2

@@ -1,4 +1,4 @@
-// NAME: Halo Prismatic Swirl
+// NAME: Prismatic Swirl
 uniform float seed; // @min 0.0 @max 100.0 @default 0.0
 uniform float swirlAmount; // @min 0.0 @max 3.0 @default 1.2
 uniform float bands; // @min 2.0 @max 20.0 @default 9.0

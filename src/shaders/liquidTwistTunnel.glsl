@@ -1,4 +1,4 @@
-// NAME: Liquid Twist Tunnel
+// NAME: Twist Tunnel
 uniform float speed; // @min -10.0 @max 10.0 @default 4.0
 uniform float rings; // @min 2.0 @max 40.0 @default 16.0
 uniform float twist; // @min 0.0 @max 20.0 @default 6.0

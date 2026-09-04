@@ -1,4 +1,4 @@
-// NAME: Psy Vortex Fractal
+// NAME: Vortex Fractal
 uniform float speed; // @min 0.0 @max 3.0 @default 0.8
 uniform float swirl; // @min 0.0 @max 8.0 @default 3.0
 uniform float iterations; // @min 2.0 @max 10.0 @default 6.0

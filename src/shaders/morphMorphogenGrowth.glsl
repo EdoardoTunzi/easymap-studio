@@ -1,4 +1,4 @@
-// NAME: Morph Morphogen Growth
+// NAME: Morphogen Growth
 uniform float speed; // @min 0.0 @max 3.0 @default 1.0
 uniform float scale; // @min 0.3 @max 3.0 @default 1.0
 uniform float pattern; // @min 0.0 @max 1.0 @default 0.5

@@ -1,4 +1,4 @@
-// NAME: Morph Tunnel Depth
+// NAME: Tunnel Depth
 uniform float speed; // @min -10.0 @max 10.0 @default 2.5
 uniform float rings; // @min 2.0 @max 40.0 @default 12.0
 uniform float spokes; // @min 0.0 @max 24.0 @default 8.0

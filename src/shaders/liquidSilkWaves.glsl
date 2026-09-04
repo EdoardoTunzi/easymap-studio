@@ -1,4 +1,4 @@
-// NAME: Liquid Silk Waves
+// NAME: Silk Waves
 uniform float speed; // @min -10.0 @max 10.0 @default 2.0
 uniform float layers; // @min 1.0 @max 8.0 @default 4.0
 uniform float stretch; // @min 0.5 @max 10.0 @default 4.0

@@ -1,4 +1,4 @@
-// NAME: Halo Mandala
+// NAME: Mandala
 uniform float seed; // @min 0.0 @max 100.0 @default 0.0
 uniform float petals; // @min 3.0 @max 24.0 @default 12.0
 uniform float layers; // @min 1.0 @max 5.0 @default 3.0

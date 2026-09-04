@@ -1,4 +1,4 @@
-// NAME: Halo Petal Kaleido
+// NAME: Petal Kaleido
 uniform float seed; // @min 0.0 @max 100.0 @default 0.0
 uniform float segments; // @min 3.0 @max 20.0 @default 10.0
 uniform float colorShift; // @min 0.0 @max 10.0 @default 3.0

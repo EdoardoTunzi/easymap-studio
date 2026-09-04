@@ -1,4 +1,4 @@
-// NAME: Halo Mirror Bloom
+// NAME: Mirror Bloom
 uniform float seed; // @min 0.0 @max 100.0 @default 0.0
 uniform float colorShift; // @min 0.0 @max 10.0 @default 3.0
 uniform float intensity; // @min 0.0 @max 1.0 @default 0.85

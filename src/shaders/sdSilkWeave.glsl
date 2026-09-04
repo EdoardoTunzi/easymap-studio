@@ -1,4 +1,4 @@
-// NAME: SD Silk Weave
+// NAME: Silk Weave
 uniform float speed; // @min -6.0 @max 6.0 @default 0.8
 uniform float threads; // @min 2.0 @max 80.0 @default 26.0
 uniform float weaveDepth; // @min 0.0 @max 2.0 @default 0.6

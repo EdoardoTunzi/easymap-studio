@@ -1,4 +1,4 @@
-// NAME: Morph Fractal Depth
+// NAME: Fractal Depth
 uniform float speed; // @min -10.0 @max 10.0 @default 1.0
 uniform float iterations; // @min 2.0 @max 12.0 @default 7.0
 uniform float fold; // @min 0.5 @max 2.0 @default 1.1

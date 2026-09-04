@@ -2,6 +2,23 @@
 
 Ogni modifica al progetto va registrata qui con data, descrizione e motivazione. Le voci più recenti in alto dentro ogni giornata.
 
+## 2026-09-04 — Rimosso il prefisso di categoria ripetuto dai nomi degli shader (86 file)
+
+Segnalato che molti nomi ripetevano la categoria di appartenenza ("Psy Chrome Ripple" mentre il
+filtro è già su "Psy"). Passata su tutta la libreria: per ogni famiglia con prefisso di file
+riconosciuto (`halo*`, `liquid*`, `morph*`, `psy*`, `sd*`) rimossa la parola iniziale del `// NAME:`
+quando coincide **esattamente** con l'etichetta della categoria seguita da uno spazio — quindi
+"Halo Mandala" → "Mandala", "SD Ridge Flow" → "Ridge Flow", ecc. Rimosso anche "Audio " da
+`audioOscilloscope.glsl` (categoria dedotta dal contenuto, non dal prefisso file, ma stesso
+principio). 90 file toccati su 123 (tutti pre-esistenti: i 16 file aggiunti in questa sessione
+erano già senza prefisso ripetuto).
+
+Il match richiede lo spazio subito dopo la parola: questo esclude correttamente i casi dove il
+prefisso non è una ripetizione ma parte del nome stesso — "Morphing Abstract" (categoria morph, ma
+comincia per "Morphing" non "Morph ") e "3D Surface Morph Spirals"/"Symmetrical Halo Swirl"
+(categoria morph/halo via eccezione in `shaderCategories.ts`, ma "Morph"/"Halo" non è la prima
+parola del nome) restano invariati. Verificato nessun nome duplicato dopo la rimozione.
+
 ## 2026-09-04 — Correzione: "Lotka-Volterra" e "Smooth Life" cancellati dall'utente
 
 L'utente ha cancellato `src/shaders/morphLotkaVolterra.glsl` e `src/shaders/morphSmoothLife.glsl`

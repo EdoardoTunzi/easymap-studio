@@ -1,4 +1,4 @@
-// NAME: SD Pulse Sonar
+// NAME: Pulse Sonar
 uniform float speed; // @min -6.0 @max 6.0 @default 1.6
 uniform float pulseRate; // @min 0.5 @max 12.0 @default 3.0
 uniform float waveLength; // @min 1.0 @max 40.0 @default 12.0

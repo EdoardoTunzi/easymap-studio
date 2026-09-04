@@ -1,4 +1,4 @@
-// NAME: SD Relief Lattice
+// NAME: Relief Lattice
 uniform float speed; // @min -6.0 @max 6.0 @default 1.0
 uniform float cells; // @min 2.0 @max 60.0 @default 16.0
 uniform float barWidth; // @min 0.02 @max 0.6 @default 0.14

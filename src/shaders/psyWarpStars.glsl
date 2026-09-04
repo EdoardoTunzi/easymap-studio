@@ -1,4 +1,4 @@
-// NAME: Psy Warp Stars
+// NAME: Warp Stars
 uniform float speed; // @min 0.0 @max 6.0 @default 2.0
 uniform float density; // @min 20.0 @max 400.0 @default 140.0
 uniform float streak; // @min 0.0 @max 1.0 @default 0.6

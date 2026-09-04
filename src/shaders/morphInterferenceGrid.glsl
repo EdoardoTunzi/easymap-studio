@@ -1,4 +1,4 @@
-// NAME: Morph Interference Grid
+// NAME: Interference Grid
 uniform float speed; // @min -10.0 @max 10.0 @default 2.0
 uniform float frequency; // @min 2.0 @max 60.0 @default 20.0
 uniform float angle; // @min 0.0 @max 3.14 @default 0.6

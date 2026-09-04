@@ -1,4 +1,4 @@
-// NAME: Psy Pulse Bars
+// NAME: Pulse Bars
 uniform float speed; // @min 0.0 @max 8.0 @default 3.0
 uniform float bars; // @min 4.0 @max 64.0 @default 20.0
 uniform float gap; // @min 0.0 @max 0.6 @default 0.15

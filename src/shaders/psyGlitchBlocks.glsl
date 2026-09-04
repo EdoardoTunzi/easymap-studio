@@ -1,4 +1,4 @@
-// NAME: Psy Glitch Blocks
+// NAME: Glitch Blocks
 uniform float speed; // @min 0.0 @max 12.0 @default 5.0
 uniform float blocks; // @min 4.0 @max 64.0 @default 18.0
 uniform float displace; // @min 0.0 @max 1.0 @default 0.4

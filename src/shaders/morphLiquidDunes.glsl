@@ -1,4 +1,4 @@
-// NAME: Morph Liquid Dunes
+// NAME: Liquid Dunes
 uniform float speed; // @min -10.0 @max 10.0 @default 1.5
 uniform float scale; // @min 1.0 @max 16.0 @default 5.0
 uniform float relief; // @min 0.5 @max 8.0 @default 3.0

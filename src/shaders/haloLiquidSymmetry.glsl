@@ -1,4 +1,4 @@
-// NAME: Halo Liquid Symmetry
+// NAME: Liquid Symmetry
 uniform float seed; // @min 0.0 @max 100.0 @default 0.0
 uniform float scale; // @min 1.0 @max 8.0 @default 3.0
 uniform float colorShift; // @min 0.0 @max 10.0 @default 3.0

@@ -1,4 +1,4 @@
-// NAME: SD Shape Tunnel
+// NAME: Shape Tunnel
 // Il PROFILO ESTERNO della sagoma, replicato in copie sempre più piccole che collassano verso il
 // centro dell'oggetto: un tunnel fatto con la forma dell'asset stesso.
 //

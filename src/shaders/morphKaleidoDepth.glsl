@@ -1,4 +1,4 @@
-// NAME: Morph Kaleido Depth
+// NAME: Kaleido Depth
 uniform float speed; // @min -10.0 @max 10.0 @default 1.0
 uniform float segments; // @min 3.0 @max 24.0 @default 8.0
 uniform float zoom; // @min 0.5 @max 8.0 @default 3.0

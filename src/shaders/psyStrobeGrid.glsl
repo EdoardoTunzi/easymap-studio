@@ -1,4 +1,4 @@
-// NAME: Psy Strobe Grid
+// NAME: Strobe Grid
 uniform float speed; // @min 0.0 @max 8.0 @default 3.0
 uniform float density; // @min 2.0 @max 30.0 @default 10.0
 uniform float strobe; // @min 0.0 @max 1.0 @default 0.6

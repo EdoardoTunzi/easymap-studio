@@ -1,4 +1,4 @@
-// NAME: Liquid Chrome Melt
+// NAME: Chrome Melt
 uniform float speed; // @min -10.0 @max 10.0 @default 2.0
 uniform float meltScale; // @min 1.0 @max 15.0 @default 5.0
 uniform float drip; // @min 0.0 @max 4.0 @default 1.5

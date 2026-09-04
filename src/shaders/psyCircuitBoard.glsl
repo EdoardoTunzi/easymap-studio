@@ -1,4 +1,4 @@
-// NAME: Psy Circuit Board
+// NAME: Circuit Board
 uniform float speed; // @min 0.0 @max 5.0 @default 1.5
 uniform float density; // @min 4.0 @max 40.0 @default 14.0
 uniform float width; // @min 0.02 @max 0.4 @default 0.1
