@@ -59,11 +59,22 @@ Tutto quello che puoi fare dall'editor, pannello per pannello.
 
 ### Effetti e palette colori
 
-- Libreria di **123 shader GLSL** generativi/psichedelici, in cinque famiglie principali (più una manciata di effetti singoli fuori famiglia, "Altri", e uno audio-reattivo):
-  - **Halo** (12 effetti) e **Liquid** (12 effetti) — simmetrie radiali e superfici fluide;
-  - **Psy** (40 effetti) — pensati per stage psytrance e techno: strobo, tunnel, laser, griglie esagonali, digital rain, wireframe synthwave, glitch, barre spettro, geometria sacra, frattali, caleidoscopi 3D a raymarch;
-  - **Morph** (31 effetti) — _source-driven_: usano la luminanza del tuo asset come mappa di profondità (`morphDepth`), così il pattern non ci si appoggia sopra ma lo **modella**, seguendone i rilievi. Include anche i tre Morphogen (Growth, Mitosis, Turing), reaction-diffusion vere con stato che girano su una griglia dedicata in ping-pong, non calcolabili in un solo passaggio.
-  - **SD** (12 effetti) — source-driven di seconda generazione: oltre alla luminanza leggono la **pendenza locale** dell'immagine (il gradiente), cioè la direzione in cui la superficie sale. Così creste, trame e onde si orientano lungo le curve reali dell'oggetto e ne ricevono anche l'illuminazione. Ognuno espone 11-12 controlli, tra cui il raggio di campionamento del rilievo e l'angolo della luce.
+- Libreria di **123 shader GLSL** generativi/psichedelici, divisi in famiglie e marcati con una lettera colorata che dice come si comportano rispetto all'asset: **O** (blu, _sull'oggetto_) se leggono l'immagine e ci si modellano sopra, **S** (arancione, _sullo sfondo_) se la ignorano e riempiono la sagoma con un pattern proprio. Le due lettere sono anche i pulsanti-leggenda in cima al selettore: premendone una, famiglie ed elenco si restringono a quel comportamento. Tutti restano comunque ritagliati dentro la sagoma dell'asset.
+
+  **Sull'oggetto** (69 effetti) — campionano la sorgente e si modellano su di essa:
+  - **Rilievo** (16 effetti) — usano la luminanza del tuo asset come mappa di quota (`morphDepth`), così il pattern non ci si appoggia sopra ma lo **modella**, seguendone i rilievi;
+  - **Contorni** (12 effetti) — source-driven di seconda generazione: oltre alla luminanza leggono la **pendenza locale** dell'immagine (il gradiente), cioè la direzione in cui la superficie sale. Così creste, trame e onde si orientano lungo le curve reali dell'oggetto e ne ricevono anche l'illuminazione. Ognuno espone 11-12 controlli, tra cui il raggio di campionamento del rilievo e l'angolo della luce;
+  - **Fluidi** (18 effetti) — superfici liquide, metalli fusi e onde che colano sul rilievo;
+  - **Aloni** (17 effetti) — simmetrie radiali, mandala e vortici costruiti attorno al soggetto;
+  - **Morphogen** (4 effetti) — reaction-diffusion vere **con stato** (Growth, Mitosis, Mycelium, Turing), calcolate su una griglia dedicata in ping-pong e non ottenibili in un solo passaggio: crescono nel tempo e si possono riavviare.
+
+  **Sullo sfondo** (54 effetti) — riempiono la sagoma con un pattern proprio, pensati per stage psytrance e techno:
+  - **Frattali** (14 effetti) — mandala, geometria sacra, Mandelbrot, caleidoscopi 3D a raymarch;
+  - **Strobo** (15 effetti) — strobo, laser, scanline, griglie esagonali, digital rain, wireframe synthwave, glitch, barre spettro;
+  - **Tunnel** (8 effetti) — tunnel, zoom infiniti, corse nello spazio;
+  - **Plasma** (14 effetti) — plasma, nebbie, aurore e forme organiche in movimento.
+
+  Fuori dalle famiglie: **Audio** (1 effetto reattivo all'ingresso audio) e **Altri** (4 casi singoli — due filtri che trattano l'immagine come immagine, due figure riconoscibili). Sono le uniche due famiglie miste, che contengono sia effetti O sia effetti S.
 - **Cambio effetto rapido**: frecce ◀ ▶ accanto alla lista e scorciatoie **⌥A / ⌥S** (Alt su Windows/Linux) per scorrere la libreria senza aprire il menu a tendina — lo scorrimento è ciclico e salta "Nessun effetto", così durante un live si passa da un visual all'altro con un tasto.
 - **Random dei controlli**: un pulsante estrae valori casuali per tutti i parametri dell'effetto attivo, dentro i range dichiarati dallo shader. È il modo più veloce di far emergere look che a mano non si proverebbero, senza dover capire cosa fa ogni slider.
 - **Controlli globali dell'effetto**, validi per **qualsiasi** shader (anche quelli che espongono pochi parametri propri): velocità, rotazione, pan X/Y, kaleidoscopio, mirror X/Y, pixelate, luminosità, contrasto, saturazione, posterize, negativo — con reset immediato.
@@ -77,7 +88,7 @@ Tutto quello che puoi fare dall'editor, pannello per pannello.
 - **Ingresso video live** _(novità v4)_: attivi la camera dal pannello Asset e scegli quale usare da una tendina che si aggiorna da sola quando colleghi o stacchi un device. La ripresa viene adattata automaticamente al suo formato, si può stratificare con "Nuovo strato" (stesso feed, layer sopra, già allineato e in blend Screen) e si riavvia a freddo con un pulsante se durante un set l'immagine si pianta. Cambiando camera la precedente viene spenta subito, perché due webcam USB sullo stesso controller spesso non stanno insieme per banda disponibile.
 - Un **asset dimostrativo** è precaricato automaticamente alla primissima apertura dell'app, per poter provare subito il programma senza dover cercare un'immagine propria.
 
-> Sugli effetti da usare con una ripresa live: circa 66 shader della libreria (famiglie _Halo_, _Liquid_, _Morph_, _SD_) campionano la sorgente e quindi **elaborano davvero l'immagine della camera**. Gli altri sono puramente generativi: siccome un feed video è opaco e non ha una sagoma da ritagliare, lo coprono — vanno messi su uno strato sopra in Add/Screen, o con opacità ridotta.
+> Sugli effetti da usare con una ripresa live: i 69 shader marcati **O** ("sull'oggetto") campionano la sorgente e quindi **elaborano davvero l'immagine della camera** — premi il pulsante O in cima al selettore per vedere solo quelli. Gli **S** sono puramente generativi: siccome un feed video è opaco e non ha una sagoma da ritagliare, lo coprono — vanno messi su uno strato sopra in Add/Screen, o con opacità ridotta.
 
 ### Output e modalità Live
 
@@ -155,7 +166,7 @@ Fuori dalla modalità Live la barra spaziatrice resta interamente al pan della v
 ### Motore di rendering shader
 
 - Parser **ISF-like** che legge uniform GLSL commentati (`// @min @max @default`) e genera automaticamente slider e color picker nell'UI — basta aggiungere un file `.glsl` per far apparire un nuovo effetto, senza toccare codice React.
-- Libreria di **123 shader** originali (famiglie _Halo_, _Liquid_, _Psy_, _Morph_, _SD_, più alcuni singoli fuori famiglia), molti dei quali source-driven: reagiscono alla luminanza dell'immagine sorgente e restano sempre ritagliati dentro la sua sagoma. Gli shader _Morph_ spingono l'idea oltre, usando quella luminanza come **campo di quota** che deforma la geometria dell'effetto — i tre Morphogen (Growth, Mitosis, Turing) sono simulazioni vere con stato, calcolate su una griglia dedicata in ping-pong; gli _SD_ aggiungono il **gradiente** della luminanza, che dà la direzione della pendenza: i pattern seguono le curve dell'oggetto e ricevono un'illuminazione coerente con la superficie.
+- Libreria di **123 shader** originali, marcati uno per uno con il loro comportamento: 69 sono source-driven (**O**) — reagiscono alla luminanza dell'immagine sorgente e restano sempre ritagliati dentro la sua sagoma — gli altri 54 sono generativi (**S**). Gli shader _Rilievo_ usano quella luminanza come **campo di quota** che deforma la geometria dell'effetto; i quattro _Morphogen_ (Growth, Mitosis, Mycelium, Turing) sono simulazioni vere con stato, calcolate su una griglia dedicata in ping-pong; i _Contorni_ aggiungono il **gradiente** della luminanza, che dà la direzione della pendenza: i pattern seguono le curve dell'oggetto e ricevono un'illuminazione coerente con la superficie.
 - **Controlli globali nel wrapper GLSL**: trasformazioni della uv (`easyvj_fxUv`: mirror, kaleidoscopio, rotazione, pan, pixelate) e correzioni di colore (`easyvj_fxColor`: luminosità, contrasto, saturazione, posterize, negativo) applicate rispettivamente prima e dopo `processColor`. Valgono per ogni shader senza modificarne il codice — con oltre 120 effetti in libreria, aggiungere uniform uno per uno non sarebbe scalabile.
 - **Maschera automatica per canale alpha**, con **luma key** opzionale (rilevata automaticamente all'upload) per le immagini con sfondo nero opaco anziché trasparente.
 - Palette colori con 7 preset fluorescenti, editor a 5 colori, generatore di **palette casuali** a numero di stop variabile con cinque schemi di armonia, e colori assegnabili ai singoli parametri `vec3` di ogni shader.

@@ -2,6 +2,72 @@
 
 Ogni modifica al progetto va registrata qui con data, descrizione e motivazione. Le voci più recenti in alto dentro ogni giornata.
 
+## 2026-09-04 — Il comportamento O/S diventa un filtro-leggenda, non più due blocchi di pulsanti
+
+I due blocchi etichettati "Seguono / Ignorano il soggetto" non sono piaciuti, e a ragione: erano un
+ibrido. L'asse scelto era estetico, ma le famiglie erano state piegate al criterio funzionale —
+ogni categoria al 100% di un gruppo — quindi i blocchi non aggiungevano informazione, la
+imponevano; e "Ignorano" suonava come una serie B su metà libreria.
+
+Ora il comportamento è un **filtro trasversale che fa anche da leggenda**: due pulsanti in cima al
+selettore, **O** blu "Sull'oggetto" e **S** arancione "Sullo sfondo", esclusivi e spegnibili
+ri-cliccandoli. A riposo le famiglie stanno tutte insieme in una fila piatta; premendone uno, si
+restringono famiglie **ed** elenco. La stessa lettera colorata compare a destra di ogni nome in
+elenco (`justify-between`) — senza i due pulsanti sopra a spiegarla non direbbe nulla, ed è per
+questo che filtro e leggenda sono la stessa cosa.
+
+Il gruppo è una proprietà del **singolo shader**, non della famiglia ("Altri" e "Audio" sono
+miste), e si **misura dal codice** in `parseShader`: uno shader che non campiona mai `tex` non può,
+per costruzione, reagire all'immagine. Niente lista da mantenere, e il test gira sul raw originale
+**prima** dello split simulazione/disegno, che riassegna `raw` (un effetto potrebbe leggere la
+sorgente nel solo passo di simulazione). Risultato: 69 O, 54 S.
+
+I pulsanti famiglia senza effetti nel filtro attivo spariscono da sé, perché i conteggi sono
+calcolati dentro il filtro e quelli a zero non si mostrano: nessuna tabella famiglia→gruppo da
+tenere allineata alla mappa. Se la famiglia selezionata resta vuota si torna su "Tutti", altrimenti
+resterebbe una lista vuota con un filtro attivo ma invisibile. `cycleActiveShader` (frecce ◀ ▶,
+⌥A/⌥S) rispetta entrambi i filtri combinati, com'era già per la sola famiglia.
+
+Colori: `--group-object` (blu) e `--group-background` (arancione) in `index.css`, più chiari nel
+tema scuro perché una lettera piccola in tinta satura vi si spegne. Sono le uniche due tinte di un
+tema per il resto monocromo, quindi marcano l'appartenenza senza competere con nulla.
+
+## 2026-09-04 — Ritassonomia completa della libreria: 8 categorie → 12, divise in due gruppi
+
+Analizzata tutta la libreria incrociando le categorie dichiarate con quello che gli shader fanno
+davvero (campionamenti di `tex`, uso di `morphDepth`/luminanza, marcatore `//! SIMULATION`,
+uniform audio). Tre problemi: (1) le famiglie mescolavano assi diversi — `morph`/`sd` erano
+**tecniche**, `psy`/`halo`/`liquid` erano **estetiche**, e misurando il codice `halo` e `liquid`
+usavano esattamente la stessa tecnica di `morph` (stessa `lum = dot(source.rgb, …)`, 10 su 12
+`liquid` avevano pure `morphDepth`): li separava solo il tema; (2) "Altri" non erano casi singoli
+ma il pre-convenzione — 11 dei 15 erano generativi puri identici ai `psy`; (3) `psy` con 39
+effetti era un terzo della libreria dietro un pulsante.
+
+Nuova struttura su asse **estetico**, con i pulsanti divisi in due blocchi etichettati secondo un
+criterio **funzionale** — "Seguono il soggetto" (Rilievo 16, Contorni 12, Fluidi 18, Aloni 17,
+Morphogen 4) e "Ignorano il soggetto" (Frattali 14, Strobo 15, Tunnel 8, Plasma 14), più Audio e
+Altri fuori gruppo. La divisione serve a non scegliere per sbaglio un generativo quando si voleva
+qualcosa che si gonfiasse sulla statua: è l'errore più facile della libreria e dal nome non si
+legge. I generativi hanno anche il bordo tratteggiato, così restano riconoscibili a etichetta
+scrollata via. Nota: **restano comunque ritagliati dentro la sagoma** (il wrapper moltiplica sempre
+l'alpha per quello della sorgente) — non sono "sfondi", semplicemente non seguono il soggetto.
+
+I 4 Morphogen hanno una famiglia propria: sono gli unici shader con stato, crescono nel tempo e si
+riavviano, quindi si cercano per quello e non perché sono "Morph".
+
+**La categoria non si deduce più dal prefisso del file** ma da una mappa esplicita `MEMBERS` in
+`shaderCategories.ts`, scritta per famiglia (categoria → lista di basename) e invertita una volta
+sola all'avvio. Il vecchio meccanismo a prefissi + `EXCEPTIONS` non reggeva una riclassificazione:
+spostare un effetto voleva dire rinominare il file o allungare le eccezioni. La chiave è il
+**basename**, mai la riga `// NAME:`: quella è ciò con cui i progetti salvati referenziano
+l'effetto (`layer.shaderName`, chiavi di `params`/`colorParams`), e toccarla romperebbe i progetti
+esistenti. Nessun `.glsl` è stato modificato, nessun file rinominato.
+
+Uno shader non presente in `MEMBERS` finisce in "Altri" e in sviluppo lo segnala con un
+`console.warn`: è l'unico modo di accorgersi che la mappa è rimasta indietro. Verificata copertura
+esatta (123 file, 123 voci, zero duplicati, zero orfani) e nessun warning a runtime.
+`useUiStore.shaderCategory` non è persistito (default `'all'`), quindi nessuna migrazione.
+
 ## 2026-09-04 — Rimosso il prefisso di categoria ripetuto dai nomi degli shader (86 file)
 
 Segnalato che molti nomi ripetevano la categoria di appartenenza ("Psy Chrome Ripple" mentre il

@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import type { ShaderCategoryId } from '../lib/shaderCategories'
+import type { ShaderCategoryId, ShaderGroup } from '../lib/shaderCategories'
 import { WARP_EDGE_CORNERS, type WarpEdgeId } from '../lib/warp'
 
 /**
@@ -211,6 +211,14 @@ interface UiState {
    */
   shaderCategory: ShaderCategoryId | 'all'
   setShaderCategory: (category: ShaderCategoryId | 'all') => void
+  /**
+   * Filtro sul comportamento dell'effetto ('object' / 'background'), `null` = entrambi.
+   *
+   * Sta accanto a `shaderCategory` e per la stessa ragione: si combina con la famiglia, e insieme
+   * definiscono l'elenco dentro cui scorrono anche ◀ ▶ e ⌥A/⌥S.
+   */
+  shaderGroup: ShaderGroup | null
+  setShaderGroup: (group: ShaderGroup | null) => void
   view: ViewTransform
   setViewZoom: (zoom: number) => void
   zoomViewBy: (factor: number) => void
@@ -313,6 +321,8 @@ export const useUiStore = create<UiState>((set) => ({
   paletteLoopInterval: loadPaletteLoopInterval(),
   shaderCategory: 'all',
   setShaderCategory: (shaderCategory) => set({ shaderCategory }),
+  shaderGroup: null,
+  setShaderGroup: (shaderGroup) => set({ shaderGroup }),
   view: DEFAULT_VIEW,
   setViewZoom: (zoom) =>
     set((s) => ({ view: { ...s.view, zoom: clamp(zoom, MIN_VIEW_ZOOM, MAX_VIEW_ZOOM) } })),
