@@ -14,7 +14,17 @@ import {
   type AssetPlaylists,
 } from '../store/assetPlaylistStore'
 import { loadDefaultStageIfFirstVisit } from './defaultAsset'
-import { DEFAULT_SIZE } from '../store/effectsStore'
+import {
+  detectFileKind,
+  isValidCorners,
+  parsePresetsFile,
+  parseProjectFile,
+  serializePresetsFile,
+  serializeProjectFile,
+  type ExportProgress,
+} from './projectFile'
+import { DEFAULT_SIZE, useEffectsStore } from '../store/effectsStore'
+import { migrateLayerShaderNames, migrateShaderName } from './shaderNameMigration'
 import { type Palette, type RGB } from '../store/paletteStore'
 import type { MediaAsset, MediaType } from '../store/projectStore'
 
@@ -29,7 +39,7 @@ const AUTOSAVE_DEBOUNCE_MS = 600
 const AUTOSAVE_MIN_INTERVAL_MS = 5000
 
 /** Media come salvato: il blob (persistente) al posto del blob URL (transiente). */
-interface StoredMedia {
+export interface StoredMedia {
   name: string
   type: MediaType
   width: number
@@ -152,13 +162,22 @@ function serializeLayer(layer: Layer): StoredLayer {
   return { ...rest, media: serializeMedia(media), maskImage: serializeMedia(maskImage) }
 }
 
-/** Ricostruisce un layer da IndexedDB, rigenerando i blob URL. */
+/**
+ * Ricostruisce un layer, rigenerando i blob URL.
+ *
+ * I campi salvati vincono sui default di `createLayer`, ma solo se hanno la forma giusta: un
+ * `corners` non valido fa esplodere `quadAspect` a **ogni frame**, cioè trasforma un singolo campo
+ * rovinato in una scena che non si disegna piu'. Il controllo sta qui e non nel parser dei file
+ * perche' questa e' la porta d'ingresso comune a tutti i progetti — autosave, salvati e importati —
+ * e un progetto puo' essere rovinato anche senza passare da un file.
+ */
 function deserializeLayer(stored: StoredLayer): Layer {
-  const { media, maskImage, ...rest } = stored
+  const { media, maskImage, corners, ...rest } = stored
   const base = createLayer(rest)
   return {
     ...base,
     ...rest,
+    corners: isValidCorners(corners) ? corners : base.corners,
     media: deserializeMedia(media),
     maskImage: deserializeMedia(maskImage),
   }
@@ -206,7 +225,48 @@ async function putProject(db: IDBPDatabase<EasyVjDB>, project: StoredProject): P
 }
 
 /** Applica un progetto salvato allo store (ricreando i blob URL dei media). */
-function applyProject(project: StoredProject) {
+/**
+ * Predicato "questo shader esiste ancora", per il recupero dei nomi rinominati.
+ *
+ * Letto al momento dell'uso e non memorizzato: la libreria si popola all'avvio, e una copia presa
+ * troppo presto direbbe che non esiste nulla — cioè non recupererebbe niente proprio al ripristino
+ * dell'autosave, il caso piu' frequente.
+ */
+const shaderExists = (name: string) =>
+  useEffectsStore.getState().shaders.some((s) => s.name === name)
+
+/**
+ * Riporta ai nomi attuali i riferimenti agli shader rinominati (vedi `shaderNameMigration.ts`).
+ *
+ * Si fa al **caricamento** e non con una migrazione dello store IndexedDB perche' cosi' vale anche
+ * per i progetti che arrivano da un file esportato, e perche' non c'e' un momento sicuro in cui
+ * riscrivere in blocco progetti che l'utente non ha ancora aperto.
+ */
+function migrateProjectShaderNames(project: StoredProject): StoredProject {
+  const playlists = project.playlists && {
+    ...project.playlists,
+    byLayer: Object.fromEntries(
+      Object.entries(project.playlists.byLayer).map(([layerId, playlist]) => [
+        layerId,
+        {
+          ...playlist,
+          clips: playlist.clips.map((clip) => ({
+            ...clip,
+            shaderName: migrateShaderName(clip.shaderName, shaderExists),
+          })),
+        },
+      ]),
+    ),
+  }
+  return {
+    ...project,
+    layers: project.layers.map((l) => migrateLayerShaderNames(l, shaderExists)),
+    ...(playlists ? { playlists } : {}),
+  }
+}
+
+function applyProject(stored: StoredProject) {
+  const project = migrateProjectShaderNames(stored)
   const layers = project.layers.map(deserializeLayer)
   useLayersStore.getState().setScene(layers, project.activeLayerId)
   // progetti pre-playlist: undefined → nessuna playlist. Quelli con la playlist unica salvata
@@ -254,6 +314,89 @@ export async function deleteProject(id: string): Promise<void> {
   await db.delete('projects', id)
 }
 
+// ---- Esportazione e importazione come file JSON ----
+
+/**
+ * Il progetto salvato `id`, come file pronto da scaricare (asset inclusi).
+ *
+ * Non ha una controparte "scarica": il salvataggio su disco è DOM, e tenerlo fuori da qui lascia
+ * questo modulo indipendente dal browser (vedi `projectFile.ts`).
+ */
+export async function exportProjectToFile(
+  id: string,
+  onProgress?: (p: ExportProgress) => void,
+): Promise<Blob | null> {
+  const db = await getDb()
+  const project = await db.get('projects', id)
+  return project ? serializeProjectFile(project, onProgress) : null
+}
+
+/** La scena corrente come file, senza doverla prima salvare fra i progetti. */
+export function exportCurrentSceneToFile(
+  name: string,
+  onProgress?: (p: ExportProgress) => void,
+): Promise<Blob> {
+  return serializeProjectFile(snapshot(crypto.randomUUID(), name), onProgress)
+}
+
+/** Un solo preset come file, per condividerne uno senza spedire tutta la libreria. */
+export async function exportPresetToFile(id: string): Promise<{ blob: Blob; name: string } | null> {
+  const db = await getDb()
+  const preset = await db.get('effectPresets', id)
+  if (!preset) return null
+  // migrato come in `listEffectPresets`: il file deve portare il nome shader attuale, altrimenti
+  // esporterebbe un riferimento gia' rotto in partenza
+  const migrated = { ...preset, shaderName: migrateShaderName(preset.shaderName, shaderExists) }
+  return { blob: serializePresetsFile([migrated]), name: preset.name }
+}
+
+/** L'intera libreria dei preset come file. Sono pochi KB: nessun avanzamento da mostrare. */
+export async function exportPresetsToFile(): Promise<{ blob: Blob; count: number } | null> {
+  const presets = await listEffectPresets()
+  return presets.length > 0 ? { blob: serializePresetsFile(presets), count: presets.length } : null
+}
+
+/** Esito di un'importazione, discriminato dal tipo di file che è arrivato. */
+export type ImportResult =
+  | { kind: 'project'; id: string; name: string }
+  | { kind: 'presets'; imported: number; skipped: number }
+
+/**
+ * Importa un file esportato, progetto o libreria di preset che sia.
+ *
+ * Un solo ingresso perché il tipo si legge dal file: chiedere all'utente di indovinare quale
+ * pulsante usare sarebbe un passaggio in più per un'informazione che abbiamo già.
+ *
+ * In entrambi i casi si **aggiunge**, senza sostituire nulla di ciò che c'è: un progetto va fra
+ * quelli salvati e non apre la scena (aprire d'ufficio farebbe perdere il lavoro non salvato a chi
+ * voleva solo mettere via un file); i preset si uniscono alla libreria saltando quelli già
+ * presenti — stesso nome e stesso shader — così reimportare lo stesso file non riempie l'elenco di
+ * doppioni.
+ *
+ * Rilancia `ProjectFileError` con un messaggio già leggibile se il file non è valido.
+ */
+export async function importFromJson(text: string): Promise<ImportResult> {
+  const db = await getDb()
+  if (detectFileKind(text) === 'presets') {
+    const incoming = parsePresetsFile(text)
+    const existing = await db.getAll('effectPresets')
+    // \u0000 come separatore e non uno spazio: non puo' comparire in un nome, quindi due preset
+    // diversi non possono collidere sulla stessa chiave ("a b"+"c" contro "a"+"b c").
+    const key = (p: EffectPreset) => `${p.name}\u0000${p.shaderName}`
+    const known = new Set(existing.map(key))
+    let imported = 0
+    for (const preset of incoming) {
+      if (known.has(key(preset))) continue
+      await db.put('effectPresets', preset)
+      imported++
+    }
+    return { kind: 'presets', imported, skipped: incoming.length - imported }
+  }
+  const project = parseProjectFile(text)
+  await putProject(db, project)
+  return { kind: 'project', id: project.id, name: project.name }
+}
+
 export async function listProjects(): Promise<Omit<StoredProject, 'layers'>[]> {
   const db = await getDb()
   const all = await db.getAll('projects')
@@ -285,7 +428,10 @@ function effectPresetSnapshot(id: string, name: string): EffectPreset {
 }
 
 /** Applica un preset di effetto al layer attivo (senza toccare media/posizionamento). */
-function applyEffectPreset(preset: EffectPreset) {
+function applyEffectPreset(raw: EffectPreset) {
+  // stesso recupero dei progetti: un preset salvato prima del rename punta a uno shader che
+  // non esiste piu', e applicarlo lascerebbe il layer vuoto invece di cambiargli effetto
+  const preset = { ...raw, shaderName: migrateShaderName(raw.shaderName, shaderExists) }
   useLayersStore.setState((state) => ({
     layers: state.layers.map((l) =>
       l.id === state.activeLayerId
@@ -325,7 +471,11 @@ export async function deleteEffectPreset(id: string): Promise<void> {
 export async function listEffectPresets(): Promise<EffectPreset[]> {
   const db = await getDb()
   const all = await db.getAll('effectPresets')
-  return all.sort((a, b) => b.updatedAt - a.updatedAt)
+  // il nome corretto va restituito anche a chi legge l'elenco: il pannello lo mostra accanto al
+  // preset, e la playlist ci costruisce i clip
+  return all
+    .map((p) => ({ ...p, shaderName: migrateShaderName(p.shaderName, shaderExists) }))
+    .sort((a, b) => b.updatedAt - a.updatedAt)
 }
 
 /**

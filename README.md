@@ -156,7 +156,8 @@ Fuori dalla modalità Live la barra spaziatrice resta interamente al pan della v
 ### Progetti, template e preset
 
 - **Salvataggio progetti con nome**, richiamabili in qualsiasi momento, più **autosave automatico** che ripristina l'ultima sessione al riavvio.
-- **Preset degli effetti**: salvi il "look" di un layer (shader + parametri + size + palette) con un nome e lo riapplichi su qualsiasi layer o progetto, anche come punto di partenza per un nuovo clip in playlist.
+- **Esportazione e importazione come file** _(novità v8)_: un progetto si scarica come `.easymap.json` **con dentro i suoi asset**, quindi si riapre su un altro computer o si manda a qualcuno — non resta prigioniero del browser in cui è nato. Si può esportare la scena com'è in quel momento, senza doverla prima salvare, e una barra mostra l'avanzamento: sui progetti pesanti la conversione degli asset richiede qualche secondo, durante i quali l'app resta comunque reattiva e la proiezione non si pianta. Un file importato entra fra i progetti salvati e si apre quando vuoi tu: non sostituisce a sorpresa il lavoro in corso. Restano fuori solo le cartelle delle playlist di contenuti, di cui il file porta il nome e l'elenco: quelle vanno ricollegate a destinazione, perché un riferimento a una cartella non ha senso su un'altra macchina.
+- **Preset degli effetti**: salvi il "look" di un layer (shader + parametri + size + palette) con un nome e lo riapplichi su qualsiasi layer o progetto, anche come punto di partenza per un nuovo clip in playlist. La libreria si **esporta e si importa** in un file suo, separato dai progetti: è roba tua che vale su tutti i lavori, quindi non viaggia dentro una singola scena — aprire il progetto di qualcun altro non ti riempie l'elenco dei suoi preset. Reimportare lo stesso file non crea doppioni: i preset già in libreria vengono saltati.
 - I **controlli globali** restano invece proprietà del layer e non vengono catturati dai preset né dai clip: è voluto, così velocità, kaleidoscopio o correzioni di colore che hai impostato sul layer non si azzerano a ogni cambio di effetto o transizione della playlist.
 
 ---
@@ -197,7 +198,7 @@ Fuori dalla modalità Live la barra spaziatrice resta interamente al pan della v
 - Corner-pin a 4 maniglie con pan/zoom di vista indipendente dall'output (per correggere il mapping anche quando l'asset è ingrandito oltre i bordi del canvas).
 - Modalità **Live**: le modifiche restano "in prova" nell'editor finché non vengono inviate esplicitamente all'Output (pulsante o barra spaziatrice), per non disturbare la proiezione mentre si sperimenta.
 - **Scorciatoie da tastiera** per i gesti che si ripetono durante una performance — cambio effetto (`⌥A`/`⌥S`), invio all'Output (`Spazio`), nudge del corner-pin (frecce) — progettate per non sovrapporsi tra loro: ogni tasto è attivo solo nel contesto in cui non ne serve un altro (per esempio `Spazio` comanda l'invio solo in Live, altrove resta il modificatore del pan).
-- Persistenza automatica del progetto (autosave + salvataggi con nome) e libreria di preset effetto riutilizzabili tra progetti diversi.
+- Persistenza automatica del progetto (autosave + salvataggi con nome), **esportazione su file con gli asset inclusi** per portare un set su un'altra macchina, e libreria di preset effetto riutilizzabili tra progetti diversi.
 
 ---
 
@@ -208,7 +209,7 @@ Fuori dalla modalità Live la barra spaziatrice resta interamente al pan della v
 | Framework / linguaggio | React 19, TypeScript, Vite 8                                            |
 | Rendering 3D/shader    | Three.js, React Three Fiber, GLSL custom (parser ISF-like proprietario) |
 | Stato globale          | Zustand (store separati per scena, effetti, palette, playlist, UI)      |
-| Persistenza            | IndexedDB (`idb`), autosave con debounce                                |
+| Persistenza            | IndexedDB (`idb`), autosave con debounce, export/import su file JSON    |
 | UI                     | Tailwind CSS v4, shadcn/ui (Radix), lucide-react                        |
 | Sync multi-finestra    | `BroadcastChannel` API con handshake `hello`                            |
 | Media                  | `THREE.VideoTexture`, `gifuct-js` per GIF animate, `MediaDevices.getUserMedia` per le sorgenti live |

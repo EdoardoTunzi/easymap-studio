@@ -310,3 +310,44 @@ Un effetto per volta: domande sul soggetto (nome, categoria, uniform da esporre)
 - [x] `transitionMode`/`transitionDuration` restano globali: sono il modo della transizione, non la sequenza, e `sync.ts` li usa anche per la dissolvenza degli invii manuali all'Output
 - [x] `snapshot()` pota le playlist (effetti e asset) dei layer eliminati: indicizzate per layer, sarebbero rimaste nello snapshot per sempre
 - [ ] Nella barra si vede solo la playlist del layer selezionato: valutare un segnale nella lista dei layer (un puntino) per quelli che hanno una sequenza in riproduzione, oggi invisibili finché non li si seleziona
+
+## Esportazione progetti come file
+
+- [x] Progetti scaricabili come `.easymap.json` **con gli asset dentro**: nuovo `src/lib/projectFile.ts` che converte i blob dei media in base64 e scarta l'handle della cartella delle playlist (non è JSON e non varrebbe nulla su un altro computer; restano `dirName` e l'elenco dei file). `StoredProject` resta la forma canonica, il modulo traduce e basta
+- [x] Conversione via `blob.arrayBuffer()` invece di `FileReader` (che esiste solo nel browser), con `String.fromCharCode` a chunk di 32 KB: lo spread di un file grande in un colpo solo fa esplodere lo stack
+- [x] Marcatore `format: 'easymap-studio/project'` + `version` nel file; l'import valida la struttura portante prima di toccare la scena e filtra il MIME dei media su `image/*`/`video/*` (il contenuto arriva da fuori e da lì si crea un blob URL). Un media corrotto diventa un layer vuoto, non un import fallito
+- [x] L'import mette il progetto **fra quelli salvati senza aprirlo** (aprire d'ufficio farebbe perdere il lavoro non salvato) e gli assegna sempre un id nuovo, così due import dello stesso file non si sovrascrivono
+- [x] UI in `ProjectsPanel`: sezione "File" con Esporta (la scena corrente, senza doverla prima salvare) e Importa, più un'icona di download su ogni riga della lista. Esito con messaggio inline: in progetto non c'è un sistema di toast e non ne è stato aggiunto uno
+- [x] Self-check senza framework: `node --experimental-strip-types src/lib/projectFile.check.ts` — round-trip byte a byte, blob oltre la soglia dei chunk, sorgente live senza file, handle escluso dal JSON, sette forme di file da respingere, MIME ostile scartato, `activeLayerId` orfano
+- [x] **Fix: l'esportazione faceva crashare la scheda.** Teneva in memoria cinque copie dello stesso contenuto (binario, stringa binaria, base64, JSON, Blob). Ora `serializeProjectFile` restituisce un `Blob` e non unisce mai il contenuto pesante: i media diventano elenchi di pezzi base64, lo scheletro JSON si serializza con dei **segnaposto** al posto dei dati (pochi KB), poi si taglia sui segnaposto e i pezzi si intercalano come parti del Blob. Blocchi da 32.766 byte, multiplo di 3 così ogni blocco si codifica senza padding e i pezzi si concatenano. Misurato: 120 MB di asset in 2,9 s, blocco massimo del thread 96 ms
+- [x] **Barra di avanzamento** dell'esportazione: `onProgress` con fasi "Conversione asset…" / "Scrittura del file…", percentuale sui byte degli asset, e resa al browser ogni ~1,6 MB — serve anche a non piantare il canvas mentre si sta proiettando. L'esito riporta la dimensione prodotta
+- [x] **Preset esportabili** in un file loro (`easymap-studio/presets`), non dentro il progetto: sono una libreria globale, e includerli darebbe i preset altrui a chi apre una scena condivisa. Esporta/Importa nel pannello preset; l'importazione riconosce il tipo dal file (un ingresso solo) e **fonde** con la libreria saltando i già presenti per nome+shader, così reimportare non crea doppioni
+- [x] **Fix: byte NUL nel sorgente.** Il segnaposto era nato con due NUL grezzi al posto degli spazi: `JSON.stringify` li rende `\u0000`, quindi il token non si ritrovava e l'export falliva sempre (e `grep` taceva, trattando il file come binario). Token di soli caratteri che JSON non escapa **e** ricerca sulla forma serializzata, così nessun carattere può più far perdere un asset in silenzio. Ripulita anche la chiave di deduplicazione dei preset; i NUL in `assetFolder.ts` restano perché lì sono un separatore deliberato e corretto
+- [ ] Il **ritorno** resta a copia unica: `file.text()` + `JSON.parse` tengono in memoria due volte il file importato. Regge molto più dell'export rotto di prima, ma su un file enorme è il prossimo punto a cedere
+- [ ] La fase "Scrittura del file…" non ha percentuale: `JSON.stringify` dello scheletro non è spezzabile. È breve perché lo scheletro è piccolo, ma su un progetto con moltissimi layer si vedrebbe
+
+## Fix regressione nomi shader (05/09)
+
+- [x] **Fix: progetti e preset non mostravano piu' nulla.** Il rename dei `// NAME:` (commit `573528e`, 90 shader su 123) aveva orfanato tutti i riferimenti salvati, che puntano allo shader **per nome**; `ShaderPlane` non disegna nulla senza shader, quindi spariva l'intero layer, asset compreso
+- [x] Recupero in `src/lib/shaderNameMigration.ts` invertendo la regola del rename (via la prima parola se e' una vecchia categoria), con due guardie: si prova prima il nome intero (cinque shader si chiamano davvero "Liquid Symmetry", "Halo Bloom", "Liquid Dunes", "Liquid Mercury", "Morph Ribbons") e si accetta l'accorciato solo se esiste. Verificato: 90/90 recuperate, 123 nomi attuali intatti
+- [x] Migrate anche le chiavi di `params`/`colorParams`, indicizzate per shaderName: senza, l'effetto tornava ma con i valori di default (perdita silenziosa). Applicato in `applyProject`, nei clip di playlist, in `applyEffectPreset` e `listEffectPresets`
+- [x] **Fix: `corners` malformato mandava in errore ogni frame** (`quadAspect` esplode su un non-array). Rilevante ora che i progetti arrivano da file esterni: guardia in `deserializeLayer`, porta comune a autosave/salvati/importati
+- [x] **Fix della guardia stessa: schiacciava tutti i layer.** Era scritta su `[x, y]` mentre `Corner` e' `{x, y}`, quindi bocciava i corner di ogni progetto e li riportava al default. Ora `isValidCorners` in `projectFile.ts` (modulo puro) con self-check sulla forma vera e su dieci varianti da rifiutare, inclusa la forma inventata. Nessun dato perso: la guardia agiva solo in lettura
+- [x] Self-check: `node --experimental-strip-types src/lib/shaderNameMigration.check.ts`
+- [ ] La migrazione gira a ogni caricamento e non viene mai persistita di proposito. Se un giorno la libreria venisse rinominata di nuovo, la regola andra' estesa invece che sostituita: i dati vecchi restano vecchi
+- [ ] Nessun avviso all'utente quando uno shader riferito non esiste piu' (per esempio cancellato): il layer resta invisibile in silenzio. Varrebbe un segnale nella lista dei layer
+
+## Pannello preset e conferme di eliminazione (05/09)
+
+- [x] Importa / Esporta tutti spostati in cima al pannello preset, sopra "Salva preset"
+- [x] Pulsante di download per riga: esporta un **singolo** preset (`exportPresetToFile`), con il nome shader migrato come in `listEffectPresets`
+- [x] Riga preset: `nome – shader` a sinistra, azioni (esporta, elimina) a destra
+- [x] Conferma di eliminazione su preset **e** progetti: `AlertDialog` shadcn, componente condiviso `components/ui/confirm-delete-dialog.tsx`
+- [x] Tolte le classi `size-4` dalle icone dei pulsanti toccati: `Button` dimensiona gia' le icone in base alla propria `size`
+- [ ] Le altre icone del progetto hanno ancora `size-4` scritto a mano: non toccate per non allargare il diff, ma la convenzione ora e' lasciar fare al Button
+
+## Self-check tipizzati (05/09)
+
+- [x] **I `*.check.ts` non erano tipizzati da nessun progetto**: esclusi da `tsconfig.app.json` e non inclusi altrove, quindi rossi nell'editor (import `.ts`, moduli `node:`) — anche `assetRotation.check.ts`, da prima. Nuovo `tsconfig.check.json` nelle `references` del root, con `types: [node, vite/client]`, `lib: [ES2023, DOM]` e `src/vite-env.d.ts` incluso
+- [x] **Errore di tipo vero emerso subito dopo**: `migrateLayerShaderNames` dichiarava di restituire `L` mentre cambia le chiavi di `params`/`colorParams`. Ora `Omit<L, …> & { … }`; il tipo mentiva e nascondeva proprio la verifica che i parametri sopravvivano al rename
+- [x] `npx tsc -b --noEmit` copre ora app **e** check; `npm run build` verificato

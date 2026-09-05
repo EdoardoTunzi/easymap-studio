@@ -2,6 +2,204 @@
 
 Ogni modifica al progetto va registrata qui con data, descrizione e motivazione. Le voci più recenti in alto dentro ogni giornata.
 
+## 2026-09-05 — I self-check ora sono tipizzati (e avevano un errore vero)
+
+Segnalati errori in rosso nell'editor su `shaderNameMigration.check.ts`. Erano di **due nature**, e
+la seconda era il motivo per cui la prima contava.
+
+**Configurazione.** `tsconfig.app.json` esclude i `*.check.ts` (giustamente: sono script per Node,
+non codice dell'app) ma **nessun altro progetto li adottava**. Restavano senza tsconfig: l'editor li
+apriva con le opzioni di default e segnalava gli import con estensione `.ts` e i moduli `node:`.
+Colpiva anche `assetRotation.check.ts`, che c'era da prima. Nuovo `tsconfig.check.json` fra le
+`references` del root, con l'ambiente in cui girano davvero (Node) piu' `DOM`, perche' i moduli che
+verificano dichiarano tipi del browser; include anche `src/vite-env.d.ts`, altrimenti mancano le
+dichiarazioni della File System Access API raggiunte per import.
+
+**Errore vero.** Con i check finalmente tipizzati sono emersi due errori nel mio codice:
+`migrateLayerShaderNames` dichiarava di restituire `L`, lo stesso tipo dell'ingresso, mentre le
+chiavi di `params`/`colorParams` sono **esattamente cio' che cambia**. Il tipo mentiva, e il
+compilatore usava quella bugia per bocciare l'accesso alla chiave nuova — cioe' proprio la
+verifica che i parametri sopravvivano al rename. Ora il ritorno e' `Omit<L, …> & { … }`, che dice
+la verita'. Tolto anche il ritorno anticipato "niente da fare", che con la firma onesta non
+tornava e valeva poco.
+
+La lezione e' la ragione per cui il fix di configurazione non e' cosmetico: **un test che non
+compila e' un test che non protegge**. Erano rossi da giorni e nessuno — io compreso — li vedeva,
+perche' `npx tsc -b` non li guardava. Ora li guarda: `tsc -b` copre app e check insieme.
+
+## 2026-09-05 — Pannello preset riorganizzato e conferma di eliminazione
+
+**Preset.** Importa/Esporta tutti spostati **in cima**, sopra "Salva preset" (importa a sinistra,
+esporta a destra). Ogni riga della lista ha ora il suo pulsante di download — si condivide un
+singolo preset senza spedire l'intera libreria (`exportPresetToFile`, che migra il nome shader come
+`listEffectPresets`: un file non deve nascere con un riferimento gia' rotto). La riga mostra
+`nome – shader` a sinistra e le due azioni a destra.
+
+**Conferma di eliminazione** su preset e progetti, con `AlertDialog` di shadcn (gia' installato) e
+non `Dialog`: l'eliminazione e' irreversibile, e l'alert e' quello che intrappola il fuoco e non si
+chiude per sbaglio cliccando fuori o con Esc. Un solo componente in
+`components/ui/confirm-delete-dialog.tsx` perche' i due call site si comportano identicamente; se
+uno dei due dovesse chiedere altro converra' separarli invece di aggiungere parametri.
+`AlertDialogAction` non inoltra `variant`, quindi il rosso passa da `buttonVariants({ variant:
+'destructive' })` — e' il modo previsto da shadcn.
+
+Tolte le classi `size-4` dalle icone dei pulsanti toccati: `Button` le dimensiona gia' da se'
+(`[&_svg:not([class*='size-'])]:size-4`, con la misura giusta per ogni `size`), quindi fissarle a
+mano scavalcava la scala del componente.
+
+Verificato a schermo: annulla non elimina, conferma sì; export di un singolo preset produce un file
+con quel solo preset; i due pulsanti in cima stanno affiancati senza overflow nella sidebar stretta.
+
+## 2026-09-05 — Fix: tutti i layer schiacciati nella stessa forma (guardia sui corner sbagliata)
+
+Segnalato che dopo il fix precedente **tutti** i progetti salvati apparivano schiacciati, con i
+layer tornati a una forma unica. Colpa della guardia su `corners` appena aggiunta: era scritta
+dando per scontato che un angolo fosse `[x, y]`, mentre `Corner` e' `{x, y}`. `Array.isArray(c)`
+era quindi sempre falso, la guardia dichiarava invalidi i corner di **ogni** progetto e li
+riportava al rettangolo di default — cioe' proprio il danno che doveva impedire, esteso a tutti.
+
+Lezione: **una guardia scritta su una forma non verificata fa piu' danni del dato che protegge**, e
+il type-check non l'ha colta perche' `Array.isArray` e' un type guard e restringe senza lamentarsi.
+Il controllo e' ora `isValidCorners` in `projectFile.ts` — modulo puro, quindi verificabile — e il
+self-check copre la forma vera piu' dieci varianti da rifiutare, inclusa **la forma `[x, y]` che
+avevo inventato**, cosi' lo stesso errore non puo' ripetersi in silenzio.
+
+Nessun dato perso: la guardia agiva solo in lettura (`deserializeLayer`), i progetti su disco non
+sono mai stati riscritti. Verificato con un corner-pin deformato: caricato, disegnato con la sua
+forma, risalvato e confrontato — corner identici al bit.
+
+## 2026-09-05 — Fix regressione: progetti e preset che non mostravano piu' nulla
+
+Segnalato che alcuni progetti salvati non mostravano ne' asset ne' effetti, e che i preset messi in
+playlist restavano vuoti.
+
+**Causa: il rename dei `// NAME:`** fatto nel commit `573528e` (90 shader su 123, "Psy Chrome
+Ripple" -> "Chrome Ripple"). Progetti, preset e clip referenziano lo shader **per nome** e
+indicizzano i parametri con quello stesso nome, quindi tutti quei riferimenti puntavano a nomi
+inesistenti. `ShaderPlane` non disegna nulla se non trova lo shader (`ShaderPlane.tsx:312`): il
+layer spariva **per intero, asset compreso**, il che spiega perche' sembrava un problema di
+salvataggio e non di nomi. Non c'entrava l'export: quel commit precede la feature.
+
+**Recupero** in `lib/shaderNameMigration.ts`: il rename ha seguito una regola sola — via la prima
+parola se e' una delle categorie di allora — quindi la si inverte invece di scrivere una tabella di
+90 righe. Due precauzioni la rendono sicura: si prova **prima** il nome cosi' com'e' (cinque shader
+si chiamano davvero "Liquid Symmetry", "Halo Bloom", "Liquid Dunes", "Liquid Mercury", "Morph
+Ribbons" e accorciarli li romperebbe), e si accetta l'accorciato **solo se esiste**, cosi' uno
+shader cancellato non diventa uno shader a caso. Verificato sul commit reale: 90/90 recuperate,
+123 nomi attuali intatti, nessun nome riassegnato a uno shader diverso.
+
+Migrati anche **i parametri**, non solo il nome: `layer.params` e `colorParams` sono indicizzati
+per shaderName, quindi senza spostare le chiavi l'effetto sarebbe tornato ma con i valori di
+default — una perdita silenziosa peggiore del layer nero. Applicato in `applyProject` (copre
+autosave, progetti salvati e file importati), nei clip di playlist, in `applyEffectPreset` e in
+`listEffectPresets` (da cui leggono sia il pannello sia la playlist). Al caricamento e non con una
+migrazione in blocco dello store: cosi' vale anche per i file esportati, e non serve riscrivere
+progetti che l'utente non ha ancora aperto.
+
+Verificato in browser ricreando le condizioni: progetto con "Psy Chrome Ripple" + clip "Halo
+Mandala" + preset "SD Ridge Flow". Dopo il fix il layer si disegna, l'effetto attivo e' "Chrome
+Ripple" **con Speed 7 conservato**, il clip ha la sua miniatura e il preset in playlist mostra
+"Ridge Flow".
+
+**Secondo difetto, trovato durante la verifica:** `quadAspect` esplode se `corners` non e' un array
+di 4 punti, e lo fa a ogni frame — centinaia di errori al secondo e scena ferma. Contava perche'
+ora i progetti arrivano anche **da file esterni**, dove `parseProjectFile` non validava quel campo.
+Chiuso in `deserializeLayer`, che e' la porta comune a tutti i progetti (autosave, salvati,
+importati): un `corners` malformato ricade sul default invece di sovrascriverlo. Verificato con un
+progetto a `corners: null`, che ora si carica con zero errori.
+
+## 2026-09-05 — Fix crash all'esportazione, barra di avanzamento, preset esportabili
+
+**Il crash.** Segnalato che premendo "Esporta" la scheda moriva. Non era un caso limite: la prima
+versione teneva in memoria, insieme, il file binario, la stringa binaria costruita a `+=`, il
+base64, il JSON completo e infine il Blob — **cinque copie** dello stesso contenuto. Bastava un
+progetto con qualche video.
+
+Ora il contenuto pesante non viene mai unito in una stringa sola. `serializeProjectFile`
+restituisce un `Blob` e non più un testo, e lo compone così: ogni media diventa un elenco di pezzi
+base64, lo scheletro JSON si serializza con `stringify` su un oggetto in cui al posto dei dati c'è
+solo un **segnaposto** (quindi su pochi KB), poi si taglia lo scheletro sui segnaposto e si
+intercalano i pezzi come parti separate del Blob, che è il browser ad assemblare. Il base64 usa
+solo `A-Za-z0-9+/=`, nessuno dei quali JSON escapa: infilarlo grezzo fra le virgolette produce un
+JSON valido. I blocchi sono di 32.766 byte, **multiplo di 3**: tre byte fanno esattamente quattro
+caratteri base64, quindi ogni blocco tranne l'ultimo si codifica senza padding e i pezzi si
+concatenano. Con una taglia qualunque servirebbe di nuovo la stringa intera.
+
+Misurato in browser: **120 MB di asset esportati in 2,9 s**, blocco massimo del thread **96 ms**
+(prima: secondi, poi il crash). Round-trip su due asset di taglie diverse, byte identici.
+
+**La barra.** `serializeProjectFile` accetta un `onProgress` e cede il controllo al browser ogni
+~1,6 MB. Serve a due cose insieme: dare la percentuale — sui byte degli asset, che è dove va il
+tempo — e tenere vivo il canvas, perché in un'app che sta proiettando un main thread bloccato per
+secondi è inaccettabile. Due fasi: "Conversione asset…" e "Scrittura del file…". L'esito riporta
+anche la dimensione prodotta.
+
+**I preset.** Non entrano nel file di progetto: sono una libreria **globale**, e infilarli lì
+dentro vorrebbe dire ritrovarsi quelli di qualcun altro solo per aver aperto la sua scena. Hanno un
+formato proprio (`easymap-studio/presets`), con Esporta/Importa nel loro pannello. L'importazione
+è un ingresso unico che riconosce il tipo dal file — chiedere all'utente quale pulsante usare
+sarebbe un passaggio in più per un'informazione che abbiamo già — e i preset si **fondono** con la
+libreria saltando quelli già presenti per nome e shader, così reimportare lo stesso file non
+riempie l'elenco di doppioni. Nel pannello preset il tipo si controlla *prima* di importare,
+altrimenti un progetto entrerebbe di straforo fra quelli salvati mentre il messaggio dice di usare
+l'altro pannello.
+
+**Trappola: byte NUL nel sorgente.** Il segnaposto era nato con due NUL grezzi al posto degli
+spazi. `JSON.stringify` li rende `\u0000`, quindi il token non si ritrovava più nello scheletro e
+l'esportazione falliva sempre; in più `grep` trattava il file come binario e taceva, il che ha
+allungato la diagnosi. Corretto due volte: token di soli caratteri che JSON non escapa, **e**
+ricerca sulla forma serializzata del token, così un carattere problematico non può più far perdere
+un asset in silenzio. Trovati altri NUL nella chiave di deduplicazione dei preset (riscritti come
+escape `\u0000` leggibile) e in `assetFolder.ts`, dove però sono **deliberati e corretti**:
+separatore di una chiave di cache composita, dove non possono comparire in un nome file.
+
+## 2026-09-04 — Progetti esportabili come file JSON, asset inclusi
+
+I progetti vivevano solo in IndexedDB, cioè in quel browser su quel computer: nessun modo di
+portarsi un set su un'altra macchina o di mandarlo a qualcuno. Ora si scaricano come
+`.easymap.json`, **con dentro gli asset**.
+
+`StoredProject` era già la forma canonica del progetto, quindi il nuovo modulo `lib/projectFile.ts`
+non ridefinisce niente: traduce le due sole cose che JSON non sa rappresentare.
+
+1. **Blob dei media → base64.** È ciò che rende il file autosufficiente; costa +33% di byte, il
+   prezzo di avere un file solo e leggibile invece di un archivio. La conversione passa da
+   `blob.arrayBuffer()` e non da `FileReader`, che esiste solo nel browser: così la logica gira
+   anche nel self-check da riga di comando. `String.fromCharCode` va a chunk di 32 KB, perché lo
+   spread di un file grande in un colpo solo fa esplodere lo stack.
+2. **Handle della cartella delle playlist di asset → via.** Non è JSON e non varrebbe nulla su un
+   altro computer. Restano `dirName` e l'elenco dei file, che bastano a ritrovare la cartella e a
+   ricollegarla con "Riconnetti".
+
+Il file porta `format: 'easymap-studio/project'` e una `version`, così un JSON estraneo viene
+respinto con un messaggio invece di sfasciare la scena, e un file dal futuro si riconosce come
+tale. L'import valida la struttura portante (formato, versione, layer) prima di toccare qualsiasi
+cosa, e filtra il MIME dei media su `image/*`/`video/*`: il contenuto arriva da fuori e da lì si
+crea un blob URL, quindi non deve poter essere un MIME arbitrario. Un singolo media corrotto
+diventa un layer senza contenuto, non un import fallito — perdere tutto il progetto per un asset
+rotto sarebbe la reazione sbagliata.
+
+**L'import mette il progetto fra quelli salvati, senza aprirlo**: importare è un'azione di
+archivio, e aprire d'ufficio farebbe perdere il lavoro non salvato a chi voleva solo mettere via
+un file. Prende sempre un id nuovo, così importare due volte lo stesso file dà due progetti invece
+di sovrascrivere il primo.
+
+In `ProjectsPanel` una sezione "File" con Esporta/Importa (la scena corrente si esporta **senza**
+doverla prima salvare) e un'icona di download su ogni riga della lista. Nessun toast in progetto e
+non ne ho aggiunto uno: l'esito è un messaggio inline.
+
+Self-check senza framework in `lib/projectFile.check.ts` (stessa convenzione di
+`assetRotation.check.ts`): `node --experimental-strip-types src/lib/projectFile.check.ts` copre
+round-trip byte a byte, blob oltre la soglia dei chunk, sorgente live senza file, handle escluso
+dal JSON, sette forme di file da respingere, MIME ostile scartato e `activeLayerId` orfano.
+Verificato anche in browser: export dell'asset dimostrativo 3,36 MB in 64 ms, reimportato e
+riaperto con l'immagine intatta.
+
+**Trappola incontrata durante la verifica** (per non ricascarci): importare un modulo dell'app dalla
+console con `import('/src/…')` crea **istanze separate** degli store rispetto a quelle dell'app.
+Lo store letto così risultava vuoto e sembrava un bug dell'import, mentre l'app era intatta. Per
+ispezionare lo stato reale vanno usate la UI o l'API IndexedDB nativa, che è condivisa.
+
 ## 2026-09-04 — Il comportamento O/S diventa un filtro-leggenda, non più due blocchi di pulsanti
 
 I due blocchi etichettati "Seguono / Ignorano il soggetto" non sono piaciuti, e a ragione: erano un
