@@ -1,5 +1,5 @@
 import { useRef } from "react";
-import { ImageUp } from "lucide-react";
+import { ImageUp, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useLayersStore } from "@/store/layersStore";
 import { detectType, isFullyOpaque } from "@/lib/mediaDetect";
@@ -56,12 +56,27 @@ export function MediaUploader() {
   return (
     <div className="flex flex-col gap-2">
       <span className="ui-sublabel text-muted-foreground">Media del layer (immagine, GIF o video)</span>
-      <Button variant="secondary" onClick={() => inputRef.current?.click()} className="w-full justify-start gap-2">
-        <ImageUp data-icon="inline-start" />
-        <span className="truncate" title={media?.name}>
-          {media ? truncateName(media.name) : "Carica media…"}
-        </span>
-      </Button>
+      <div className="flex gap-2">
+        <Button variant="secondary" onClick={() => inputRef.current?.click()} className="min-w-0 flex-1 justify-start gap-2">
+          <ImageUp data-icon="inline-start" />
+          <span className="truncate" title={media?.name}>
+            {media ? truncateName(media.name) : "Carica media…"}
+          </span>
+        </Button>
+        {media && (
+          <Button
+            variant="ghost"
+            className="px-2"
+            onClick={() => {
+              setMedia(null);
+              setLumaKey(0);
+            }}
+            title="Rimuovi il media da questo layer"
+          >
+            <Trash2 className="size-3.5 shrink-0" />
+          </Button>
+        )}
+      </div>
       <input
         ref={inputRef}
         type="file"

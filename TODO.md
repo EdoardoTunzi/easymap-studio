@@ -8,6 +8,7 @@ Spuntare gli step completati; aggiungere nuovi step quando emergono. Tenere alli
 - [x] Route `/control` (editor) e `/output` (finestra proiettore pulita)
 - [x] Sync Control ↔ Output via BroadcastChannel (con handshake `hello`)
 - [x] Upload immagine PNG con alpha (MediaUploader)
+- [x] Rimozione del media dal layer: cestino accanto al pulsante di caricamento, visibile solo a media presente (azzera anche il luma key)
 - [x] Canvas R3F con ShaderMaterial e primo shader GLSL (Symmetrical Halo Swirl)
 - [x] Parser ISF-like (`@min @max @default`) → slider auto-generati
 - [x] Maschera alpha automatica: effetti ritagliati dentro i bordi dell'immagine

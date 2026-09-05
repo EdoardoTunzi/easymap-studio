@@ -2,6 +2,16 @@
 
 Ogni modifica al progetto va registrata qui con data, descrizione e motivazione. Le voci più recenti in alto dentro ogni giornata.
 
+## 2026-09-06 — Cestino per rimuovere il media dal layer
+
+**Pulsante di rimozione in `MediaUploader`.** Il layer poteva ricevere un media ma non liberarsene:
+si poteva solo sostituirlo con un altro file. Il pulsante di caricamento e' ora affiancato da un
+cestino, visibile solo quando c'e' un media caricato (le sorgenti live restano escluse: hanno gia'
+il loro "stacca" nel `CameraPicker`). Fa `setActiveMedia(null)` e riazzera il luma key, che era
+stato dedotto dall'immagine appena rimossa e sarebbe rimasto addosso al media successivo.
+L'object URL non viene revocato di proposito: lo stesso URL puo' essere condiviso da layer FX
+duplicati, revocarlo li spegnerebbe.
+
 ## 2026-09-05 — Lo spazio occupato ora segue la scena, e il piè di pagina sta in fondo
 
 **Il numero non si aggiornava cambiando progetto.** Due cause: `refresh()` non veniva chiamato dopo
