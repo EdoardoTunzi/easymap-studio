@@ -20,18 +20,30 @@ import {
   exportProjectToFile,
   exportCurrentSceneToFile,
   importFromJson,
+  storageUsage,
+  type StorageUsage,
   type StoredProject
 } from "@/lib/persistence";
 import { ProjectFileError, projectFileName, type ExportProgress } from "@/lib/projectFile";
 import { downloadBlob } from "@/lib/download";
 import { ConfirmDeleteDialog } from "@/components/ui/confirm-delete-dialog";
+import { useLayersStore } from "@/store/layersStore";
 
 type ProjectListItem = Omit<StoredProject, "layers">;
 
 /** Esito dell'ultima operazione su file, mostrato sotto i pulsanti (non c'è un sistema di toast). */
 type FileStatus = { kind: "ok" | "error"; text: string } | null;
 
-const formatMb = (bytes: number) => `${(bytes / 1048576).toFixed(1)} MB`;
+/**
+ * Byte in unità leggibile. Scala da sé perché gli stessi numeri vanno da pochi KB (un progetto di
+ * soli shader) a centinaia di MB (una scena con dei video), e "0.0 MB" non direbbe nulla.
+ */
+function formatBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1048576) return `${(bytes / 1024).toFixed(0)} KB`;
+  if (bytes < 1073741824) return `${(bytes / 1048576).toFixed(1)} MB`;
+  return `${(bytes / 1073741824).toFixed(2)} GB`;
+}
 
 export function ProjectsPanel() {
   const [projects, setProjects] = useState<ProjectListItem[]>([]);
@@ -43,10 +55,22 @@ export function ProjectsPanel() {
   const [fileStatus, setFileStatus] = useState<FileStatus>(null);
   /** Progetto in attesa di conferma di eliminazione; `null` = nessun dialogo aperto. */
   const [pendingDelete, setPendingDelete] = useState<ProjectListItem | null>(null);
+  const [usage, setUsage] = useState<StorageUsage | null>(null);
+  /**
+   * Byte della scena in corso, presi dallo store e non dall'autosave su disco: quello si scrive con
+   * debounce, quindi appena cambiato progetto mostrerebbe ancora la scena precedente. Il selettore
+   * restituisce un numero, quindi il pannello si ri-rende solo quando il totale cambia davvero.
+   */
+  const currentBytes = useLayersStore((s) =>
+    s.layers.reduce((sum, l) => sum + (l.media?.blob?.size ?? 0) + (l.maskImage?.blob?.size ?? 0), 0),
+  );
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const refresh = useCallback(async () => {
     setProjects(await listProjects());
+    // insieme all'elenco: ogni cosa che cambia la lista (salva, elimina, importa) cambia anche
+    // l'occupazione, e ricalcolarla qui evita di doverselo ricordare in ogni gestore
+    setUsage(await storageUsage());
   }, []);
 
   useEffect(() => {
@@ -58,10 +82,7 @@ export function ProjectsPanel() {
    * memoria (base64 compreso) e può prendere qualche secondo, durante il quale senza un segnale
    * il pulsante sembrerebbe non aver fatto nulla.
    */
-  const runExport = async (
-    label: string,
-    produce: (onProgress: (p: ExportProgress) => void) => Promise<Blob | null>,
-  ) => {
+  const runExport = async (label: string, produce: (onProgress: (p: ExportProgress) => void) => Promise<Blob | null>) => {
     setBusy(true);
     setFileStatus(null);
     setProgress(null);
@@ -72,11 +93,11 @@ export function ProjectsPanel() {
         return;
       }
       downloadBlob(projectFileName(label), blob);
-      setFileStatus({ kind: "ok", text: `“${label}” esportato (${formatMb(blob.size)}).` });
+      setFileStatus({ kind: "ok", text: `“${label}” esportato (${formatBytes(blob.size)}).` });
     } catch (err) {
       setFileStatus({
         kind: "error",
-        text: err instanceof ProjectFileError ? err.message : "Esportazione non riuscita.",
+        text: err instanceof ProjectFileError ? err.message : "Esportazione non riuscita."
       });
     } finally {
       setBusy(false);
@@ -97,12 +118,12 @@ export function ProjectsPanel() {
         text:
           result.kind === "project"
             ? `“${result.name}” importato: aprilo dalla lista qui sotto.`
-            : `${result.imported} preset importati${result.skipped > 0 ? `, ${result.skipped} già in libreria` : ""}.`,
+            : `${result.imported} preset importati${result.skipped > 0 ? `, ${result.skipped} già in libreria` : ""}.`
       });
     } catch (err) {
       setFileStatus({
         kind: "error",
-        text: err instanceof ProjectFileError ? err.message : "Importazione non riuscita.",
+        text: err instanceof ProjectFileError ? err.message : "Importazione non riuscita."
       });
     } finally {
       setBusy(false);
@@ -146,7 +167,7 @@ export function ProjectsPanel() {
   return (
     // Il titolo "Progetti" lo dice già l'intestazione del pannello: qui restano solo i tre gruppi
     // (crea, salva, riapri), separati dallo spazio invece che da etichette ripetute (§16).
-    <div className="flex flex-col gap-5">
+    <div className="flex flex-1 flex-col gap-5">
       <Button variant="secondary" onClick={openNewProjectConfirm} aria-label="Nuovo progetto" className="press w-full justify-between">
         Nuovo progetto
         <FilePlus2 data-icon="inline-end" />
@@ -215,9 +236,7 @@ export function ProjectsPanel() {
         {progress && (
           <div className="flex flex-col gap-1" role="status" aria-live="polite">
             <div className="flex items-baseline justify-between gap-2">
-              <span className="ui-sublabel text-muted-foreground">
-                {progress.phase === "assets" ? "Conversione asset…" : "Scrittura del file…"}
-              </span>
+              <span className="ui-sublabel text-muted-foreground">{progress.phase === "assets" ? "Conversione asset…" : "Scrittura del file…"}</span>
               <span className="ui-value tabular-nums text-[11px] text-muted-foreground/80">
                 {progress.total > 0 ? `${Math.round((progress.done / progress.total) * 100)}%` : ""}
               </span>
@@ -236,9 +255,8 @@ export function ProjectsPanel() {
           </p>
         )}
         <p className="ui-sublabel leading-relaxed text-muted-foreground/80">
-          Il file contiene la scena e i suoi asset, quindi si riapre su un altro computer. Le cartelle
-          delle playlist di contenuti restano fuori: di quelle si esporta il nome, e vanno ricollegate.
-          “Importa” accetta anche un file di preset.
+          Il file contiene la scena e i suoi asset, quindi si riapre su un altro computer. Le cartelle delle playlist di contenuti restano fuori: di quelle si
+          esporta il nome, e vanno ricollegate. “Importa” accetta anche un file di preset.
         </p>
       </div>
 
@@ -251,7 +269,7 @@ export function ProjectsPanel() {
               <li key={p.id} className="group/row flex items-center gap-1">
                 <Button
                   variant="ghost"
-                  onClick={() => loadProject(p.id)}
+                  onClick={() => loadProject(p.id).then(refresh)}
                   className="press min-w-0 flex-1 justify-start px-2 font-normal"
                   title={`Aperto l'ultima volta: ${new Date(p.updatedAt).toLocaleString()}`}
                 >
@@ -282,11 +300,47 @@ export function ProjectsPanel() {
           </ul>
         ) : (
           <p className="ui-sublabel leading-relaxed text-muted-foreground/80">
-            Nessun progetto salvato. Dai un nome qui sopra e premi il dischetto: il lavoro resta su questo
-            computer e si riapre da questa lista.
+            Nessun progetto salvato. Dai un nome qui sopra e premi il dischetto: il lavoro resta su questo computer e si riapre da questa lista.
           </p>
         )}
       </div>
+
+      {/* Piè di pagina: quanto sta occupando l'app in questo browser. Serve prima di un live —
+          gli asset finiscono in IndexedDB e lo spazio non è infinito — e dopo, per capire quale
+          progetto vale la pena esportare e togliere di mezzo.
+
+          Due meccanismi, per due situazioni: `mt-auto` lo spinge in fondo alla colonna quando i
+          progetti sono pochi e il contenuto non la riempie (funziona perché il contenuto della
+          ScrollArea è reso colonna flex ad altezza piena, vedi ControlPage); `sticky bottom-0` lo
+          tiene visibile quando invece la lista è lunga e si sta scorrendo. Lo sfondo e i margini
+          negativi servono al secondo caso: senza, il contenuto scorrerebbe sotto il testo. */}
+      {usage && (
+        <div className="sticky bottom-0 -mx-4 mt-auto flex flex-col gap-1 border-t border-border bg-sidebar px-4 pt-3 pb-4">
+          <div className="flex items-baseline justify-between gap-2">
+            <span className="ui-eyebrow text-muted-foreground">Spazio occupato</span>
+            <span
+              className="ui-value tabular-nums text-muted-foreground"
+              title={
+                usage.total !== undefined
+                  ? "Totale misurato dal browser per questo sito: comprende i progetti, i preset e la cache che tiene l'app utilizzabile offline."
+                  : "Somma degli asset nei progetti: questo browser non espone il totale del sito."
+              }
+            >
+              {formatBytes(usage.total ?? usage.saved + currentBytes)}
+              {usage.quota ? <span className="text-muted-foreground/60"> di {formatBytes(usage.quota)}</span> : null}
+            </span>
+          </div>
+          <p className="ui-sublabel leading-relaxed text-muted-foreground/80">
+            {usage.savedCount > 0
+              ? `${formatBytes(usage.saved)} in ${usage.savedCount} progett${usage.savedCount === 1 ? "o" : "i"} salvat${usage.savedCount === 1 ? "o" : "i"}`
+              : "Nessun progetto salvato"}
+          </p>
+          {/* una riga per voce: sono due misure diverse, affiancate si leggevano come una sola */}
+          <p className="ui-sublabel leading-relaxed text-muted-foreground/80">
+            {formatBytes(currentBytes)} nella scena in corso
+          </p>
+        </div>
+      )}
 
       <ConfirmDeleteDialog
         open={pendingDelete !== null}

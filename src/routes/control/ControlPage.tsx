@@ -141,8 +141,12 @@ export function ControlPage() {
                 className="pointer-events-none absolute inset-x-0 top-0 z-10 h-6 bg-linear-to-b from-sidebar to-transparent transition-opacity duration-[--dur-base] ease-[--ease-out]"
                 style={{ opacity: panelScroll.scrolled ? 1 : 0 }}
               />
-              <ScrollArea className="h-full border-t border-sidebar-border/60">
-                <div className="p-4">
+              {/* Il contenuto del viewport reso colonna flex alta almeno quanto il viewport: Radix lo
+                  dimensiona sul contenuto, e senza questo un pannello non può spingere una sua parte
+                  in fondo (`mt-auto` non avrebbe spazio da distribuire). `min-h` e non `h`: un
+                  pannello più lungo del viewport deve poter crescere e scorrere come prima. */}
+              <ScrollArea className="h-full border-t border-sidebar-border/60 [&>[data-slot=scroll-area-viewport]>div]:!flex [&>[data-slot=scroll-area-viewport]>div]:!min-h-full [&>[data-slot=scroll-area-viewport]>div]:!flex-col">
+                <div className="flex flex-1 flex-col p-4">
                   <PanelContent />
                 </div>
               </ScrollArea>

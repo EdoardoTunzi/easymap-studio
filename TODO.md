@@ -351,3 +351,14 @@ Un effetto per volta: domande sul soggetto (nome, categoria, uniform da esporre)
 - [x] **I `*.check.ts` non erano tipizzati da nessun progetto**: esclusi da `tsconfig.app.json` e non inclusi altrove, quindi rossi nell'editor (import `.ts`, moduli `node:`) — anche `assetRotation.check.ts`, da prima. Nuovo `tsconfig.check.json` nelle `references` del root, con `types: [node, vite/client]`, `lib: [ES2023, DOM]` e `src/vite-env.d.ts` incluso
 - [x] **Errore di tipo vero emerso subito dopo**: `migrateLayerShaderNames` dichiarava di restituire `L` mentre cambia le chiavi di `params`/`colorParams`. Ora `Omit<L, …> & { … }`; il tipo mentiva e nascondeva proprio la verifica che i parametri sopravvivano al rename
 - [x] `npx tsc -b --noEmit` copre ora app **e** check; `npm run build` verificato
+
+## Spazio occupato (05/09)
+
+- [x] Piè di pagina del pannello Progetti con lo spazio occupato: totale da `navigator.storage.estimate()` (comprende cache PWA e overhead) con la quota accanto, piu' il dettaglio progetti salvati / scena in corso
+- [x] I byte dei progetti si sommano dai `Blob.size`, che e' un metadato: il conto non carica i media in memoria
+- [x] Ricalcolo dentro `refresh()`, cosi' segue salvataggi, eliminazioni e import senza gestori dedicati
+- [ ] Il totale comprende anche la cache offline della PWA, quindi resta piu' alto della somma mostrata sotto: spiegato nel tooltip, ma un giorno si potrebbe scorporare interrogando la Cache Storage API
+- [x] **Fix: la scena in corso non si aggiornava cambiando progetto.** Si misurava sull'autosave su disco (scritto con debounce): ora si legge dallo store dei layer, ed e' esatta per costruzione. Aggiunto anche il refresh dopo `loadProject`
+- [x] Piè di pagina ancorato in fondo alla colonna: il contenuto del viewport della ScrollArea e' ora una colonna flex alta almeno quanto il viewport (`min-h`, così un pannello più lungo continua a scorrere). Verificato che Effetti e Palette non ne risentano
+- [x] Le due voci del dettaglio su righe separate
+- [ ] Nessun avviso quando lo spazio si avvicina alla quota: oggi lo si legge, non lo si viene a sapere

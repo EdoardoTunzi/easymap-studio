@@ -397,6 +397,55 @@ export async function importFromJson(text: string): Promise<ImportResult> {
   return { kind: 'project', id: project.id, name: project.name }
 }
 
+/** Spazio occupato dall'app in questo browser, per il piè di pagina del pannello Progetti. */
+export interface StorageUsage {
+  /** Byte degli asset nei progetti salvati (autosave escluso). */
+  saved: number
+  /** Quanti progetti compongono `saved`. */
+  savedCount: number
+  /**
+   * Spazio totale dell'origine misurato dal browser: comprende IndexedDB, `localStorage` e la
+   * cache offline della PWA, quindi e' sempre >= saved + current. Assente dove
+   * `navigator.storage.estimate` non c'e'.
+   */
+  total?: number
+  quota?: number
+}
+
+/**
+ * Misura lo spazio occupato.
+ *
+ * I byte dei progetti si sommano dai **blob** dei media: `Blob.size` e' un metadato, quindi
+ * leggerlo non carica in memoria il contenuto: il conto costa quanto scorrere l'elenco, anche con
+ * dei video dentro. E' una misura degli asset, non del record intero — il resto (parametri,
+ * playlist, maschere) sono kilobyte contro i megabyte dei media.
+ *
+ * Il totale invece arriva da `navigator.storage.estimate()`, che e' l'unico a sapere quanto occupa
+ * davvero l'origine: comprende anche la cache offline della PWA, ed e' il numero che l'utente
+ * ritrova nelle impostazioni del browser.
+ *
+ * La **scena in corso** non si misura qui: su disco c'e' solo l'autosave, che viene scritto con
+ * debounce e resta indietro rispetto a cio' che si sta guardando — cambiando progetto il numero
+ * sarebbe rimasto quello di prima. La legge il pannello direttamente dallo store dei layer.
+ */
+export async function storageUsage(): Promise<StorageUsage> {
+  const db = await getDb()
+  const projects = await db.getAll('projects')
+  const bytesOf = (p: StoredProject) =>
+    p.layers.reduce((sum, l) => sum + (l.media?.blob?.size ?? 0) + (l.maskImage?.blob?.size ?? 0), 0)
+
+  let saved = 0
+  let savedCount = 0
+  for (const project of projects) {
+    if (project.id === AUTOSAVE_ID) continue
+    saved += bytesOf(project)
+    savedCount++
+  }
+
+  const estimate = await navigator.storage?.estimate?.().catch(() => undefined)
+  return { saved, savedCount, total: estimate?.usage, quota: estimate?.quota }
+}
+
 export async function listProjects(): Promise<Omit<StoredProject, 'layers'>[]> {
   const db = await getDb()
   const all = await db.getAll('projects')

@@ -2,6 +2,58 @@
 
 Ogni modifica al progetto va registrata qui con data, descrizione e motivazione. Le voci più recenti in alto dentro ogni giornata.
 
+## 2026-09-05 — Lo spazio occupato ora segue la scena, e il piè di pagina sta in fondo
+
+**Il numero non si aggiornava cambiando progetto.** Due cause: `refresh()` non veniva chiamato dopo
+`loadProject`, e soprattutto la "scena in corso" si misurava sull'**autosave su disco**, che si
+scrive con debounce e resta indietro rispetto a cio' che si sta guardando — appena caricato un
+altro progetto mostrava ancora il precedente. Ora quel valore si legge dallo store dei layer con un
+selettore che restituisce un numero: e' esatto per costruzione e si ri-rende solo quando cambia
+davvero. `storageUsage()` non calcola piu' la scena corrente, cosi' non ci sono due fonti di
+verita'. Verificato: caricando due progetti da 12 MB e 1 MB il numero passa da 2,5 a 12,0 a 1,0 MB.
+
+**Piè di pagina ancorato in fondo.** `mt-auto` da solo non bastava: Radix dimensiona il contenuto
+del viewport della ScrollArea sul contenuto, non sul viewport, quindi la colonna in cui `mt-auto`
+distribuisce lo spazio finiva dove finiva il testo. Reso quel div una colonna flex alta **almeno**
+quanto il viewport (`min-h`, non `h`: un pannello piu' lungo deve poter crescere e scorrere come
+prima), dal call site e non dal componente condiviso. Verificato che gli altri pannelli non ne
+risentano: Effetti (1963 px di contenuto) scorre fino in fondo con l'ultimo elemento raggiungibile,
+Palette idem.
+
+Le due voci del dettaglio vanno ora a capo una per riga: sono misure diverse, e affiancate con un
+punto mediano si leggevano come una sola.
+
+Nota di metodo: una misura intermedia mi aveva fatto credere che l'approccio flex gonfiasse il
+contenitore a 1963 px. Era il pannello **Effetti** — il click programmatico sul pulsante non aveva
+cambiato pannello, e stavo misurando quello sbagliato. Vale la pena verificare *cosa* si sta
+guardando prima di buttare via una soluzione che funziona.
+
+## 2026-09-05 — Spazio occupato nel piè di pagina del pannello Progetti
+
+Richiesto un dato su quanto occupa l'app nel browser. Due numeri, che rispondono a domande diverse:
+
+- **Il totale** viene da `navigator.storage.estimate()`, l'unico che sa quanto pesa davvero
+  l'origine — IndexedDB, `localStorage` e la cache che tiene l'app utilizzabile offline — ed e' lo
+  stesso numero che l'utente ritrova nelle impostazioni del browser. Accanto c'e' la quota
+  disponibile, perche' "40 MB" da solo non dice se c'e' da preoccuparsi. Assente dove l'API non
+  esiste: li' si mostra la somma degli asset.
+- **Il dettaglio** distingue i progetti salvati dalla scena in corso (l'autosave), che e' cio' che
+  serve per decidere cosa esportare e togliere di mezzo prima di un live.
+
+I byte dei progetti si sommano dai **blob** dei media: `Blob.size` e' un metadato, quindi leggerlo
+non carica il contenuto e il conto costa quanto scorrere l'elenco, anche con dei video dentro. E'
+una misura degli asset e non del record intero, ed e' il motivo per cui il totale del browser
+resta piu' alto: parametri, playlist e maschere sono kilobyte contro i megabyte dei media.
+
+Il ricalcolo sta dentro `refresh()`, insieme all'elenco: tutto cio' che cambia la lista (salvare,
+eliminare, importare) cambia anche l'occupazione, e tenerlo li' evita di doverselo ricordare in
+ogni gestore. `formatBytes` scala da B a GB, perche' gli stessi numeri vanno da pochi KB (un
+progetto di soli shader) a centinaia di MB.
+
+Verificato con asset di dimensioni note: 3 MB + 5 MB danno esattamente 8,0 MB in 2 progetti, il
+totale coincide con quello riportato da `navigator.storage.estimate()`, ed eliminando il progetto
+da 3 MB il piè di pagina passa da solo a 5,0 MB in 1 progetto.
+
 ## 2026-09-05 — I self-check ora sono tipizzati (e avevano un errore vero)
 
 Segnalati errori in rosso nell'editor su `shaderNameMigration.check.ts`. Erano di **due nature**, e
