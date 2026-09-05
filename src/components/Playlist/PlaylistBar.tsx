@@ -7,6 +7,7 @@ import { Separator } from "@/components/ui/separator";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { AssetPlaylistBar } from "@/components/Playlist/AssetPlaylistBar";
+import { ComboBar } from "@/components/Playlist/ComboBar";
 import { ShaderPicker } from "@/components/EffectsLibrary/ShaderPicker";
 import { cn } from "@/lib/utils";
 import { useEffectsStore, defaultParamsFor, defaultColorsFor } from "@/store/effectsStore";
@@ -29,10 +30,16 @@ const MIN_CLIP_PX = 72;
  */
 const MIN_BAR_H = 132;
 const MAX_BAR_H = 228;
+/** La griglia delle combo ha una riga per layer: con 6 layer a 228px una cella è una striscia di 14px. */
+const MAX_COMBO_BAR_H = 460;
 const BAR_HEIGHT_KEY = "easyvj-playlist-height";
+const COMBO_HEIGHT_KEY = "easyvj-combo-height";
 const BAR_TAB_KEY = "easyvj-playlist-tab";
 
-const clampBarHeight = (h: number) => Math.min(MAX_BAR_H, Math.max(MIN_BAR_H, h));
+type BarTab = "fx" | "assets" | "combo";
+const BAR_TABS: readonly BarTab[] = ["fx", "assets", "combo"];
+
+const clampBarHeight = (h: number, max = MAX_BAR_H) => Math.min(max, Math.max(MIN_BAR_H, h));
 
 /** Riferimento stabile per i layer senza playlist: un `[]` nuovo a ogni render rirenderizza sempre. */
 const EMPTY_CLIPS: PlaylistClip[] = [];
@@ -492,7 +499,11 @@ export function PlaylistBar() {
   // due sequenze indipendenti condividono la barra, entrambe per layer: gli EFFETTI (che shader
   // gira) e gli ASSET (che contenuto scorre, da una cartella). Possono girare insieme sullo
   // stesso layer. I motori stanno nella pagina, non qui: cambiando tab questo ramo si smonta.
-  const [tab, setTab] = useState<"fx" | "assets">(() => (localStorage.getItem(BAR_TAB_KEY) === "assets" ? "assets" : "fx"));
+  const [tab, setTab] = useState<BarTab>(() => {
+    const saved = localStorage.getItem(BAR_TAB_KEY) as BarTab | null;
+    return saved && BAR_TABS.includes(saved) ? saved : "fx";
+  });
+  const isCombo = tab === "combo";
 
   const dragIndex = useRef<number | null>(null);
   const [dragOver, setDragOver] = useState<number | null>(null);
@@ -503,19 +514,26 @@ export function PlaylistBar() {
     setDragOver(null);
   };
 
-  // altezza della barra, ridimensionabile dal bordo superiore e persistita
-  const [barHeight, setBarHeight] = useState(() => clampBarHeight(Number(localStorage.getItem(BAR_HEIGHT_KEY)) || MIN_BAR_H));
+  // altezza della barra, ridimensionabile dal bordo superiore e persistita. Due valori separati:
+  // la griglia delle combo può salire più in alto, e tornando su Effetti la barra deve ritrovare
+  // la sua altezza invece di restare al valore clampato
+  const [heights, setHeights] = useState(() => ({
+    bar: clampBarHeight(Number(localStorage.getItem(BAR_HEIGHT_KEY)) || MIN_BAR_H),
+    combo: clampBarHeight(Number(localStorage.getItem(COMBO_HEIGHT_KEY)) || MIN_BAR_H, MAX_COMBO_BAR_H),
+  }));
+  const barHeight = isCombo ? heights.combo : heights.bar;
   const handleBarResize = (e: ReactPointerEvent) => {
     e.preventDefault();
     const startY = e.clientY;
     const startH = barHeight;
+    const max = isCombo ? MAX_COMBO_BAR_H : MAX_BAR_H;
     let latest = startH;
     const onMove = (ev: PointerEvent) => {
-      latest = clampBarHeight(startH - (ev.clientY - startY));
-      setBarHeight(latest);
+      latest = clampBarHeight(startH - (ev.clientY - startY), max);
+      setHeights((h) => (isCombo ? { ...h, combo: latest } : { ...h, bar: latest }));
     };
     const onUp = () => {
-      localStorage.setItem(BAR_HEIGHT_KEY, String(latest));
+      localStorage.setItem(isCombo ? COMBO_HEIGHT_KEY : BAR_HEIGHT_KEY, String(latest));
       window.removeEventListener("pointermove", onMove);
       window.removeEventListener("pointerup", onUp);
     };
@@ -572,7 +590,7 @@ export function PlaylistBar() {
         value={tab}
         onValueChange={(v) => {
           if (!v) return; // click sulla voce già attiva: non si resta senza tab
-          setTab(v as "fx" | "assets");
+          setTab(v as BarTab);
           localStorage.setItem(BAR_TAB_KEY, v);
         }}
         size="sm"
@@ -584,7 +602,8 @@ export function PlaylistBar() {
         {(
           [
             ["fx", "Effetti", "Playlist effetti"],
-            ["assets", "Assets", "Playlist asset del layer"]
+            ["assets", "Assets", "Playlist asset del layer"],
+            ["combo", "Combo", "Griglia di scene multi-layer"]
           ] as const
         ).map(([value, label, aria]) => (
           <ToggleGroupItem
@@ -600,7 +619,9 @@ export function PlaylistBar() {
 
       {/* riga dei controlli: trasporto + timeline della sequenza scelta sopra */}
       <div className="flex min-h-0 flex-1 items-stretch gap-3">
-      {tab === "assets" ? (
+      {tab === "combo" ? (
+        <ComboBar scrollRef={scrollRef} />
+      ) : tab === "assets" ? (
         <AssetPlaylistBar scrollRef={scrollRef} />
       ) : (
         <>

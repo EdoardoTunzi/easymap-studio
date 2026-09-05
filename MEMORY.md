@@ -2,6 +2,86 @@
 
 Ogni modifica al progetto va registrata qui con data, descrizione e motivazione. Le voci più recenti in alto dentro ogni giornata.
 
+## 2026-09-06 — Combo: colonna dei controlli compattata
+
+**Cosa.** Nella tab Combo, il trasporto (Cattura scena, Play, Repeat, Importa, Esporta) era una
+riga orizzontale che consumava spazio sottraendolo alla griglia scrollabile. Ora è una colonna
+stretta (`w-24`, come le intestazioni dei layer): "Cattura scena" a larghezza piena in alto, sotto
+Play e Repeat affiancati, sotto Importa ed Esporta affiancati. Stessa larghezza a prescindere dal
+numero di colonne combo, e più spazio orizzontale per vederne più insieme.
+
+## 2026-09-06 — Live: Output disallineato dalla playlist e badge "Esegui in output" sempre acceso
+
+**Sintomo.** In Live, con playlist effetti o combo in riproduzione, l'Output mostrava l'effetto
+*uscente* invece di quello in onda, e il tasto "Esegui in output" restava acceso come se ci fosse
+qualcosa da inviare.
+
+**Causa, una sola per entrambi.** In Live l'Output non riceve i frame del crossfade per-layer
+(`setTransitionProgress` non viaggia). `publishSceneTick` spediva i layer **con `transition` a
+progress 0** — cioè "solo effetto vecchio" — e l'Output lo teneva congelato lì dentro il suo
+crossfade di scena. E ogni frame di quello stesso crossfade passava da `onLayersChange` →
+`markDirty()`, riaccendendo il badge subito dopo che il tick l'aveva spento. Fuori da Live,
+in più, il secondo invio con dissolvenza faceva partire un fade di scena sopra il crossfade
+per-layer già specchiato frame per frame.
+
+**Fix in `sync.ts`.** `buildPayload` azzera `transition` quando `fadeDuration > 0` o si è in
+Live: si spedisce il look d'arrivo e la dissolvenza la fa l'Output. `publishSceneTick` esce subito
+fuori da Live (il publisher specchia già tutto). `onLayersChange` in Live ignora le notifiche in
+cui i layer differiscono **solo** per `transition` (`onlyTransitionChanged`, confronto chiave per
+chiave su `prev`/`next` della subscribe). Verificato con Control e Output affiancati nel headless:
+tutti gli invii Live senza `transition`, fade 0.3 sui cambi clip, `dirty` mai acceso in 2,5 s di
+riproduzione, shader dell'Output identici a quelli del Control dopo un lancio combo.
+
+## 2026-09-06 — Combo: griglia di scene multi-layer nella barra playlist
+
+**Cosa.** Terza tab "Combo" nella `PlaylistBar`, stile Ableton Session: righe = layer nell'ordine
+dello stack, colonne = scene. "Cattura scena" fotografa tutti i layer visibili in una colonna;
+click sull'intestazione = tutti i layer cambiano insieme; Play = le colonne scorrono con la loro
+durata e loop. Prima non c'era modo di salvare "layer 1 così, layer 2 così, layer 3 spento" e
+rimandarlo in onda con un gesto: andava rifatto a mano ogni volta.
+
+**Cella** (`src/store/comboStore.ts`): `EffectSnapshot` + `fx` + `blendMode` + `opacity`. Mai
+mapping, media, maschere, `lumaKey` (è del contenuto, non del look: una playlist di asset che ruota
+le clip romperebbe). Chiave assente in `cells` = layer **spento** in quella scena: una colonna
+definisce la scena completa. Trappola dei params: nel layer sono per-shader, nella cella piatti
+(`layer.params[layer.shaderName]`); `{}` per uno shader mai toccato è normale, come nei preset.
+
+**`applyScene(cues, smooth)`** in `layersStore`: un solo `set()` per l'intera colonna (una sola
+ripubblicazione verso l'Output), accende i layer citati e spegne gli altri, fade solo sui layer
+già visibili. **Non legge `syncTargetIds` di proposito**: propagherebbe il layer attivo sugli altri,
+appiattendo la colonna. La dissolvenza è una sola `setTransitionProgress(p)` senza layerId.
+
+**Motore** `src/hooks/use-combo.ts` (montato in `ControlPage`, non nella barra): `launchCombo`
+ferma tutte le playlist di effetti e il loop palette (`stopConflicts`), applica, pubblica, anima il
+fade. La sequenza è un rAF su `playing`. Reciproco: una sottoscrizione a `usePlaylistStore` ferma
+la combo se qualcuno preme Play su un layer (chiave vuota = era `stopConflicts`).
+
+**Fix Live sulla playlist esistente.** In Live ogni scrittura sui layer restava "in sospeso"; solo
+palette e asset scavalcavano il blocco coi loro canali. Ora `publishSceneTick(fade)` in `sync.ts`
+espone il `publishNow` del publisher: un cambio di clip o di colonna è la scena in onda che
+avanza, quindi viaggia anche in Live senza accendere il badge. Chiamato solo dal **motore** della
+playlist (`airClip`), non da `applyClip`, che l'editor usa come anteprima. Effetto collaterale
+accettato: è una pubblicazione dello stato intero, quindi porta con sé anche eventuali modifiche
+manuali in sospeso.
+
+**Persistenza**: `StoredProject.combos` (opzionale), potatura celle orfane in `snapshot()` con
+`onlyAlive`, migrazione nomi shader nelle celle, quarta guardia anti-rumore nell'autosave (il
+playhead cambia a ogni frame). File `easymap-studio/combos` con lo stack d'origine: all'import prima
+corrispondenza di id, poi ripiego sulla **posizione** nello stack, mai per nome; celle senza
+destinazione contate in `dropped`. Assert in `projectFile.check.ts`.
+
+**UI**: `MAX_COMBO_BAR_H = 460` e altezza memorizzata a parte (`easyvj-combo-height`), così tornando
+su Effetti la barra ritrova la sua. Cella = miniatura come sfondo + nome in overlay (degrada da
+sola a barra bassa), vuota = tratteggiata. Editor cella leggero: applica/ricattura/opacità/blend/
+svuota; il look si costruisce sul layer e si ricattura.
+
+**Verifica.** Pane del desktop: il documento risulta `hidden` e il rAF non gira affatto — lì si
+sono verificati cattura, lancio, spegnimento, esclusività nei due versi, Live (un solo `state`
+con fade, `dirty` false), autosave/reload, potatura. Sequenza e fade verificati nel Chrome headless
+di chrome-devtools (rAF a 120 Hz): A→B→A→B, loop off si ferma a fine lista. Nota: nel headless i
+primi frame dopo un lancio durano ~120 ms (rendering software + compilazione shader di più layer
+insieme): il fade *sembra* fermo a un campionamento breve, ma chiude regolarmente.
+
 ## 2026-09-06 — Cestino per rimuovere il media dal layer
 
 **Pulsante di rimozione in `MediaUploader`.** Il layer poteva ricevere un media ma non liberarsene:

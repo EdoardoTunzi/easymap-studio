@@ -18,6 +18,7 @@
  */
 
 import type { EffectPreset, StoredMedia, StoredProject } from './persistence'
+import type { Combo } from '../store/comboStore'
 import type { Corner, Corners } from '../store/projectStore'
 
 /** Marcatore del formato: distingue un progetto da un JSON qualsiasi trascinato per sbaglio. */
@@ -32,6 +33,13 @@ export const PROJECT_FILE_VERSION = 1
  */
 export const PRESETS_FILE_FORMAT = 'easymap-studio/presets'
 export const PRESETS_FILE_VERSION = 1
+
+/**
+ * Le combo vivono nel progetto (le celle puntano ai suoi layer), ma un file loro serve a portare
+ * le scene su un altro progetto o un'altra macchina prima di un live senza spedire i media.
+ */
+export const COMBOS_FILE_FORMAT = 'easymap-studio/combos'
+export const COMBOS_FILE_VERSION = 1
 
 /** Media dentro il file: il blob diventa base64 + il suo MIME, il resto passa com'è. */
 export interface ExportedMedia extends Omit<StoredMedia, 'blob'> {
@@ -61,6 +69,19 @@ export interface PresetsFile {
   exportedAt: number
   app: string
   presets: EffectPreset[]
+}
+
+export interface CombosFile {
+  format: typeof COMBOS_FILE_FORMAT
+  version: number
+  exportedAt: number
+  app: string
+  /**
+   * Lo stack al momento dell'export, nell'ordine dell'array dei layer (dal fondo alla cima): è
+   * l'unico modo di dare un senso ai `layerId` delle celle dentro un altro progetto.
+   */
+  layers: { id: string; name: string }[]
+  combos: Combo[]
 }
 
 /**
@@ -264,6 +285,18 @@ export function serializePresetsFile(presets: EffectPreset[]): Blob {
   return new Blob([JSON.stringify(file)], { type: 'application/json' })
 }
 
+export function serializeCombosFile(combos: Combo[], layers: { id: string; name: string }[]): Blob {
+  const file: CombosFile = {
+    format: COMBOS_FILE_FORMAT,
+    version: COMBOS_FILE_VERSION,
+    exportedAt: Date.now(),
+    app: 'EasyMap Studio',
+    layers,
+    combos,
+  }
+  return new Blob([JSON.stringify(file)], { type: 'application/json' })
+}
+
 /** Errore con un messaggio già scritto per l'utente: la UI lo mostra così com'è. */
 export class ProjectFileError extends Error {}
 
@@ -302,11 +335,12 @@ function openEnvelope<T>(text: string, expected: string, whatItIsnt: string): Pa
 }
 
 /** Che tipo di file è, senza doverlo importare: serve al pulsante unico di importazione. */
-export function detectFileKind(text: string): 'project' | 'presets' | null {
+export function detectFileKind(text: string): 'project' | 'presets' | 'combos' | null {
   try {
     const format = (JSON.parse(text) as { format?: unknown } | null)?.format
     if (format === PROJECT_FILE_FORMAT) return 'project'
     if (format === PRESETS_FILE_FORMAT) return 'presets'
+    if (format === COMBOS_FILE_FORMAT) return 'combos'
   } catch {
     /* non è JSON: lo dirà il parser vero, con il suo messaggio */
   }
@@ -333,6 +367,48 @@ export function parsePresetsFile(text: string): EffectPreset[] {
   }
   // id nuovi: un preset importato non deve poter sovrascrivere quello con lo stesso id in libreria
   return valid.map((p) => ({ ...p, id: crypto.randomUUID(), updatedAt: Date.now() }))
+}
+
+/**
+ * File JSON -> combo, con le celle riagganciate ai layer di QUESTO progetto (`layerIds`,
+ * nell'ordine dell'array dei layer).
+ *
+ * Prima la corrispondenza esatta di id: gratis, ed è il caso più frequente (backup o condivisione
+ * del proprio progetto, magari con lo stack riordinato). Poi il ripiego sulla **posizione nello
+ * stack**: la griglia *è* lo stack, la riga in alto resta la riga in alto. Mai per nome: "Layer 1"
+ * e "Layer 2" sono i default, duplicati e ambigui. Le celle senza destinazione si scartano e si
+ * contano in `dropped`, così l'utente sa che il progetto ha meno layer di quello d'origine.
+ */
+export function parseCombosFile(text: string, layerIds: readonly string[]): { combos: Combo[]; dropped: number } {
+  const file = openEnvelope<CombosFile>(text, COMBOS_FILE_FORMAT, 'Questo file non è una libreria di combo di EasyMap Studio.')
+  if (!Array.isArray(file.combos)) {
+    throw new ProjectFileError('Il file non contiene nessuna combo.')
+  }
+  const alive = new Set(layerIds)
+  const source = (Array.isArray(file.layers) ? file.layers : []).map((l) => l?.id)
+  const remap = (oldId: string): string | undefined => {
+    if (alive.has(oldId)) return oldId
+    const i = source.indexOf(oldId)
+    return i >= 0 ? layerIds[i] : undefined
+  }
+  let dropped = 0
+  const combos: Combo[] = []
+  for (const c of file.combos) {
+    if (!c || typeof c !== 'object' || typeof c.name !== 'string' || !c.cells || typeof c.cells !== 'object') continue
+    const cells: Combo['cells'] = {}
+    for (const [oldId, cell] of Object.entries(c.cells)) {
+      if (!cell || typeof cell !== 'object' || typeof cell.shaderName !== 'string') continue
+      const id = remap(oldId)
+      if (id) cells[id] = cell
+      else dropped++
+    }
+    // id nuovi: una combo importata non deve sovrascrivere quella con lo stesso id
+    combos.push({ ...c, id: crypto.randomUUID(), cells, duration: typeof c.duration === 'number' ? c.duration : 5 })
+  }
+  if (combos.length === 0) {
+    throw new ProjectFileError('Il file non contiene nessuna combo valida.')
+  }
+  return { combos, dropped }
 }
 
 export function parseProjectFile(text: string): StoredProject {

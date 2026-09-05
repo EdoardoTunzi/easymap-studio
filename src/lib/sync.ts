@@ -53,6 +53,8 @@ function pushFadeDuration(): number {
   return transitionMode === 'smooth' ? transitionDuration : 0
 }
 
+type LayersSnapshot = ReturnType<typeof useLayersStore.getState>
+
 /** Rimuove i blob (locali, servono solo alla persistenza) mantenendo i blob URL, validi cross-window. */
 function stripBlobs(layers: Layer[]): Layer[] {
   return layers.map((l) => ({
@@ -77,6 +79,24 @@ let paletteTickInFlight = false
 
 /** Come `paletteTickInFlight`, per i cambi di clip della playlist di asset. */
 let mediaTickInFlight = false
+
+/** `publishNow` del publisher montato, esposto ai motori automatici (vedi `publishSceneTick`). */
+let publishNowRef: ((fadeDuration: number) => void) | null = null
+
+/**
+ * Manda in onda un cambio di scena automatico (clip di playlist, colonna di combo).
+ *
+ * Stesso ragionamento di `applyPaletteTick`/`applyAssetTick`: non è una modifica in preparazione,
+ * è la scena già in onda che avanza — quindi viaggia anche in Live, senza accendere il badge
+ * delle modifiche non inviate. A differenza di quelli non ha un payload leggero: cambia
+ * l'effetto di più layer insieme, e succede ogni N secondi, non trenta volte al secondo.
+ */
+export function publishSceneTick(fadeDuration = 0) {
+  // fuori da Live il publisher specchia già ogni scrittura, crossfade per-layer compreso: un
+  // secondo invio con dissolvenza farebbe partire un fade di scena sopra quello già in corso
+  if (!useOutputStore.getState().live) return
+  publishNowRef?.(fadeDuration)
+}
 
 /**
  * Ultima clip mandata in onda da una playlist di asset, per layer. Serve solo a rispondere agli
@@ -161,7 +181,19 @@ export function useBroadcastPublisher() {
 
     const buildPayload = (fadeDuration = 0): Payload => {
       const { layers, activeLayerId, testPattern } = useLayersStore.getState()
-      return { type: 'state', layers: stripBlobs(layers), activeLayerId, testPattern, fadeDuration }
+      // In Live, e in ogni invio con dissolvenza, l'Output non riceve i frame del crossfade
+      // per-layer (`setTransitionProgress` non viaggia): un `transition` spedito resterebbe
+      // congelato lì a progress 0, cioè sull'effetto USCENTE. Si spedisce il look d'arrivo e la
+      // dissolvenza la fa l'Output con fadeDuration.
+      const strip = fadeDuration > 0 || useOutputStore.getState().live
+      const out = stripBlobs(layers)
+      return {
+        type: 'state',
+        layers: strip ? out.map((l) => (l.transition ? { ...l, transition: null } : l)) : out,
+        activeLayerId,
+        testPattern,
+        fadeDuration,
+      }
     }
 
     // ultimo stato effettivamente inviato: risponde agli "hello" delle finestre Output appena aperte
@@ -176,11 +208,25 @@ export function useBroadcastPublisher() {
       useOutputStore.getState().clearDirty()
     }
 
+    /** I due elenchi differiscono solo per `transition` (frame di un crossfade per-layer)? */
+    const onlyTransitionChanged = (a: Layer[], b: Layer[]) =>
+      a.length === b.length &&
+      a.every((la, i) => {
+        const lb = b[i]
+        if (la === lb) return true
+        for (const k of Object.keys(la) as (keyof Layer)[]) if (k !== 'transition' && la[k] !== lb[k]) return false
+        return true
+      })
+
     // ad ogni modifica dei layer: se Live, marca "in sospeso"; altrimenti invia subito
-    const onLayersChange = () => {
+    const onLayersChange = (state: LayersSnapshot, prev: LayersSnapshot) => {
       if (paletteTickInFlight || mediaTickInFlight) return // già in viaggio sul suo canale dedicato
-      if (useOutputStore.getState().live) useOutputStore.getState().markDirty()
-      else publishNow()
+      if (useOutputStore.getState().live) {
+        // un frame di crossfade è la scena in onda che si anima, non una modifica da inviare:
+        // altrimenti ogni playlist in Live terrebbe acceso il badge "Esegui in output"
+        if (state.layers !== prev.layers && onlyTransitionChanged(prev.layers, state.layers)) return
+        useOutputStore.getState().markDirty()
+      } else publishNow()
     }
     const unsubLayers = useLayersStore.subscribe(onLayersChange)
 
@@ -234,12 +280,14 @@ export function useBroadcastPublisher() {
     }
 
     publishNow()
+    publishNowRef = publishNow
 
     return () => {
       unsubLayers()
       unsubOutput()
       unsubRender()
       if (controlChannel === channel) controlChannel = null
+      if (publishNowRef === publishNow) publishNowRef = null
       channel.close()
     }
   }, [])

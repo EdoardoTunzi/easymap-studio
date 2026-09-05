@@ -9,6 +9,11 @@ Spuntare gli step completati; aggiungere nuovi step quando emergono. Tenere alli
 - [x] Sync Control ↔ Output via BroadcastChannel (con handshake `hello`)
 - [x] Upload immagine PNG con alpha (MediaUploader)
 - [x] Rimozione del media dal layer: cestino accanto al pulsante di caricamento, visibile solo a media presente (azzera anche il luma key)
+- [x] Combo: tab "Combo" nella barra playlist con griglia layer × scene (cattura scena, lancio a click, sequenza automatica con durata e loop, editor cella leggero, export/import file `easymap-studio/combos`, persistenza nel progetto con potatura celle orfane)
+- [x] Fix Live: i cambi di clip della playlist effetti (e le colonne combo) vanno in onda anche in Live via `publishSceneTick`, come già palette e asset
+- [x] Fix Live: l'Output riceve il look d'arrivo senza `transition` congelata, e i frame di crossfade non accendono il badge "Esegui in output"
+- [ ] Combo: editor completo dei parametri nella cella (estrarre `EffectFields` da `ClipEditor`) — solo se la ricattura dal layer non basta
+- [ ] Combo: lazy-load delle miniature con `useInView` se aprire la tab con molte colonne scatta
 - [x] Canvas R3F con ShaderMaterial e primo shader GLSL (Symmetrical Halo Swirl)
 - [x] Parser ISF-like (`@min @max @default`) → slider auto-generati
 - [x] Maschera alpha automatica: effetti ritagliati dentro i bordi dell'immagine

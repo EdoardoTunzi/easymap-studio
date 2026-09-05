@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react'
 import { usePlaylistStore, type PlaylistClip } from '@/store/playlistStore'
 import { useLayersStore, type EffectSnapshot } from '@/store/layersStore'
+import { publishSceneTick } from '@/lib/sync'
 
 /** Stato di una sequenza in corso: una per layer, indipendente dalle altre. */
 interface PlayState {
@@ -25,6 +26,16 @@ export function clipToEffect(clip: PlaylistClip): EffectSnapshot {
 /** Applica il look del clip a un layer preciso, secco o in crossfade. */
 export function applyClip(layerId: string, clip: PlaylistClip, smooth: boolean) {
   useLayersStore.getState().applyEffectSnapshot(clipToEffect(clip), smooth, layerId)
+}
+
+/**
+ * Il motore manda in onda il clip anche in Live: un cambio di clip è la scena già in onda che
+ * avanza, non una modifica in preparazione. Solo qui e non in `applyClip`, che l'editor usa
+ * come anteprima — quella in Live deve restare in sospeso.
+ */
+function airClip(layerId: string, clip: PlaylistClip, smooth: boolean) {
+  applyClip(layerId, clip, smooth)
+  publishSceneTick(smooth ? usePlaylistStore.getState().transitionDuration : 0)
 }
 
 /**
@@ -82,7 +93,7 @@ export function useEffectPlaylist() {
         // avvio: il clip corrente va a schermo subito, secco
         if (!state.started) {
           state.started = true
-          applyClip(layerId, clips[index], false)
+          airClip(layerId, clips[index], false)
         }
 
         if (state.transitionStart != null) {
@@ -105,7 +116,7 @@ export function useEffectPlaylist() {
           clip = clips[index]
           state.clipElapsed = 0
           const smooth = store.transitionMode === 'smooth'
-          applyClip(layerId, clip, smooth)
+          airClip(layerId, clip, smooth)
           if (smooth) state.transitionStart = now
           store.setCurrentIndex(layerId, index)
         }

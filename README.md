@@ -14,6 +14,7 @@ Niente installazione, niente licenze: si apre e si usa. L'obiettivo è rendere i
 
 ## Novità di questa versione
 
+- **Combo**: griglia di scene multi-layer nella barra Playlist. "Cattura scena" congela il look di tutti i layer in una colonna; la lanci con un click o la lasci scorrere in automatico con durata e loop, come una session view. Si esporta/importa su file e va in onda anche in modalità Live.
 - **16 shader nuovi**, per un totale di 123 effetti in libreria.
 - **Filtro-leggenda O/S**: ogni effetto è marcato in blu (**O**, si modella sull'oggetto) o arancione (**S**, riempie la sagoma ignorandone il contenuto). La lettera compare accanto a ogni nome, e i due pulsanti filtrano famiglie ed elenco.
 - **Esportazione in `.easymap.json` con gli asset dentro**: un progetto si riapre su un altro computer.

@@ -9,6 +9,7 @@
  */
 import assert from 'node:assert/strict'
 import {
+  COMBOS_FILE_FORMAT,
   PRESETS_FILE_FORMAT,
   PROJECT_FILE_FORMAT,
   PROJECT_FILE_VERSION,
@@ -17,14 +18,17 @@ import {
   blobToBase64,
   detectFileKind,
   isValidCorners,
+  parseCombosFile,
   parsePresetsFile,
   parseProjectFile,
   projectFileName,
+  serializeCombosFile,
   serializePresetsFile,
   serializeProjectFile,
   type ExportProgress,
 } from './projectFile.ts'
 import type { EffectPreset, StoredProject } from './persistence.ts'
+import type { Combo, ComboCell } from '../store/comboStore.ts'
 
 /** L'esportazione produce un Blob: qui lo si rilegge come testo per poterlo reimportare. */
 const asText = (blob: Blob) => blob.text()
@@ -224,6 +228,56 @@ assert.equal(projectFileName('Set', 'easymap-preset'), 'Set.easymap-preset.json'
     presets: [null, { name: 'ok', shaderName: 'S', params: {} }, { name: 'senza shader' }],
   })
   assert.equal(parsePresetsFile(mixed).length, 1, 'le voci rotte vanno scartate, non fatte passare')
+}
+
+// --- combo: le celle puntano ai layer del progetto d'origine, e il punto è riagganciarle ---
+{
+  const cell = (shaderName: string): ComboCell => ({
+    shaderName,
+    params: {},
+    colors: {},
+    size: 1,
+    palette: { enabled: false, colors: [], count: 2, amount: 1, activePreset: 'Custom' },
+    fx: {} as ComboCell['fx'],
+    blendMode: 'normal',
+    opacity: 1,
+  })
+  const combo: Combo = { id: 'c1', name: 'Apertura', duration: 6, cells: { l1: cell('Mandala'), l2: cell('Ridge Flow') } }
+  const text = await asText(serializeCombosFile([combo], [{ id: 'l1', name: 'A' }, { id: 'l2', name: 'B' }]))
+  assert.equal(detectFileKind(text), 'combos')
+
+  // stesso progetto, stack riordinato: gli id vivi vincono sulla posizione
+  {
+    const { combos, dropped } = parseCombosFile(text, ['l2', 'l1'])
+    assert.equal(dropped, 0)
+    assert.deepEqual(Object.keys(combos[0].cells).sort(), ['l1', 'l2'])
+    assert.equal(combos[0].cells.l1.shaderName, 'Mandala')
+    assert.notEqual(combos[0].id, 'c1', 'una combo importata non deve sovrascrivere quella con lo stesso id')
+  }
+  // altro progetto: rimappatura per posizione nello stack, la prima riga resta la prima riga
+  {
+    const { combos, dropped } = parseCombosFile(text, ['x1', 'x2'])
+    assert.equal(dropped, 0)
+    assert.equal(combos[0].cells.x1.shaderName, 'Mandala')
+    assert.equal(combos[0].cells.x2.shaderName, 'Ridge Flow')
+  }
+  // progetto con meno layer: le celle in eccesso si scartano e si contano
+  {
+    const { combos, dropped } = parseCombosFile(text, ['x1'])
+    assert.equal(dropped, 1)
+    assert.deepEqual(Object.keys(combos[0].cells), ['x1'])
+  }
+  // i tre formati non si confondono
+  assert.throws(() => parsePresetsFile(text), ProjectFileError)
+  assert.throws(() => parseProjectFile(text), ProjectFileError)
+  const presetsText = await asText(serializePresetsFile([{ id: 'p', name: 'p', updatedAt: 0, shaderName: 'S', params: {}, size: 1, palette: combo.cells.l1.palette }]))
+  assert.throws(() => parseCombosFile(presetsText, ['l1']), ProjectFileError)
+  // voci rotte scartate una a una, file senza combo valide respinto
+  const mixed = JSON.stringify({ format: COMBOS_FILE_FORMAT, version: 1, layers: [], combos: [null, { name: 'ok', cells: { l1: cell('S'), l2: null } }, { cells: {} }] })
+  const parsed = parseCombosFile(mixed, ['l1'])
+  assert.equal(parsed.combos.length, 1)
+  assert.equal(parsed.combos[0].duration, 5, 'durata mancante: default')
+  assert.throws(() => parseCombosFile(JSON.stringify({ format: COMBOS_FILE_FORMAT, version: 1, combos: [] }), ['l1']), ProjectFileError)
 }
 
 // --- corner-pin: la forma VERA e' [{x,y} x4]. Un controllo scritto su una forma inventata
