@@ -1,4 +1,4 @@
-// NAME: Psy Laser Sweep
+// NAME: Laser Sweep
 uniform float speed; // @min 0.0 @max 5.0 @default 1.0
 uniform float beams; // @min 2.0 @max 32.0 @default 10.0
 uniform float sharpness; // @min 2.0 @max 60.0 @default 8.0

@@ -1,4 +1,4 @@
-// NAME: Morph Molten Rings
+// NAME: Molten Rings
 uniform float speed; // @min -10.0 @max 10.0 @default 1.5
 uniform float rings; // @min 1.0 @max 30.0 @default 8.0
 uniform float wobble; // @min 0.0 @max 4.0 @default 1.5

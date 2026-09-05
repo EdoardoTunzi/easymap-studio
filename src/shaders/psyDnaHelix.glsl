@@ -1,4 +1,4 @@
-// NAME: Psy DNA Helix
+// NAME: DNA Helix
 uniform float speed; // @min 0.0 @max 5.0 @default 1.5
 uniform float turns; // @min 1.0 @max 12.0 @default 4.0
 uniform float radius; // @min 0.05 @max 0.5 @default 0.22

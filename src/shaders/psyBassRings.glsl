@@ -1,4 +1,4 @@
-// NAME: Psy Bass Rings
+// NAME: Bass Rings
 uniform float speed; // @min 0.0 @max 6.0 @default 2.0
 uniform float count; // @min 1.0 @max 20.0 @default 7.0
 uniform float sharpness; // @min 1.0 @max 20.0 @default 2.5

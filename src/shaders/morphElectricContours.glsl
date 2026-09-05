@@ -1,4 +1,4 @@
-// NAME: Morph Electric Contours
+// NAME: Electric Contours
 uniform float speed; // @min -10.0 @max 10.0 @default 1.5
 uniform float levels; // @min 2.0 @max 40.0 @default 14.0
 uniform float lineWidth; // @min 0.5 @max 8.0 @default 3.0

@@ -1,4 +1,4 @@
-// NAME: SD Nebula Drift
+// NAME: Nebula Drift
 uniform float speed; // @min -4.0 @max 4.0 @default 0.6
 uniform float cloudScale; // @min 1.0 @max 20.0 @default 5.0
 uniform float octaveGain; // @min 0.1 @max 0.9 @default 0.5

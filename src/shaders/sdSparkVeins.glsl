@@ -1,4 +1,4 @@
-// NAME: SD Spark Veins
+// NAME: Spark Veins
 uniform float speed; // @min -8.0 @max 8.0 @default 2.5
 uniform float veinDensity; // @min 2.0 @max 60.0 @default 22.0
 uniform float veinSharp; // @min 1.0 @max 12.0 @default 5.0

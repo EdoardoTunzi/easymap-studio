@@ -1,4 +1,4 @@
-// NAME: SD Halo Bloom
+// NAME: Halo Bloom
 uniform float speed; // @min -6.0 @max 6.0 @default 1.4
 uniform float rings; // @min 1.0 @max 40.0 @default 12.0
 uniform float ringSharp; // @min 0.5 @max 8.0 @default 2.5

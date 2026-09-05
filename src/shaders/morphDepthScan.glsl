@@ -1,4 +1,4 @@
-// NAME: Morph Depth Scan
+// NAME: Depth Scan
 uniform float speed; // @min -10.0 @max 10.0 @default 1.5
 uniform float scanWidth; // @min 0.01 @max 0.5 @default 0.08
 uniform float layers; // @min 1.0 @max 12.0 @default 4.0

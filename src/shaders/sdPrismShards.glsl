@@ -1,4 +1,4 @@
-// NAME: SD Prism Shards
+// NAME: Prism Shards
 uniform float speed; // @min -6.0 @max 6.0 @default 1.0
 uniform float shardScale; // @min 1.0 @max 40.0 @default 10.0
 uniform float facetSharp; // @min 0.5 @max 8.0 @default 3.0

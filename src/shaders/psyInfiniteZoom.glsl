@@ -1,4 +1,4 @@
-// NAME: Psy Infinite Zoom
+// NAME: Infinite Zoom
 uniform float speed; // @min 0.0 @max 3.0 @default 0.8
 uniform float layers; // @min 2.0 @max 12.0 @default 6.0
 uniform float sides; // @min 3.0 @max 12.0 @default 4.0

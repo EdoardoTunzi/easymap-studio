@@ -1,4 +1,4 @@
-// NAME: Morph Radial Shards
+// NAME: Radial Shards
 uniform float speed; // @min -10.0 @max 10.0 @default 2.0
 uniform float shards; // @min 3.0 @max 60.0 @default 18.0
 uniform float taper; // @min 0.5 @max 8.0 @default 2.5

@@ -1,4 +1,4 @@
-// NAME: Liquid Zebra Flow
+// NAME: Zebra Flow
 // Bande ad altissimo contrasto piegate in vortici organici, come una mappa di curve di livello
 // che scorre sul soggetto.
 //

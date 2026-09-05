@@ -1,4 +1,4 @@
-// NAME: SD Edge Pulse
+// NAME: Edge Pulse
 // Bordi illuminati che seguono la forma dello stage, con respiro pulsante.
 // Due sorgenti di contorno, dosabili separatamente:
 //   - SAGOMA: ricavata dal canale alpha del PNG scontornato (il profilo esterno dell'oggetto).

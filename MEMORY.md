@@ -2,6 +2,632 @@
 
 Ogni modifica al progetto va registrata qui con data, descrizione e motivazione. Le voci più recenti in alto dentro ogni giornata.
 
+## 2026-09-05 — Lo spazio occupato ora segue la scena, e il piè di pagina sta in fondo
+
+**Il numero non si aggiornava cambiando progetto.** Due cause: `refresh()` non veniva chiamato dopo
+`loadProject`, e soprattutto la "scena in corso" si misurava sull'**autosave su disco**, che si
+scrive con debounce e resta indietro rispetto a cio' che si sta guardando — appena caricato un
+altro progetto mostrava ancora il precedente. Ora quel valore si legge dallo store dei layer con un
+selettore che restituisce un numero: e' esatto per costruzione e si ri-rende solo quando cambia
+davvero. `storageUsage()` non calcola piu' la scena corrente, cosi' non ci sono due fonti di
+verita'. Verificato: caricando due progetti da 12 MB e 1 MB il numero passa da 2,5 a 12,0 a 1,0 MB.
+
+**Piè di pagina ancorato in fondo.** `mt-auto` da solo non bastava: Radix dimensiona il contenuto
+del viewport della ScrollArea sul contenuto, non sul viewport, quindi la colonna in cui `mt-auto`
+distribuisce lo spazio finiva dove finiva il testo. Reso quel div una colonna flex alta **almeno**
+quanto il viewport (`min-h`, non `h`: un pannello piu' lungo deve poter crescere e scorrere come
+prima), dal call site e non dal componente condiviso. Verificato che gli altri pannelli non ne
+risentano: Effetti (1963 px di contenuto) scorre fino in fondo con l'ultimo elemento raggiungibile,
+Palette idem.
+
+Le due voci del dettaglio vanno ora a capo una per riga: sono misure diverse, e affiancate con un
+punto mediano si leggevano come una sola.
+
+Nota di metodo: una misura intermedia mi aveva fatto credere che l'approccio flex gonfiasse il
+contenitore a 1963 px. Era il pannello **Effetti** — il click programmatico sul pulsante non aveva
+cambiato pannello, e stavo misurando quello sbagliato. Vale la pena verificare *cosa* si sta
+guardando prima di buttare via una soluzione che funziona.
+
+## 2026-09-05 — Spazio occupato nel piè di pagina del pannello Progetti
+
+Richiesto un dato su quanto occupa l'app nel browser. Due numeri, che rispondono a domande diverse:
+
+- **Il totale** viene da `navigator.storage.estimate()`, l'unico che sa quanto pesa davvero
+  l'origine — IndexedDB, `localStorage` e la cache che tiene l'app utilizzabile offline — ed e' lo
+  stesso numero che l'utente ritrova nelle impostazioni del browser. Accanto c'e' la quota
+  disponibile, perche' "40 MB" da solo non dice se c'e' da preoccuparsi. Assente dove l'API non
+  esiste: li' si mostra la somma degli asset.
+- **Il dettaglio** distingue i progetti salvati dalla scena in corso (l'autosave), che e' cio' che
+  serve per decidere cosa esportare e togliere di mezzo prima di un live.
+
+I byte dei progetti si sommano dai **blob** dei media: `Blob.size` e' un metadato, quindi leggerlo
+non carica il contenuto e il conto costa quanto scorrere l'elenco, anche con dei video dentro. E'
+una misura degli asset e non del record intero, ed e' il motivo per cui il totale del browser
+resta piu' alto: parametri, playlist e maschere sono kilobyte contro i megabyte dei media.
+
+Il ricalcolo sta dentro `refresh()`, insieme all'elenco: tutto cio' che cambia la lista (salvare,
+eliminare, importare) cambia anche l'occupazione, e tenerlo li' evita di doverselo ricordare in
+ogni gestore. `formatBytes` scala da B a GB, perche' gli stessi numeri vanno da pochi KB (un
+progetto di soli shader) a centinaia di MB.
+
+Verificato con asset di dimensioni note: 3 MB + 5 MB danno esattamente 8,0 MB in 2 progetti, il
+totale coincide con quello riportato da `navigator.storage.estimate()`, ed eliminando il progetto
+da 3 MB il piè di pagina passa da solo a 5,0 MB in 1 progetto.
+
+## 2026-09-05 — I self-check ora sono tipizzati (e avevano un errore vero)
+
+Segnalati errori in rosso nell'editor su `shaderNameMigration.check.ts`. Erano di **due nature**, e
+la seconda era il motivo per cui la prima contava.
+
+**Configurazione.** `tsconfig.app.json` esclude i `*.check.ts` (giustamente: sono script per Node,
+non codice dell'app) ma **nessun altro progetto li adottava**. Restavano senza tsconfig: l'editor li
+apriva con le opzioni di default e segnalava gli import con estensione `.ts` e i moduli `node:`.
+Colpiva anche `assetRotation.check.ts`, che c'era da prima. Nuovo `tsconfig.check.json` fra le
+`references` del root, con l'ambiente in cui girano davvero (Node) piu' `DOM`, perche' i moduli che
+verificano dichiarano tipi del browser; include anche `src/vite-env.d.ts`, altrimenti mancano le
+dichiarazioni della File System Access API raggiunte per import.
+
+**Errore vero.** Con i check finalmente tipizzati sono emersi due errori nel mio codice:
+`migrateLayerShaderNames` dichiarava di restituire `L`, lo stesso tipo dell'ingresso, mentre le
+chiavi di `params`/`colorParams` sono **esattamente cio' che cambia**. Il tipo mentiva, e il
+compilatore usava quella bugia per bocciare l'accesso alla chiave nuova — cioe' proprio la
+verifica che i parametri sopravvivano al rename. Ora il ritorno e' `Omit<L, …> & { … }`, che dice
+la verita'. Tolto anche il ritorno anticipato "niente da fare", che con la firma onesta non
+tornava e valeva poco.
+
+La lezione e' la ragione per cui il fix di configurazione non e' cosmetico: **un test che non
+compila e' un test che non protegge**. Erano rossi da giorni e nessuno — io compreso — li vedeva,
+perche' `npx tsc -b` non li guardava. Ora li guarda: `tsc -b` copre app e check insieme.
+
+## 2026-09-05 — Pannello preset riorganizzato e conferma di eliminazione
+
+**Preset.** Importa/Esporta tutti spostati **in cima**, sopra "Salva preset" (importa a sinistra,
+esporta a destra). Ogni riga della lista ha ora il suo pulsante di download — si condivide un
+singolo preset senza spedire l'intera libreria (`exportPresetToFile`, che migra il nome shader come
+`listEffectPresets`: un file non deve nascere con un riferimento gia' rotto). La riga mostra
+`nome – shader` a sinistra e le due azioni a destra.
+
+**Conferma di eliminazione** su preset e progetti, con `AlertDialog` di shadcn (gia' installato) e
+non `Dialog`: l'eliminazione e' irreversibile, e l'alert e' quello che intrappola il fuoco e non si
+chiude per sbaglio cliccando fuori o con Esc. Un solo componente in
+`components/ui/confirm-delete-dialog.tsx` perche' i due call site si comportano identicamente; se
+uno dei due dovesse chiedere altro converra' separarli invece di aggiungere parametri.
+`AlertDialogAction` non inoltra `variant`, quindi il rosso passa da `buttonVariants({ variant:
+'destructive' })` — e' il modo previsto da shadcn.
+
+Tolte le classi `size-4` dalle icone dei pulsanti toccati: `Button` le dimensiona gia' da se'
+(`[&_svg:not([class*='size-'])]:size-4`, con la misura giusta per ogni `size`), quindi fissarle a
+mano scavalcava la scala del componente.
+
+Verificato a schermo: annulla non elimina, conferma sì; export di un singolo preset produce un file
+con quel solo preset; i due pulsanti in cima stanno affiancati senza overflow nella sidebar stretta.
+
+## 2026-09-05 — Fix: tutti i layer schiacciati nella stessa forma (guardia sui corner sbagliata)
+
+Segnalato che dopo il fix precedente **tutti** i progetti salvati apparivano schiacciati, con i
+layer tornati a una forma unica. Colpa della guardia su `corners` appena aggiunta: era scritta
+dando per scontato che un angolo fosse `[x, y]`, mentre `Corner` e' `{x, y}`. `Array.isArray(c)`
+era quindi sempre falso, la guardia dichiarava invalidi i corner di **ogni** progetto e li
+riportava al rettangolo di default — cioe' proprio il danno che doveva impedire, esteso a tutti.
+
+Lezione: **una guardia scritta su una forma non verificata fa piu' danni del dato che protegge**, e
+il type-check non l'ha colta perche' `Array.isArray` e' un type guard e restringe senza lamentarsi.
+Il controllo e' ora `isValidCorners` in `projectFile.ts` — modulo puro, quindi verificabile — e il
+self-check copre la forma vera piu' dieci varianti da rifiutare, inclusa **la forma `[x, y]` che
+avevo inventato**, cosi' lo stesso errore non puo' ripetersi in silenzio.
+
+Nessun dato perso: la guardia agiva solo in lettura (`deserializeLayer`), i progetti su disco non
+sono mai stati riscritti. Verificato con un corner-pin deformato: caricato, disegnato con la sua
+forma, risalvato e confrontato — corner identici al bit.
+
+## 2026-09-05 — Fix regressione: progetti e preset che non mostravano piu' nulla
+
+Segnalato che alcuni progetti salvati non mostravano ne' asset ne' effetti, e che i preset messi in
+playlist restavano vuoti.
+
+**Causa: il rename dei `// NAME:`** fatto nel commit `573528e` (90 shader su 123, "Psy Chrome
+Ripple" -> "Chrome Ripple"). Progetti, preset e clip referenziano lo shader **per nome** e
+indicizzano i parametri con quello stesso nome, quindi tutti quei riferimenti puntavano a nomi
+inesistenti. `ShaderPlane` non disegna nulla se non trova lo shader (`ShaderPlane.tsx:312`): il
+layer spariva **per intero, asset compreso**, il che spiega perche' sembrava un problema di
+salvataggio e non di nomi. Non c'entrava l'export: quel commit precede la feature.
+
+**Recupero** in `lib/shaderNameMigration.ts`: il rename ha seguito una regola sola — via la prima
+parola se e' una delle categorie di allora — quindi la si inverte invece di scrivere una tabella di
+90 righe. Due precauzioni la rendono sicura: si prova **prima** il nome cosi' com'e' (cinque shader
+si chiamano davvero "Liquid Symmetry", "Halo Bloom", "Liquid Dunes", "Liquid Mercury", "Morph
+Ribbons" e accorciarli li romperebbe), e si accetta l'accorciato **solo se esiste**, cosi' uno
+shader cancellato non diventa uno shader a caso. Verificato sul commit reale: 90/90 recuperate,
+123 nomi attuali intatti, nessun nome riassegnato a uno shader diverso.
+
+Migrati anche **i parametri**, non solo il nome: `layer.params` e `colorParams` sono indicizzati
+per shaderName, quindi senza spostare le chiavi l'effetto sarebbe tornato ma con i valori di
+default — una perdita silenziosa peggiore del layer nero. Applicato in `applyProject` (copre
+autosave, progetti salvati e file importati), nei clip di playlist, in `applyEffectPreset` e in
+`listEffectPresets` (da cui leggono sia il pannello sia la playlist). Al caricamento e non con una
+migrazione in blocco dello store: cosi' vale anche per i file esportati, e non serve riscrivere
+progetti che l'utente non ha ancora aperto.
+
+Verificato in browser ricreando le condizioni: progetto con "Psy Chrome Ripple" + clip "Halo
+Mandala" + preset "SD Ridge Flow". Dopo il fix il layer si disegna, l'effetto attivo e' "Chrome
+Ripple" **con Speed 7 conservato**, il clip ha la sua miniatura e il preset in playlist mostra
+"Ridge Flow".
+
+**Secondo difetto, trovato durante la verifica:** `quadAspect` esplode se `corners` non e' un array
+di 4 punti, e lo fa a ogni frame — centinaia di errori al secondo e scena ferma. Contava perche'
+ora i progetti arrivano anche **da file esterni**, dove `parseProjectFile` non validava quel campo.
+Chiuso in `deserializeLayer`, che e' la porta comune a tutti i progetti (autosave, salvati,
+importati): un `corners` malformato ricade sul default invece di sovrascriverlo. Verificato con un
+progetto a `corners: null`, che ora si carica con zero errori.
+
+## 2026-09-05 — Fix crash all'esportazione, barra di avanzamento, preset esportabili
+
+**Il crash.** Segnalato che premendo "Esporta" la scheda moriva. Non era un caso limite: la prima
+versione teneva in memoria, insieme, il file binario, la stringa binaria costruita a `+=`, il
+base64, il JSON completo e infine il Blob — **cinque copie** dello stesso contenuto. Bastava un
+progetto con qualche video.
+
+Ora il contenuto pesante non viene mai unito in una stringa sola. `serializeProjectFile`
+restituisce un `Blob` e non più un testo, e lo compone così: ogni media diventa un elenco di pezzi
+base64, lo scheletro JSON si serializza con `stringify` su un oggetto in cui al posto dei dati c'è
+solo un **segnaposto** (quindi su pochi KB), poi si taglia lo scheletro sui segnaposto e si
+intercalano i pezzi come parti separate del Blob, che è il browser ad assemblare. Il base64 usa
+solo `A-Za-z0-9+/=`, nessuno dei quali JSON escapa: infilarlo grezzo fra le virgolette produce un
+JSON valido. I blocchi sono di 32.766 byte, **multiplo di 3**: tre byte fanno esattamente quattro
+caratteri base64, quindi ogni blocco tranne l'ultimo si codifica senza padding e i pezzi si
+concatenano. Con una taglia qualunque servirebbe di nuovo la stringa intera.
+
+Misurato in browser: **120 MB di asset esportati in 2,9 s**, blocco massimo del thread **96 ms**
+(prima: secondi, poi il crash). Round-trip su due asset di taglie diverse, byte identici.
+
+**La barra.** `serializeProjectFile` accetta un `onProgress` e cede il controllo al browser ogni
+~1,6 MB. Serve a due cose insieme: dare la percentuale — sui byte degli asset, che è dove va il
+tempo — e tenere vivo il canvas, perché in un'app che sta proiettando un main thread bloccato per
+secondi è inaccettabile. Due fasi: "Conversione asset…" e "Scrittura del file…". L'esito riporta
+anche la dimensione prodotta.
+
+**I preset.** Non entrano nel file di progetto: sono una libreria **globale**, e infilarli lì
+dentro vorrebbe dire ritrovarsi quelli di qualcun altro solo per aver aperto la sua scena. Hanno un
+formato proprio (`easymap-studio/presets`), con Esporta/Importa nel loro pannello. L'importazione
+è un ingresso unico che riconosce il tipo dal file — chiedere all'utente quale pulsante usare
+sarebbe un passaggio in più per un'informazione che abbiamo già — e i preset si **fondono** con la
+libreria saltando quelli già presenti per nome e shader, così reimportare lo stesso file non
+riempie l'elenco di doppioni. Nel pannello preset il tipo si controlla *prima* di importare,
+altrimenti un progetto entrerebbe di straforo fra quelli salvati mentre il messaggio dice di usare
+l'altro pannello.
+
+**Trappola: byte NUL nel sorgente.** Il segnaposto era nato con due NUL grezzi al posto degli
+spazi. `JSON.stringify` li rende `\u0000`, quindi il token non si ritrovava più nello scheletro e
+l'esportazione falliva sempre; in più `grep` trattava il file come binario e taceva, il che ha
+allungato la diagnosi. Corretto due volte: token di soli caratteri che JSON non escapa, **e**
+ricerca sulla forma serializzata del token, così un carattere problematico non può più far perdere
+un asset in silenzio. Trovati altri NUL nella chiave di deduplicazione dei preset (riscritti come
+escape `\u0000` leggibile) e in `assetFolder.ts`, dove però sono **deliberati e corretti**:
+separatore di una chiave di cache composita, dove non possono comparire in un nome file.
+
+## 2026-09-04 — Progetti esportabili come file JSON, asset inclusi
+
+I progetti vivevano solo in IndexedDB, cioè in quel browser su quel computer: nessun modo di
+portarsi un set su un'altra macchina o di mandarlo a qualcuno. Ora si scaricano come
+`.easymap.json`, **con dentro gli asset**.
+
+`StoredProject` era già la forma canonica del progetto, quindi il nuovo modulo `lib/projectFile.ts`
+non ridefinisce niente: traduce le due sole cose che JSON non sa rappresentare.
+
+1. **Blob dei media → base64.** È ciò che rende il file autosufficiente; costa +33% di byte, il
+   prezzo di avere un file solo e leggibile invece di un archivio. La conversione passa da
+   `blob.arrayBuffer()` e non da `FileReader`, che esiste solo nel browser: così la logica gira
+   anche nel self-check da riga di comando. `String.fromCharCode` va a chunk di 32 KB, perché lo
+   spread di un file grande in un colpo solo fa esplodere lo stack.
+2. **Handle della cartella delle playlist di asset → via.** Non è JSON e non varrebbe nulla su un
+   altro computer. Restano `dirName` e l'elenco dei file, che bastano a ritrovare la cartella e a
+   ricollegarla con "Riconnetti".
+
+Il file porta `format: 'easymap-studio/project'` e una `version`, così un JSON estraneo viene
+respinto con un messaggio invece di sfasciare la scena, e un file dal futuro si riconosce come
+tale. L'import valida la struttura portante (formato, versione, layer) prima di toccare qualsiasi
+cosa, e filtra il MIME dei media su `image/*`/`video/*`: il contenuto arriva da fuori e da lì si
+crea un blob URL, quindi non deve poter essere un MIME arbitrario. Un singolo media corrotto
+diventa un layer senza contenuto, non un import fallito — perdere tutto il progetto per un asset
+rotto sarebbe la reazione sbagliata.
+
+**L'import mette il progetto fra quelli salvati, senza aprirlo**: importare è un'azione di
+archivio, e aprire d'ufficio farebbe perdere il lavoro non salvato a chi voleva solo mettere via
+un file. Prende sempre un id nuovo, così importare due volte lo stesso file dà due progetti invece
+di sovrascrivere il primo.
+
+In `ProjectsPanel` una sezione "File" con Esporta/Importa (la scena corrente si esporta **senza**
+doverla prima salvare) e un'icona di download su ogni riga della lista. Nessun toast in progetto e
+non ne ho aggiunto uno: l'esito è un messaggio inline.
+
+Self-check senza framework in `lib/projectFile.check.ts` (stessa convenzione di
+`assetRotation.check.ts`): `node --experimental-strip-types src/lib/projectFile.check.ts` copre
+round-trip byte a byte, blob oltre la soglia dei chunk, sorgente live senza file, handle escluso
+dal JSON, sette forme di file da respingere, MIME ostile scartato e `activeLayerId` orfano.
+Verificato anche in browser: export dell'asset dimostrativo 3,36 MB in 64 ms, reimportato e
+riaperto con l'immagine intatta.
+
+**Trappola incontrata durante la verifica** (per non ricascarci): importare un modulo dell'app dalla
+console con `import('/src/…')` crea **istanze separate** degli store rispetto a quelle dell'app.
+Lo store letto così risultava vuoto e sembrava un bug dell'import, mentre l'app era intatta. Per
+ispezionare lo stato reale vanno usate la UI o l'API IndexedDB nativa, che è condivisa.
+
+## 2026-09-04 — Il comportamento O/S diventa un filtro-leggenda, non più due blocchi di pulsanti
+
+I due blocchi etichettati "Seguono / Ignorano il soggetto" non sono piaciuti, e a ragione: erano un
+ibrido. L'asse scelto era estetico, ma le famiglie erano state piegate al criterio funzionale —
+ogni categoria al 100% di un gruppo — quindi i blocchi non aggiungevano informazione, la
+imponevano; e "Ignorano" suonava come una serie B su metà libreria.
+
+Ora il comportamento è un **filtro trasversale che fa anche da leggenda**: due pulsanti in cima al
+selettore, **O** blu "Sull'oggetto" e **S** arancione "Sullo sfondo", esclusivi e spegnibili
+ri-cliccandoli. A riposo le famiglie stanno tutte insieme in una fila piatta; premendone uno, si
+restringono famiglie **ed** elenco. La stessa lettera colorata compare a destra di ogni nome in
+elenco (`justify-between`) — senza i due pulsanti sopra a spiegarla non direbbe nulla, ed è per
+questo che filtro e leggenda sono la stessa cosa.
+
+Il gruppo è una proprietà del **singolo shader**, non della famiglia ("Altri" e "Audio" sono
+miste), e si **misura dal codice** in `parseShader`: uno shader che non campiona mai `tex` non può,
+per costruzione, reagire all'immagine. Niente lista da mantenere, e il test gira sul raw originale
+**prima** dello split simulazione/disegno, che riassegna `raw` (un effetto potrebbe leggere la
+sorgente nel solo passo di simulazione). Risultato: 69 O, 54 S.
+
+I pulsanti famiglia senza effetti nel filtro attivo spariscono da sé, perché i conteggi sono
+calcolati dentro il filtro e quelli a zero non si mostrano: nessuna tabella famiglia→gruppo da
+tenere allineata alla mappa. Se la famiglia selezionata resta vuota si torna su "Tutti", altrimenti
+resterebbe una lista vuota con un filtro attivo ma invisibile. `cycleActiveShader` (frecce ◀ ▶,
+⌥A/⌥S) rispetta entrambi i filtri combinati, com'era già per la sola famiglia.
+
+Colori: `--group-object` (blu) e `--group-background` (arancione) in `index.css`, più chiari nel
+tema scuro perché una lettera piccola in tinta satura vi si spegne. Sono le uniche due tinte di un
+tema per il resto monocromo, quindi marcano l'appartenenza senza competere con nulla.
+
+## 2026-09-04 — Ritassonomia completa della libreria: 8 categorie → 12, divise in due gruppi
+
+Analizzata tutta la libreria incrociando le categorie dichiarate con quello che gli shader fanno
+davvero (campionamenti di `tex`, uso di `morphDepth`/luminanza, marcatore `//! SIMULATION`,
+uniform audio). Tre problemi: (1) le famiglie mescolavano assi diversi — `morph`/`sd` erano
+**tecniche**, `psy`/`halo`/`liquid` erano **estetiche**, e misurando il codice `halo` e `liquid`
+usavano esattamente la stessa tecnica di `morph` (stessa `lum = dot(source.rgb, …)`, 10 su 12
+`liquid` avevano pure `morphDepth`): li separava solo il tema; (2) "Altri" non erano casi singoli
+ma il pre-convenzione — 11 dei 15 erano generativi puri identici ai `psy`; (3) `psy` con 39
+effetti era un terzo della libreria dietro un pulsante.
+
+Nuova struttura su asse **estetico**, con i pulsanti divisi in due blocchi etichettati secondo un
+criterio **funzionale** — "Seguono il soggetto" (Rilievo 16, Contorni 12, Fluidi 18, Aloni 17,
+Morphogen 4) e "Ignorano il soggetto" (Frattali 14, Strobo 15, Tunnel 8, Plasma 14), più Audio e
+Altri fuori gruppo. La divisione serve a non scegliere per sbaglio un generativo quando si voleva
+qualcosa che si gonfiasse sulla statua: è l'errore più facile della libreria e dal nome non si
+legge. I generativi hanno anche il bordo tratteggiato, così restano riconoscibili a etichetta
+scrollata via. Nota: **restano comunque ritagliati dentro la sagoma** (il wrapper moltiplica sempre
+l'alpha per quello della sorgente) — non sono "sfondi", semplicemente non seguono il soggetto.
+
+I 4 Morphogen hanno una famiglia propria: sono gli unici shader con stato, crescono nel tempo e si
+riavviano, quindi si cercano per quello e non perché sono "Morph".
+
+**La categoria non si deduce più dal prefisso del file** ma da una mappa esplicita `MEMBERS` in
+`shaderCategories.ts`, scritta per famiglia (categoria → lista di basename) e invertita una volta
+sola all'avvio. Il vecchio meccanismo a prefissi + `EXCEPTIONS` non reggeva una riclassificazione:
+spostare un effetto voleva dire rinominare il file o allungare le eccezioni. La chiave è il
+**basename**, mai la riga `// NAME:`: quella è ciò con cui i progetti salvati referenziano
+l'effetto (`layer.shaderName`, chiavi di `params`/`colorParams`), e toccarla romperebbe i progetti
+esistenti. Nessun `.glsl` è stato modificato, nessun file rinominato.
+
+Uno shader non presente in `MEMBERS` finisce in "Altri" e in sviluppo lo segnala con un
+`console.warn`: è l'unico modo di accorgersi che la mappa è rimasta indietro. Verificata copertura
+esatta (123 file, 123 voci, zero duplicati, zero orfani) e nessun warning a runtime.
+`useUiStore.shaderCategory` non è persistito (default `'all'`), quindi nessuna migrazione.
+
+## 2026-09-04 — Rimosso il prefisso di categoria ripetuto dai nomi degli shader (86 file)
+
+Segnalato che molti nomi ripetevano la categoria di appartenenza ("Psy Chrome Ripple" mentre il
+filtro è già su "Psy"). Passata su tutta la libreria: per ogni famiglia con prefisso di file
+riconosciuto (`halo*`, `liquid*`, `morph*`, `psy*`, `sd*`) rimossa la parola iniziale del `// NAME:`
+quando coincide **esattamente** con l'etichetta della categoria seguita da uno spazio — quindi
+"Halo Mandala" → "Mandala", "SD Ridge Flow" → "Ridge Flow", ecc. Rimosso anche "Audio " da
+`audioOscilloscope.glsl` (categoria dedotta dal contenuto, non dal prefisso file, ma stesso
+principio). 90 file toccati su 123 (tutti pre-esistenti: i 16 file aggiunti in questa sessione
+erano già senza prefisso ripetuto).
+
+Il match richiede lo spazio subito dopo la parola: questo esclude correttamente i casi dove il
+prefisso non è una ripetizione ma parte del nome stesso — "Morphing Abstract" (categoria morph, ma
+comincia per "Morphing" non "Morph ") e "3D Surface Morph Spirals"/"Symmetrical Halo Swirl"
+(categoria morph/halo via eccezione in `shaderCategories.ts`, ma "Morph"/"Halo" non è la prima
+parola del nome) restano invariati. Verificato nessun nome duplicato dopo la rimozione.
+
+## 2026-09-04 — Correzione: "Lotka-Volterra" e "Smooth Life" cancellati dall'utente
+
+L'utente ha cancellato `src/shaders/morphLotkaVolterra.glsl` e `src/shaders/morphSmoothLife.glsl`
+(mai committati, quindi spariti senza lasciare traccia in git) — presumibilmente per il costo
+prestazionale segnalato per entrambi al momento dell'implementazione (convoluzione a 441 texel/
+cella per Smooth Life; simulazione a 3 canali per Lotka-Volterra). Le voci di log precedenti su
+questi due effetti restano come cronologia di ciò che è stato fatto, ma **i file non esistono
+più**: non ripartire da lì assumendo che siano ancora nella libreria. Il conteggio in `README.md`
+era già stato calcolato sullo stato **dopo** la cancellazione (123 file, morph=31), quindi i
+numeri risultavano già corretti; corretta invece la menzione testuale di "Lotka-Volterra" e
+"Smooth Life" come esempi di Morph con stato (riga sui Morph e riga nelle Funzionalità principali),
+rimasta per errore — ora cita solo i tre Morphogen (Growth/Mitosis/Turing), gli unici automi con
+stato rimasti in libreria. Restano invece confermati e presenti: Fractal Pyramid, Wire Grid Zoom,
+Silexar Globe, Palette Fract Loop, Kaleido Cloud Tunnel, Starleidoscope, Disco Sun Vortex,
+Morphing Abstract, Noise Animation - Electric, Botanical Fireworks, Ribbon Assault, Synthetic
+Aperture Sun, Bumped Sinusoidal Warp, Noise Animation - Lava, Hexagone, VHS (16 file, tutti ancora
+da committare — `git status` li mostra come `??`).
+
+## 2026-09-04 — README aggiornato con il conteggio reale della libreria (123 shader)
+
+Fine sessione di import: contati i file `.glsl` effettivi e ricalcolate le famiglie con la stessa
+logica di `shaderCategoryOf` (prefisso file + regex `usesAudio`) invece di fidarsi del numero
+scritto a mano nel README, ormai disallineato (106, risalente a prima di questa sessione).
+
+Conteggio finale: **123 shader** — Halo 12, Liquid 12, Psy 40, Morph 31 (di cui 3 con stato:
+Morphogen, Lotka-Volterra, Smooth Life), SD 12, Altri 15, Audio 1. Aggiornati tutti i riferimenti
+numerici in `README.md` (righe con "106 shader", i conteggi per famiglia Psy/Morph/SD, il numero
+di shader che campionano davvero la sorgente per l'uso con la camera live — ricalcolato a ~66
+contando solo i file che chiamano `texture2D(tex...)`, non l'intera famiglia per assunzione).
+
+17 shader aggiunti in questa sessione (9 dai 27 link Shadertoy forniti + 8 extra fuori lista
+richiesti a parte): Fractal Pyramid, Wire Grid Zoom, Silexar Globe, Palette Fract Loop, Kaleido
+Cloud Tunnel, Starleidoscope, Disco Sun Vortex, Morphing Abstract, Lotka-Volterra, Noise Animation
+- Electric, Botanical Fireworks, Ribbon Assault, Synthetic Aperture Sun, Bumped Sinusoidal Warp,
+Noise Animation - Lava, Hexagone, Smooth Life, VHS.
+
+**Restano in sospeso**: il 15° link (`wlGXRD`, mai affrontato) e i link dal 23° al 27° della lista
+originale — vedi `TODO.md` per l'elenco completo con gli URL.
+
+## 2026-09-04 — Shader extra fuori lista: "VHS" (categoria Altri)
+
+Richiesto dall'utente per l'uso su clip (video), con l'esigenza esplicita che "si veda lo sfondo".
+Chiarito che il modo corretto per un layer VHS trasparente sopra una clip sottostante è già
+disponibile negli strumenti esistenti (blend mode + opacità per-layer), indipendenti dal singolo
+file .glsl — nessuno shader individuale riceve "cosa c'è sotto" a parte i pochi blend mode
+avanzati (`uBackdrop`, meccanismo separato). Aggiunto invece uno slider `intensity` che miscela
+l'immagine pulita del layer con la versione distorta: a qualunque valore il colore deriva sempre
+dal contenuto reale (onda del nastro, piega, bloom cromatico, switching noise), mai sostituito da
+un pattern estraneo — è quello che garantisce "si vede lo sfondo/il contenuto" nel senso pratico
+di un filtro applicato direttamente sulla clip.
+
+→ `src/shaders/vhs.glsl`, categoria **Altri** su richiesta esplicita (nome file senza prefisso di
+famiglia riconosciuto, cade automaticamente in 'other' via `shaderCategoryOf`). Nessuna
+dipendenza da texture/canali esterni: tutto procedurale (hash + noise a 8 ottave), quindi porting
+1:1 senza semplificazioni.
+
+## 2026-09-04 — Shader extra fuori lista: "Smooth Life" (con stato, famiglia Morphogen)
+
+Richiesto esplicitamente dall'utente "insieme ai morphogen tipo growth, mitosis, turing" →
+`src/shaders/morphSmoothLife.glsl`, categoria Morph, terzo effetto della libreria a usare il
+meccanismo `//! SIMULATION` (ping-pong 320×320) dopo Morphogen Growth e Lotka-Volterra.
+
+**Il più pesante finora lato simulazione**: la convoluzione SmoothLife campiona un vicinato
+circolare di raggio fino a 10 (441 texel per cella) a ogni passo — contro i pochi texel del
+laplaciano 9-punti di Gray-Scott. Raggio di default abbassato a 6 (154 texel) con slider fino a
+10; il ciclo interno resta comunque a 21×21 iterazioni per il vincolo WebGL1 sui loop a bound
+costante, ma un `continue` salta il campionamento vero e proprio oltre il raggio impostato,
+quindi il costo scala comunque con lo slider anche se il ciclo "gira a vuoto" per il resto.
+**Da verificare le prestazioni nel browser prima di considerarlo pronto**, specialmente con più
+layer attivi o supersampling alto in Output.
+
+`iMouse` (disegno interattivo) e `iChannel2` (tasti di debug/reset di Shadertoy) rimossi;
+`iChannel1` (rumore extra per l'innesco casuale) sostituito con un secondo hash procedurale
+(differenza di due hash, come l'originale usava due texture di rumore diverse). Esposte le 4
+soglie "genoma" dell'automa (`birthLow/High`, `deathLow/High`) che ne decidono il comportamento
+(macchie, onde, glider-like) — è il cuore esplorativo di SmoothLife, coerente con l'ampiezza di
+controllo già data a Morphogen Growth. `sourceInfluence` fa nascere l'automa con più densità dove
+l'immagine è più chiara, stesso schema degli altri Morph con stato.
+
+## 2026-09-04 — Shader extra fuori lista: "Hexagone" (saltati 21° e 22°)
+
+- Effetti 21 (`3sfczf`) e 22 (`4sK3RD`): **saltati su richiesta dell'utente**.
+- "Hexagone" di Martijn Steinrucken/BigWings (licenza CC BY-NC-SA 3.0), **fuori dai 27 link
+  originali** — codice incollato direttamente dall'utente → `src/shaders/psyHexagone.glsl`,
+  categoria Psy. Piano esagonale animato visto dall'alto tramite intersezione raggio-piano (non un
+  vero raymarch: un solo `p = ro + rd*(ro.y/rd.y)`, economico), 3 "fiori" di 7 esagoni ciascuno
+  impilati in profondità e ciclati nel tempo, con bordi pulsanti e colore per-id. `iMouse` (pan
+  orizzontale) rimosso, non disponibile nel motore. Diversi parametri fissi dell'originale
+  (larghezza del bordo, soglie di dissolvenza in lontananza) accorpati in singoli slider con un
+  rapporto fisso fra le due costanti originali, per tenere il numero di controlli ragionevole.
+
+## 2026-09-04 — Import shader da Shadertoy: "Noise Animation - Lava" (20/27, saltato il 19°)
+
+- Effetto 19 (`4sl3Dr`): **saltato su richiesta dell'utente**.
+- Effetto 20 (`lslXRS`) → `src/shaders/psyNoiseAnimationLava.glsl`, categoria Psy. Stesso autore
+  (nimitz) e stessa dipendenza da `iChannel0` di "Noise Animation - Electric" (13/27): sostituito
+  con lo stesso value-noise procedurale (hash + interpolazione bilineare). Flow noise (ogni ottava
+  spostata da un campo vettoriale ruotato invece che sommata come in un fbm classico) — qui il
+  conteggio del loop originale (`i=1.;i<7.` → 6 iterazioni) corrisponde esattamente al default
+  `octaves=6.0` della porta, a differenza del caso Electric dove serviva -1.
+
+**Aggiornamento nella stessa sessione**: su richiesta dell'utente, spostato in famiglia Morph
+(`psyNoiseAnimationLava.glsl` → `morphNoiseAnimationLava.glsl`). Aggiunti `morphDepth`/
+`blackThreshold` standard: la luminanza della sorgente spinge la fase del flow noise
+(`time += lum*morphDepth*0.05`), blend finale con `mix(source.rgb, fx+source.rgb*fx, 0.85)` come
+Disco Sun Vortex/Morphing Abstract.
+
+## 2026-09-04 — Import shader da Shadertoy: "Bumped Sinusoidal Warp" (18/27)
+
+Effetto 18 (`4l2XWK`) → `src/shaders/morphBumpedSinusoidalWarp.glsl`, categoria Morph su richiesta
+dell'utente ("deve essere anche morph se serve"). A differenza degli altri Morph, qui l'adattamento
+all'asset non passa solo da `lum*morphDepth` (comunque presente, spinge la fase del warp): la
+texture campionata per il materiale bump-mapped (`iChannel0` nell'originale, generica) è **l'asset
+stesso**, campionato con un piccolo offset deformato dalla stessa funzione di warp che genera la
+mappa di rilievo — la superficie increspata e illuminata mostra letteralmente la foto dell'utente,
+non un pattern estraneo. Rimossa la doppia conversione gamma manuale dell'originale (`texCol*=texCol`
+in entrata, `sqrt()` finale in uscita, auto-descritta nel commento come "2.0 gamma correction"):
+stessa ragione di Lotka-Volterra, la pipeline colore del progetto lavora già in spazio gamma e
+applicarla avrebbe scurito/schiarito il risultato in modo scorretto rispetto agli altri shader.
+
+## 2026-09-04 — Import shader da Shadertoy: "Synthetic Aperture Sun" (17/27)
+
+Effetto 17 (`ldlSzX`) → `src/shaders/psySyntheticApertureSun.glsl`, categoria Psy. **Lettura
+attenta necessaria**: il file dichiara `int MODE = 5;` come default globale, ma dentro
+`mainImage` viene subito sovrascritto da un'espressione che dipende dai toggle da tastiera
+speciali di Shadertoy (`iChannel2`), sempre "spenti" finché l'utente non preme un tasto —
+risultato: il comportamento realmente visibile di default è `MODE=4` (23 sorgenti d'onda su un
+anello, spaziatura quasi-casuale) in modalità "energia" (il doppio ciclo O(n²) che calcola
+l'interferenza vera fra ogni coppia di sorgenti, non la somma semplice delle onde). `MODE=5`
+(sorgenti a griglia) è codice morto, mai raggiunto. Portato il comportamento di default realmente
+osservabile, con gli switch da tastiera (`waveMode`, `randomSpacing`, `driftSpeed`) trasformati in
+slider veri invece che nascosti dietro tasti. `iMouse` sostituito dal ramo sintetico che
+l'originale già usava quando il mouse non è premuto (stesso schema degli effetti precedenti).
+`sourceCount` (default 23, il numero pieno originale) permette di abbassare il costo O(n²) se
+serve più margine di fps con più layer attivi.
+
+## 2026-09-04 — Import shader da Shadertoy: "Ribbon Assault" (16/27, saltato temporaneamente il 15°)
+
+Effetto 16 (`MdBGDK`, David Hoskins, licenza CC BY-NC-SA 3.0) → `src/shaders/morphRibbonAssault.glsl`,
+categoria Morph **su richiesta esplicita dell'utente**. Frattale di Möbius (20 iterazioni di
+inversione + fold) attorno a un punto attrattore che nell'originale segue il mouse o, in sua
+assenza, un moto Lissajous sintetico — usato sempre quest'ultimo (`iMouse` non disponibile). La
+luminanza della sorgente sposta l'attrattore (`p += (lum-0.5)*morphDepth*0.03`), stesso schema
+`lum*morphDepth` degli altri Morph. L'utente ha dato il codice del 16° link (`MdBGDK`) saltando
+il 15° (`wlGXRD`), non ancora affrontato — resta in sospeso in `TODO.md`, non segnato come saltato.
+
+## 2026-09-04 — Import shader da Shadertoy: "Botanical Fireworks" (14/27, architettura non replicabile in pieno)
+
+Effetto 14 (`NddSWs`) → `src/shaders/psyBotanicalFireworks.glsl`, categoria Psy. Prima richiesta di
+questo lotto con un problema architetturale reale, non solo di dipendenze mancanti: l'originale
+(Leon Denise, "taste of noise 7") fa girare un raymarch 3D completo (IFS caleidoscopica di sfere,
+30 step) **dentro un Buffer A con feedback**, accumulando `max(nuovo, precedente-0.01)` per
+ammorbidire nel tempo il rumore che varia a ogni frame in una scia organica sfumata. Il meccanismo
+`//! SIMULATION` di questo progetto (usato da Morphogen Growth e Lotka-Volterra) gira invece su
+una griglia fissa 320×320 pensata per campi di concentrazione economici, non per un raymarch 3D a
+piena risoluzione — infilarcelo sarebbe stato sproporzionato (fino a 8 passi di simulazione/frame,
+ciascuno un raymarch a 30 step) e comunque a risoluzione/aspect sbagliati.
+
+**Scelta (concordata con l'utente)**: portato senza stato, ricalcolato ogni frame. Per attenuare lo
+sfarfallio che il rumore per-frame (`rng`, usato per il seed, il wobble delle sfere e il dithering
+del passo) avrebbe causato senza il buffer, il seed si aggiorna a `flickerRate` scatti al secondo
+(default 3) invece che a ogni frame — resa più "a scatti" e meno vellutata dell'originale, ma senza
+build engine aggiuntive. `iMouse` (controllo camera) rimosso come per Starleidoscope. Prima
+richiesta di questo lotto in cui l'utente ha incollato per errore il file common di un altro
+shader (nimitz, effetto 13): richiesto e ottenuto il file corretto prima di procedere.
+
+## 2026-09-04 — Import shader da Shadertoy: "Noise Animation - Electric" (13/27)
+
+Effetto 13 (`ldlXRS`) → `src/shaders/psyNoiseAnimationElectric.glsl`, categoria Psy. Nimitz
+(stormoid.com), licenza CC BY-NC-SA 3.0. `iChannel0` (texture di rumore fornita da Shadertoy)
+sostituito con value-noise procedurale hash+bilineare (`ecNoise`): la turbolenza dell'fbm a
+domain-warping ne risulta pressoché identica. **Bug evitato in porting**: il loop originale
+`for(i=1.;i<6.;i++)` esegue 5 iterazioni (i=1..5), non 6 — l'uniform `octaves` di default è 5.0,
+non 6.0, altrimenti il pattern sarebbe stato visibilmente più fitto del dovuto.
+
+## 2026-09-04 — Import shader da Shadertoy: "Lotka-Volterra" (12/27, primo con stato dopo Morphogen)
+
+Effetto 12 (`Xtcyzr`) → `src/shaders/morphLotkaVolterra.glsl`, categoria Morph. Simulazione vera
+preda-predatore-vegetazione a tre canali (non calcolabile in un solo pass): usa il meccanismo
+`//! SIMULATION`/`//! DISPLAY` già introdotto per Morph Morphogen Growth (ping-pong FBO 320×320,
+vedi `engine/simulation.ts`/`SimulationPass.tsx`) — **secondo effetto della libreria a usarlo**.
+Diffusione a 4 vicini diretti (non `easyvj_lap`, che è il laplaciano 9-punti dei Morphogen: qui
+l'originale usa uno schema più ruvido che fa parte del regime di oscillazione). Il gradiente
+spaziale di riproduzione/predazione dell'originale (basato su `fragCoord/iResolution`) diventa
+`uv.x`/`uv.y` della griglia di simulazione, quadrata e toroidale per costruzione. `sourceInfluence`
+fa spingere la vegetazione locale dove l'immagine è più chiara (stesso schema di
+`morphMorphogenGrowth.glsl`). **Omessa** la barra di avanzamento stagionale a righe fisse in fondo
+allo schermo dell'originale (non ha senso su una proiezione ritagliata sui bordi dell'asset) e la
+correzione gamma manuale finale (`pow(col,1/2.2)`: la pipeline colore del progetto è già in spazio
+gamma, raddoppiarla avrebbe schiarito tutto). Uniform `speed`/`scale` non letti dentro il GLSL:
+sono letti da `SimulationPass.tsx` lato TS (passi/secondo, mapping uv↔griglia), stesso pattern già
+presente in Morphogen Growth. Attribuzione hash di David Hoskins (CC BY-SA 4.0) lasciata in testa
+al file.
+
+## 2026-09-04 — Import shader da Shadertoy: "Morphing Abstract" (11/27)
+
+Effetto 11 (`sfsSDs`) → `src/shaders/morphMorphingAbstract.glsl`. Stesso autore (Frostbyte, licenza
+CC-BY-NC-SA-4.0) e stesso trattamento Morph di "Disco Sun Vortex": la luminanza spinge la profondità
+di partenza del raymarch (`p.z += lum*morphDepth*0.3`). Raymarch con rumore "Xor's Dot Noise"
+(wfsyRX) e tonemap ACES (Xc3yzM), entrambi portati come funzioni proprie. **Rimosso il
+supersampling 2×2 interno dell'originale** (girava il raymarch 4 volte per pixel, campionando su
+una griglia 2×2): l'Output di questo progetto ha già il proprio supersampling regolabile, farlo
+due volte sarebbe solo costo GPU sprecato senza differenza percepibile.
+
+## 2026-09-04 — Import shader da Shadertoy: "Disco Sun Vortex" (10/27)
+
+Effetto 10 (`7cfGzn`) → `src/shaders/morphDiscoSunVortex.glsl`. **Richiesto esplicitamente in
+famiglia Morph** (non Psy come gli altri raymarch portati finora): a differenza degli effetti Psy
+puramente generativi, qui la luminanza della sorgente spinge la profondità di partenza nel tunnel
+(`p.z = t + lum*morphDepth`, stesso schema di `morphTunnelDepth.glsl`/`3DSurfaceMorphSpirals.glsl`
+— `lum*morphDepth` sommato a un termine di "z"/profondità), quindi il pattern reagisce alla forma
+dell'asset invece di ignorarlo. Raymarch fedele all'originale "Abstract Shine" di @Frostbyte
+(remixato da @WorkingClassHacker): tunnel a corkscrew, palette IQ, strato di shimmer/interferenza,
+vignetta e bagliore centrale, compressione finale con `tanh` (stesso fix `exp`-based già usato per
+Kaleido Cloud Tunnel, GLSL ES 1.00 non ha `tanh` nativo). **Licenza CC-BY-NC-SA-4.0** (non
+commerciale, attribuzione richiesta, più restrittiva delle altre finora) — attribuzione lasciata
+in testa al file.
+
+## 2026-09-04 — Import shader da Shadertoy: "Starleidoscope" (9/27)
+
+Effetto 9 (`ftt3R7`) → `src/shaders/psyStarleidoscope.glsl`, categoria Psy. Sfondo a fiocco di neve
+da fold ricorsivo (mirror + abs, 5 iterazioni) con 10 strati di campo stellare in parallasse
+(ciclano in profondità via `fract(i+t)`), ogni stella con raggi/flare e tinta hash-based che
+cangia. Due dipendenze non disponibili nel motore: `iMouse` (pan del mouse, rimosso — il pan
+globale del layer già copre lo stesso bisogno) e `iChannel0` (piccola variazione di tinta da
+audio/webcam su Shadertoy, sostituita con una deriva procedurale lenta `sin/cos(time)`). Esposti
+`foldIterations`/`foldScale` sul fold di sfondo, `starDensity`/`flareIntensity`/`twinkleSpeed`
+sulle stelle, `brightness`/`colorIntensity`/`tint` sul colore finale.
+
+## 2026-09-04 — Import shader da Shadertoy: "Kaleido Cloud Tunnel" (8/27, con salto)
+
+- Effetto 7 (`4dcGW2`, "Expansive Reaction"): **saltato** — solo il pass Image incollato, la vera
+  simulazione (Buffer A, presumibilmente reaction-diffusion) e la sfocatura (Buffer B) mancano,
+  oltre a una texture di rumore su `iChannel3`. Impossibile ricostruirlo senza quel codice.
+- Effetto 8 (`sctXDn`) → `src/shaders/psyKaleidoCloudTunnel.glsl`, categoria Psy. Shader Gaijin
+  Entertainment (licenza: libero, non rivendibile come prodotto a sé — attribuzione lasciata in
+  testa al file), un raymarch caleidoscopico a specchio (default 3 spicchi) con "nuvola" fractal
+  noise-like e sequenza di rivelazione a scatti (apertura di 15s poi uno scatto di rotazione ogni
+  4s, guidata da `time` quindi rispetta lo slider `speed`). **Fix necessario**: l'originale usa
+  `tanh()` per il tonemap finale, non disponibile in GLSL ES 1.00 (WebGL1/three.js `ShaderMaterial`
+  di default) — sostituito con un'approssimazione via `exp` che non overflowa (`kctTanh`), nessun
+  altro shader della libreria usava funzioni iperboliche finora. Y non flippata (l'originale fa
+  `iResolution.y - fragCoord.y`, omesso per coerenza con l'orientamento uv del resto della
+  libreria — differenza puramente estetica, l'effetto ha comunque simmetria radiale).
+
+## 2026-09-04 — Import shader da Shadertoy: "Palette Fract Loop" (6/27)
+
+Effetto 6 (`mtyGWy`) → `src/shaders/psyPaletteFractLoop.glsl`, categoria Psy. Il celebre shader del
+tutorial YouTube di kishimisu (loop `fract(uv*zoom)-0.5` a 4 iterazioni + palette coseno di iq).
+Nessun titolo nel codice incollato: nome descrittivo scelto da Claude. Portato fedele con
+`speed`/`zoomFactor`/`iterations`/`ringFreq`/`glowPow` al posto delle costanti fisse (`1.5`, `4`,
+`8.`, `1.2`), palette esposta come due vec3 (`colorFreq`/`colorPhase`) al posto dei parametri `c`/`d`
+fissi della formula di iq (`a`/`b` restano `0.5` fissi, sono l'offset/ampiezza della palette).
+
+## 2026-09-04 — Import shader da Shadertoy: "Silexar Globe" (5/27)
+
+Effetto 5 (`XsXXDn`) → `src/shaders/psySilexarGlobe.glsl`, categoria Psy. Il classico minimale
+della demoscene di Danilo Guanabara "Creation by Silexars" (3 iterazioni, formula compattissima),
+**rinominato "Silexar Globe" su richiesta dell'utente** (file+NAME rinominati insieme). Portato
+fedele con `speed`/`scale`/`swirl`/`colorSpread`/`brightness` al posto delle costanti fisse
+dell'originale (`.07`, `9.`, `.01`). L'originale scrive `fragColor.a = iTime` (probabilmente
+ignorato da Shadertoy): **non riprodotto**, l'alpha del nostro wrapper moltiplica l'opacità finale
+del layer, quindi avrebbe fatto pulsare/sparire l'effetto nel tempo — impostato a 1.0.
+
+## 2026-09-04 — Import shader da Shadertoy: "Wire Grid Zoom" (4/27, con salti)
+
+- Effetto 3 (`w323DK`): **saltato** — nessun codice fornito dall'utente.
+- Effetto 4 (`fcyXD3`) → `src/shaders/psyWireGridZoom.glsl`, categoria Psy. Nel codice incollato
+  non c'era il blocco `SHADERDATA` con il titolo Shadertoy: nome scelto da Claude ("Wire Grid
+  Zoom", descrittivo). Rete di nodi/segmenti generata per cella (stesso trucco hash-per-cella di
+  `wireNetwork.glsl`, ma qui un solo segmento a direzione casuale per cella invece della
+  triangolazione a link) disposta su 2-6 strati che si susseguono in uno zoom infinito ciclico
+  (stessa struttura di `psyInfiniteZoom.glsl`: `layerProgress`/`fract(time)`/dissolvenza in
+  ingresso e uscita), con trattini di impulso che scorrono lungo i fili e vignettatura finale.
+  Colori fissi ciano/blu dell'originale esposti come `colorA`/`colorB`.
+
+## 2026-09-04 — Import shader da Shadertoy: "Fractal Pyramid" (2/27)
+
+Avviato l'import di una lista di 27 shader Shadertoy scelti dall'utente, un effetto alla volta con
+conferma prima di ogni implementazione (vedi sezione dedicata in `TODO.md`).
+
+- Effetto 1 (`ffyXWc`, "Inception Tunnel"): **saltato su richiesta dell'utente** — raymarch 3D con
+  PBR/AO/soft-shadow annidati, troppo pesante per l'uso live.
+- Effetto 2 (`tsXBzS`, "Fractal Pyramid") → `src/shaders/psyFractalPyramid.glsl`, categoria Psy.
+  Primo shader della libreria con un **vero raymarch 3D** (camera che orbita attorno a un frattale
+  IFS a fold ricorsivo): finora tutti gli effetti "fractal"/"tunnel" (Kali Fractal, Psy Vortex
+  Fractal, Star Nest...) erano trucchi in screen-space 2D, più economici. Scelto di portarlo fedele
+  (64 step, nessun AO/shadow quindi comunque leggero) invece di appiattirlo in 2D, su conferma
+  esplicita dell'utente. Uniform aggiunti: `speed`, `orbitSpeed`, `camDist`, `fov`, `scale` (scala
+  lo spazio di campionamento e divide il passo di marcia per restare stabile), `fold`, `iterations`
+  (loop troncato con `break`, come `psyVortexFractal`), `glow`, due colori `colorA`/`colorB` al
+  posto della `palette()` fissa ciano→magenta dell'originale.
+
 ## 2026-09-01 — Bug: la playlist degli effetti seguiva il layer selezionato
 
 Segnalato che impostando una playlist di effetti veniva applicata a tutti i layer. Confermato in

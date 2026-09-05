@@ -1,4 +1,4 @@
-// NAME: Psy Mandel Slice
+// NAME: Mandel Slice
 uniform float speed; // @min 0.0 @max 2.0 @default 0.3
 uniform float zoom; // @min 0.3 @max 4.0 @default 1.2
 uniform float iterations; // @min 8.0 @max 80.0 @default 40.0

@@ -1,4 +1,4 @@
-// NAME: Liquid Morph Ribbons
+// NAME: Morph Ribbons
 uniform float speed; // @min -10.0 @max 10.0 @default 3.0
 uniform float ribbons; // @min 1.0 @max 30.0 @default 10.0
 uniform float flow; // @min 0.0 @max 8.0 @default 3.0

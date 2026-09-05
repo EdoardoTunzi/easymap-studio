@@ -1,4 +1,4 @@
-// NAME: Psy Aurora Veil
+// NAME: Aurora Veil
 uniform float speed; // @min 0.0 @max 2.0 @default 0.5
 uniform float bands; // @min 1.0 @max 10.0 @default 3.0
 uniform float waviness; // @min 0.0 @max 2.0 @default 0.8

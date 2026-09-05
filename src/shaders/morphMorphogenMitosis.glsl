@@ -1,4 +1,4 @@
-// NAME: Morph Morphogen Mitosis
+// NAME: Morphogen Mitosis
 uniform float speed; // @min 0.0 @max 3.0 @default 1.0
 uniform float density; // @min 2.0 @max 24.0 @default 7.0
 uniform float divide; // @min 0.0 @max 1.0 @default 0.75

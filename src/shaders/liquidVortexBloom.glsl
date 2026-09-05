@@ -1,4 +1,4 @@
-// NAME: Liquid Vortex Bloom
+// NAME: Vortex Bloom
 uniform float speed; // @min -10.0 @max 10.0 @default 4.0
 uniform float twist; // @min 0.0 @max 40.0 @default 12.0
 uniform float arms; // @min 1.0 @max 12.0 @default 3.0

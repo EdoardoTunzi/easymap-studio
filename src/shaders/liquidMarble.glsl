@@ -1,4 +1,4 @@
-// NAME: Liquid Marble
+// NAME: Marble
 uniform float speed; // @min 0.0 @max 2.0 @default 0.5
 uniform float scale; // @min 1.0 @max 8.0 @default 3.0
 uniform float hue; // @min 0.0 @max 1.0 @default 0.55

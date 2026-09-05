@@ -1,4 +1,4 @@
-// NAME: Psy Plasma Storm
+// NAME: Plasma Storm
 uniform float speed; // @min 0.0 @max 3.0 @default 1.0
 uniform float scale; // @min 1.0 @max 12.0 @default 4.0
 uniform float turbulence; // @min 0.0 @max 3.0 @default 1.2

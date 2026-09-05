@@ -1,4 +1,4 @@
-// NAME: Audio Oscilloscope
+// NAME: Oscilloscope
 // Traccia di un oscilloscopio pilotata dall'ingresso audio: il pennello disegna una polilinea
 // sui campioni della forma d'onda, con fosforo che si spegne dietro la testa (persistence).
 //

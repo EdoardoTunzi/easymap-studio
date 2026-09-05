@@ -1,4 +1,4 @@
-// NAME: Psy Alien Organism
+// NAME: Alien Organism
 uniform float speed; // @min 0.0 @max 2.0 @default 0.5
 uniform float cells; // @min 2.0 @max 20.0 @default 7.0
 uniform float membrane; // @min 0.01 @max 0.4 @default 0.12

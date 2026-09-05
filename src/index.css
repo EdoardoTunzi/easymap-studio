@@ -30,6 +30,10 @@
   --chart-3: oklch(0.439 0 0);
   --chart-4: oklch(0.371 0 0);
   --chart-5: oklch(0.269 0 0);
+  /* Gruppi di effetti (leggenda O/S del selettore): le UNICHE due tinte di un tema per il resto
+     monocromo, quindi bastano a marcare l'appartenenza senza competere con nulla. */
+  --group-object: oklch(0.58 0.17 250);
+  --group-background: oklch(0.62 0.17 55);
   --radius: 0.625rem;
   --sidebar: oklch(0.985 0 0);
   --sidebar-foreground: oklch(0.145 0 0);
@@ -60,6 +64,8 @@ body,
   --color-sidebar-primary: var(--sidebar-primary);
   --color-sidebar-foreground: var(--sidebar-foreground);
   --color-sidebar: var(--sidebar);
+  --color-group-object: var(--group-object);
+  --color-group-background: var(--group-background);
   --color-chart-5: var(--chart-5);
   --color-chart-4: var(--chart-4);
   --color-chart-3: var(--chart-3);
@@ -116,6 +122,9 @@ body,
   --chart-3: oklch(0.439 0 0);
   --chart-4: oklch(0.371 0 0);
   --chart-5: oklch(0.269 0 0);
+  /* più chiare che nel tema chiaro: su fondo scuro una lettera piccola in tinta satura si spegne */
+  --group-object: oklch(0.72 0.15 250);
+  --group-background: oklch(0.76 0.15 60);
   --sidebar: oklch(0.205 0 0);
   --sidebar-foreground: oklch(0.985 0 0);
   --sidebar-primary: oklch(0.488 0.243 264.376);

@@ -755,11 +755,14 @@ export const useLayersStore = create<LayersState>((set, get) => {
         const all = useEffectsStore
           .getState()
           .shaders.filter((s) => s.name !== NONE_SHADER_NAME)
-        // con un filtro di famiglia attivo lo scorrimento resta dentro quella famiglia: le frecce
-        // devono muoversi in ciò che si sta guardando, non portare fuori dall'elenco filtrato
-        const category = useUiStore.getState().shaderCategory
-        const pool = category === 'all' ? all : all.filter((s) => s.category === category)
-        // famiglia vuota (non dovrebbe accadere: i pulsanti a zero non si mostrano) → tutta la libreria
+        // con un filtro attivo lo scorrimento resta dentro l'elenco filtrato: le frecce devono
+        // muoversi in ciò che si sta guardando, non portare fuori. Vale per entrambi i filtri
+        // (famiglia e comportamento O/S), che nella UI si combinano.
+        const { shaderCategory: category, shaderGroup: group } = useUiStore.getState()
+        const pool = all.filter(
+          (s) => (category === 'all' || s.category === category) && (group === null || s.group === group),
+        )
+        // selezione vuota (non dovrebbe accadere: i pulsanti a zero non si mostrano) → tutta la libreria
         const names = (pool.length > 0 ? pool : all).map((s) => s.name)
         if (names.length === 0) return {}
         const current = names.indexOf(l.shaderName)

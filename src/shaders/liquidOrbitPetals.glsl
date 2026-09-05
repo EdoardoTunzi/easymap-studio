@@ -1,4 +1,4 @@
-// NAME: Liquid Orbit Petals
+// NAME: Orbit Petals
 uniform float speed; // @min -10.0 @max 10.0 @default 3.0
 uniform float petals; // @min 2.0 @max 16.0 @default 6.0
 uniform float orbit; // @min 0.0 @max 2.0 @default 0.6

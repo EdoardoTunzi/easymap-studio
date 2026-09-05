@@ -1,4 +1,4 @@
-// NAME: Halo Concentric Pulse
+// NAME: Concentric Pulse
 uniform float seed; // @min 0.0 @max 100.0 @default 0.0
 uniform float rings; // @min 2.0 @max 40.0 @default 18.0
 uniform float colorShift; // @min 0.0 @max 10.0 @default 3.0

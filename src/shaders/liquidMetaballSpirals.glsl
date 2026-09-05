@@ -1,4 +1,4 @@
-// NAME: Liquid Metaball Spirals
+// NAME: Metaball Spirals
 uniform float speed; // @min -10.0 @max 10.0 @default 3.0
 uniform float balls; // @min 1.0 @max 6.0 @default 4.0
 uniform float radius; // @min 0.05 @max 0.6 @default 0.25

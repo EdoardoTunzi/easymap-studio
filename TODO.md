@@ -247,6 +247,51 @@ Modello: scena = pila di Layer indipendenti; ogni layer ha contenuto (img/gif/vi
 - [x] Verificato che HoverCard si apra anche da **focus di tastiera** (il `Trigger` di Radix gestisce `onFocus`), quindi la scelta del `button` come trigger in `ControlRow` conserva il suo scopo
 - [ ] Gli attributi `title=""` HTML nativi sparsi nei pulsanti non sono stati toccati: non erano `Tooltip` shadcn. Se si vuole uniformare anche quelli alla hover card è un lavoro a sé, e ce ne sono molti
 
+## Import shader da Shadertoy (27 effetti, uno alla volta)
+
+Un effetto per volta: domande sul soggetto (nome, categoria, uniform da esporre) prima di ogni implementazione, verifica in browser sempre a carico dell'utente.
+
+- [x] 1. https://www.shadertoy.com/view/ffyXWc — **saltato su richiesta dell'utente** (raymarch 3D pesante, "Inception Tunnel")
+- [x] 2. https://www.shadertoy.com/view/tsXBzS — "Fractal Pyramid" → `psyFractalPyramid.glsl` (Psy)
+- [x] 3. https://www.shadertoy.com/view/w323DK — **saltato su richiesta dell'utente** (nessun codice fornito)
+- [x] 4. https://www.shadertoy.com/view/fcyXD3 — "Wire Grid Zoom" (nome non nel codice fornito, scelto da Claude) → `psyWireGridZoom.glsl` (Psy)
+- [x] 5. https://www.shadertoy.com/view/XsXXDn — "Silexar Globe" (rinominato su richiesta dell'utente) → `psySilexarGlobe.glsl` (Psy)
+- [x] 6. https://www.shadertoy.com/view/mtyGWy — "Palette Fract Loop" (nome non nel codice fornito, scelto da Claude) → `psyPaletteFractLoop.glsl` (Psy)
+- [x] 7. https://www.shadertoy.com/view/4dcGW2 — **saltato** ("Expansive Reaction": solo il pass Image, mancano Buffer A/B con la vera simulazione)
+- [x] 8. https://www.shadertoy.com/view/sctXDn — "Kaleido Cloud Tunnel" (nome non nel codice fornito, scelto da Claude) → `psyKaleidoCloudTunnel.glsl` (Psy)
+- [x] 9. https://www.shadertoy.com/view/ftt3R7 — "Starleidoscope" → `psyStarleidoscope.glsl` (Psy)
+- [x] 10. https://www.shadertoy.com/view/7cfGzn — "Disco Sun Vortex" → `morphDiscoSunVortex.glsl` (Morph, su richiesta dell'utente)
+- [x] 11. https://www.shadertoy.com/view/sfsSDs — "Morphing Abstract" → `morphMorphingAbstract.glsl` (Morph)
+- [x] 12. https://www.shadertoy.com/view/Xtcyzr — "Lotka-Volterra" → `morphLotkaVolterra.glsl` (Morph, con stato) — **cancellato dall'utente successivamente, file non più presente**
+- [x] 13. https://www.shadertoy.com/view/ldlXRS — "Noise Animation - Electric" → `psyNoiseAnimationElectric.glsl` (Psy)
+- [x] 14. https://www.shadertoy.com/view/NddSWs — "Botanical Fireworks" → `psyBotanicalFireworks.glsl` (Psy, senza la scia temporale dell'originale)
+- [ ] 15. https://www.shadertoy.com/view/wlGXRD
+- [x] 16. https://www.shadertoy.com/view/MdBGDK — "Ribbon Assault" (nome corretto da "Ribbon assult") → `morphRibbonAssault.glsl` (Morph, su richiesta dell'utente)
+- [ ] 16. https://www.shadertoy.com/view/MdBGDK
+- [x] 17. https://www.shadertoy.com/view/ldlSzX — "Synthetic Aperture Sun" → `psySyntheticApertureSun.glsl` (Psy)
+- [x] 18. https://www.shadertoy.com/view/4l2XWK — "Bumped Sinusoidal Warp" → `morphBumpedSinusoidalWarp.glsl` (Morph, texture sostituita con l'asset stesso)
+- [x] 19. https://www.shadertoy.com/view/4sl3Dr — **saltato su richiesta dell'utente**
+- [x] 20. https://www.shadertoy.com/view/lslXRS — "Noise Animation - Lava" → `morphNoiseAnimationLava.glsl` (Morph, su richiesta dell'utente)
+- [x] 21. https://www.shadertoy.com/view/3sfczf — **saltato su richiesta dell'utente**
+- [x] 22. https://www.shadertoy.com/view/4sK3RD — **saltato su richiesta dell'utente**
+- [x] extra. "Hexagone" di Martijn Steinrucken/BigWings — fuori dai 27 link originali, codice incollato direttamente dall'utente → `psyHexagone.glsl` (Psy)
+- [x] extra. "Smooth Life" — automa cellulare continuo con stato (fuori lista, codice incollato dall'utente) → `morphSmoothLife.glsl` (Morph, famiglia Morphogen/con stato) — **cancellato dall'utente successivamente, file non più presente** (verosimilmente per il costo prestazionale segnalato)
+- [x] extra. "VHS" — filtro simil videocassetta (fuori lista, codice incollato dall'utente) → `vhs.glsl` (Altri, su richiesta dell'utente)
+- [x] Sessione conclusa qui su richiesta dell'utente: `README.md` aggiornato con il conteggio reale (123 shader: Halo 12, Liquid 12, Psy 40, Morph 31, SD 12, Altri 15, Audio 1). Restano in sospeso il 15° link (wlGXRD) e i link dal 23° al 27°
+- [x] Verificati i file `.glsl` ancora da committare dopo che l'utente ne ha cancellati due (Lotka-Volterra, Smooth Life): 16 file nuovi rimasti (`git status` → `??`), README corretto di conseguenza (i numeri erano già giusti, corretta solo la menzione testuale dei due effetti cancellati come esempi di Morph con stato)
+- [x] Rimosso il prefisso di categoria ripetuto nel `// NAME:` di tutti gli shader (es. "Psy Chrome Ripple" → "Chrome Ripple"): 90 file su 123, nessun nome duplicato risultante
+- [x] **Ritassonomia completa della libreria** (analisi di tutti i 123 shader su cosa fa il codice, non su come si chiama il file): 8 categorie → 12 su asse estetico, divise in due blocchi funzionali nel selettore — "Seguono il soggetto" (Rilievo 16, Contorni 12, Fluidi 18, Aloni 17, Morphogen 4) e "Ignorano il soggetto" (Frattali 14, Strobo 15, Tunnel 8, Plasma 14), più Audio 1 e Altri 4. `psy` (39) sciolto in 4 famiglie, "Altri" da 15 a 4, 11 Morph spostati in Fluidi/Aloni, `liquidMarble` riconosciuto come generativo
+- [x] La categoria non si deduce più dal prefisso del file ma da una mappa esplicita `MEMBERS` in `src/lib/shaderCategories.ts` (chiave = basename, **mai** la riga `// NAME:` con cui i progetti salvati referenziano l'effetto): nessun `.glsl` toccato, nessun rename, nessuna migrazione (`uiStore.shaderCategory` non è persistito). Uno shader non mappato finisce in "Altri" e in dev lo segnala con un `console.warn`
+- [x] `README.md` aggiornato con la nuova struttura (tre punti: elenco famiglie, nota sugli effetti da usare con la camera live, riepilogo finale)
+- [x] **I due blocchi "Seguono/Ignorano il soggetto" sostituiti da un filtro-leggenda**: due pulsanti in cima al selettore (**O** blu "Sull'oggetto", **S** arancione "Sullo sfondo"), esclusivi e spegnibili ri-cliccandoli; a riposo le famiglie stanno tutte in una fila piatta, premendone uno si restringono famiglie ed elenco. La stessa lettera colorata compare a destra di ogni nome in elenco (`justify-between`)
+- [x] Il gruppo O/S è una proprietà del singolo shader (`ParsedShader.group`) e si **misura dal codice** in `parseShader` — uno shader che non campiona mai `tex` non può reagire all'immagine — invece di essere dichiarato in una lista da tenere allineata. Test sul raw originale prima dello split simulazione/disegno. Risultato: 69 O, 54 S
+- [x] Token colore `--group-object` / `--group-background` in `index.css` (varianti più chiare nel tema scuro); `cycleActiveShader` rispetta i due filtri combinati; la famiglia rimasta vuota torna su "Tutti"
+- [ ] 23. https://www.shadertoy.com/view/4dlBDn
+- [ ] 24. https://www.shadertoy.com/view/wsl3WB
+- [ ] 25. https://www.shadertoy.com/view/XtdSDn
+- [ ] 26. https://www.shadertoy.com/view/XtBXDt
+- [ ] 27. https://www.shadertoy.com/view/4ldGDB
+
 ## Playlist di asset per layer
 
 - [x] Rotazione di contenuti per singolo layer da una cartella su disco (File System Access), in parallelo alla playlist degli effetti: nuova tab "Assets" nella barra playlist, store `assetPlaylistStore`, motore `use-asset-playlist.ts` (un rAF per tutti i layer, come `usePaletteLoop`), azione `setLayerMedia` per scrivere su un layer non attivo senza richiedere un fit
@@ -265,3 +310,55 @@ Modello: scena = pila di Layer indipendenti; ogni layer ha contenuto (img/gif/vi
 - [x] `transitionMode`/`transitionDuration` restano globali: sono il modo della transizione, non la sequenza, e `sync.ts` li usa anche per la dissolvenza degli invii manuali all'Output
 - [x] `snapshot()` pota le playlist (effetti e asset) dei layer eliminati: indicizzate per layer, sarebbero rimaste nello snapshot per sempre
 - [ ] Nella barra si vede solo la playlist del layer selezionato: valutare un segnale nella lista dei layer (un puntino) per quelli che hanno una sequenza in riproduzione, oggi invisibili finché non li si seleziona
+
+## Esportazione progetti come file
+
+- [x] Progetti scaricabili come `.easymap.json` **con gli asset dentro**: nuovo `src/lib/projectFile.ts` che converte i blob dei media in base64 e scarta l'handle della cartella delle playlist (non è JSON e non varrebbe nulla su un altro computer; restano `dirName` e l'elenco dei file). `StoredProject` resta la forma canonica, il modulo traduce e basta
+- [x] Conversione via `blob.arrayBuffer()` invece di `FileReader` (che esiste solo nel browser), con `String.fromCharCode` a chunk di 32 KB: lo spread di un file grande in un colpo solo fa esplodere lo stack
+- [x] Marcatore `format: 'easymap-studio/project'` + `version` nel file; l'import valida la struttura portante prima di toccare la scena e filtra il MIME dei media su `image/*`/`video/*` (il contenuto arriva da fuori e da lì si crea un blob URL). Un media corrotto diventa un layer vuoto, non un import fallito
+- [x] L'import mette il progetto **fra quelli salvati senza aprirlo** (aprire d'ufficio farebbe perdere il lavoro non salvato) e gli assegna sempre un id nuovo, così due import dello stesso file non si sovrascrivono
+- [x] UI in `ProjectsPanel`: sezione "File" con Esporta (la scena corrente, senza doverla prima salvare) e Importa, più un'icona di download su ogni riga della lista. Esito con messaggio inline: in progetto non c'è un sistema di toast e non ne è stato aggiunto uno
+- [x] Self-check senza framework: `node --experimental-strip-types src/lib/projectFile.check.ts` — round-trip byte a byte, blob oltre la soglia dei chunk, sorgente live senza file, handle escluso dal JSON, sette forme di file da respingere, MIME ostile scartato, `activeLayerId` orfano
+- [x] **Fix: l'esportazione faceva crashare la scheda.** Teneva in memoria cinque copie dello stesso contenuto (binario, stringa binaria, base64, JSON, Blob). Ora `serializeProjectFile` restituisce un `Blob` e non unisce mai il contenuto pesante: i media diventano elenchi di pezzi base64, lo scheletro JSON si serializza con dei **segnaposto** al posto dei dati (pochi KB), poi si taglia sui segnaposto e i pezzi si intercalano come parti del Blob. Blocchi da 32.766 byte, multiplo di 3 così ogni blocco si codifica senza padding e i pezzi si concatenano. Misurato: 120 MB di asset in 2,9 s, blocco massimo del thread 96 ms
+- [x] **Barra di avanzamento** dell'esportazione: `onProgress` con fasi "Conversione asset…" / "Scrittura del file…", percentuale sui byte degli asset, e resa al browser ogni ~1,6 MB — serve anche a non piantare il canvas mentre si sta proiettando. L'esito riporta la dimensione prodotta
+- [x] **Preset esportabili** in un file loro (`easymap-studio/presets`), non dentro il progetto: sono una libreria globale, e includerli darebbe i preset altrui a chi apre una scena condivisa. Esporta/Importa nel pannello preset; l'importazione riconosce il tipo dal file (un ingresso solo) e **fonde** con la libreria saltando i già presenti per nome+shader, così reimportare non crea doppioni
+- [x] **Fix: byte NUL nel sorgente.** Il segnaposto era nato con due NUL grezzi al posto degli spazi: `JSON.stringify` li rende `\u0000`, quindi il token non si ritrovava e l'export falliva sempre (e `grep` taceva, trattando il file come binario). Token di soli caratteri che JSON non escapa **e** ricerca sulla forma serializzata, così nessun carattere può più far perdere un asset in silenzio. Ripulita anche la chiave di deduplicazione dei preset; i NUL in `assetFolder.ts` restano perché lì sono un separatore deliberato e corretto
+- [ ] Il **ritorno** resta a copia unica: `file.text()` + `JSON.parse` tengono in memoria due volte il file importato. Regge molto più dell'export rotto di prima, ma su un file enorme è il prossimo punto a cedere
+- [ ] La fase "Scrittura del file…" non ha percentuale: `JSON.stringify` dello scheletro non è spezzabile. È breve perché lo scheletro è piccolo, ma su un progetto con moltissimi layer si vedrebbe
+
+## Fix regressione nomi shader (05/09)
+
+- [x] **Fix: progetti e preset non mostravano piu' nulla.** Il rename dei `// NAME:` (commit `573528e`, 90 shader su 123) aveva orfanato tutti i riferimenti salvati, che puntano allo shader **per nome**; `ShaderPlane` non disegna nulla senza shader, quindi spariva l'intero layer, asset compreso
+- [x] Recupero in `src/lib/shaderNameMigration.ts` invertendo la regola del rename (via la prima parola se e' una vecchia categoria), con due guardie: si prova prima il nome intero (cinque shader si chiamano davvero "Liquid Symmetry", "Halo Bloom", "Liquid Dunes", "Liquid Mercury", "Morph Ribbons") e si accetta l'accorciato solo se esiste. Verificato: 90/90 recuperate, 123 nomi attuali intatti
+- [x] Migrate anche le chiavi di `params`/`colorParams`, indicizzate per shaderName: senza, l'effetto tornava ma con i valori di default (perdita silenziosa). Applicato in `applyProject`, nei clip di playlist, in `applyEffectPreset` e `listEffectPresets`
+- [x] **Fix: `corners` malformato mandava in errore ogni frame** (`quadAspect` esplode su un non-array). Rilevante ora che i progetti arrivano da file esterni: guardia in `deserializeLayer`, porta comune a autosave/salvati/importati
+- [x] **Fix della guardia stessa: schiacciava tutti i layer.** Era scritta su `[x, y]` mentre `Corner` e' `{x, y}`, quindi bocciava i corner di ogni progetto e li riportava al default. Ora `isValidCorners` in `projectFile.ts` (modulo puro) con self-check sulla forma vera e su dieci varianti da rifiutare, inclusa la forma inventata. Nessun dato perso: la guardia agiva solo in lettura
+- [x] Self-check: `node --experimental-strip-types src/lib/shaderNameMigration.check.ts`
+- [ ] La migrazione gira a ogni caricamento e non viene mai persistita di proposito. Se un giorno la libreria venisse rinominata di nuovo, la regola andra' estesa invece che sostituita: i dati vecchi restano vecchi
+- [ ] Nessun avviso all'utente quando uno shader riferito non esiste piu' (per esempio cancellato): il layer resta invisibile in silenzio. Varrebbe un segnale nella lista dei layer
+
+## Pannello preset e conferme di eliminazione (05/09)
+
+- [x] Importa / Esporta tutti spostati in cima al pannello preset, sopra "Salva preset"
+- [x] Pulsante di download per riga: esporta un **singolo** preset (`exportPresetToFile`), con il nome shader migrato come in `listEffectPresets`
+- [x] Riga preset: `nome – shader` a sinistra, azioni (esporta, elimina) a destra
+- [x] Conferma di eliminazione su preset **e** progetti: `AlertDialog` shadcn, componente condiviso `components/ui/confirm-delete-dialog.tsx`
+- [x] Tolte le classi `size-4` dalle icone dei pulsanti toccati: `Button` dimensiona gia' le icone in base alla propria `size`
+- [ ] Le altre icone del progetto hanno ancora `size-4` scritto a mano: non toccate per non allargare il diff, ma la convenzione ora e' lasciar fare al Button
+
+## Self-check tipizzati (05/09)
+
+- [x] **I `*.check.ts` non erano tipizzati da nessun progetto**: esclusi da `tsconfig.app.json` e non inclusi altrove, quindi rossi nell'editor (import `.ts`, moduli `node:`) — anche `assetRotation.check.ts`, da prima. Nuovo `tsconfig.check.json` nelle `references` del root, con `types: [node, vite/client]`, `lib: [ES2023, DOM]` e `src/vite-env.d.ts` incluso
+- [x] **Errore di tipo vero emerso subito dopo**: `migrateLayerShaderNames` dichiarava di restituire `L` mentre cambia le chiavi di `params`/`colorParams`. Ora `Omit<L, …> & { … }`; il tipo mentiva e nascondeva proprio la verifica che i parametri sopravvivano al rename
+- [x] `npx tsc -b --noEmit` copre ora app **e** check; `npm run build` verificato
+
+## Spazio occupato (05/09)
+
+- [x] Piè di pagina del pannello Progetti con lo spazio occupato: totale da `navigator.storage.estimate()` (comprende cache PWA e overhead) con la quota accanto, piu' il dettaglio progetti salvati / scena in corso
+- [x] I byte dei progetti si sommano dai `Blob.size`, che e' un metadato: il conto non carica i media in memoria
+- [x] Ricalcolo dentro `refresh()`, cosi' segue salvataggi, eliminazioni e import senza gestori dedicati
+- [ ] Il totale comprende anche la cache offline della PWA, quindi resta piu' alto della somma mostrata sotto: spiegato nel tooltip, ma un giorno si potrebbe scorporare interrogando la Cache Storage API
+- [x] **Fix: la scena in corso non si aggiornava cambiando progetto.** Si misurava sull'autosave su disco (scritto con debounce): ora si legge dallo store dei layer, ed e' esatta per costruzione. Aggiunto anche il refresh dopo `loadProject`
+- [x] Piè di pagina ancorato in fondo alla colonna: il contenuto del viewport della ScrollArea e' ora una colonna flex alta almeno quanto il viewport (`min-h`, così un pannello più lungo continua a scorrere). Verificato che Effetti e Palette non ne risentano
+- [x] Le due voci del dettaglio su righe separate
+- [ ] Nessun avviso quando lo spazio si avvicina alla quota: oggi lo si legge, non lo si viene a sapere

@@ -1,4 +1,4 @@
-// NAME: Psy Digital Rain
+// NAME: Digital Rain
 uniform float speed; // @min 0.0 @max 6.0 @default 2.0
 uniform float columns; // @min 8.0 @max 120.0 @default 40.0
 uniform float trail; // @min 1.0 @max 20.0 @default 6.0

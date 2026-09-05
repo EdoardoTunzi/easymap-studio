@@ -1,4 +1,4 @@
-// NAME: Psy Fractal Flower
+// NAME: Fractal Flower
 uniform float speed; // @min 0.0 @max 2.0 @default 0.4
 uniform float petals; // @min 3.0 @max 24.0 @default 8.0
 uniform float depth; // @min 1.0 @max 6.0 @default 4.0

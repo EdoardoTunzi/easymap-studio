@@ -1,4 +1,4 @@
-// NAME: Morph Petal Bloom
+// NAME: Petal Bloom
 uniform float speed; // @min -10.0 @max 10.0 @default 1.0
 uniform float petals; // @min 3.0 @max 24.0 @default 8.0
 uniform float bloom; // @min 0.1 @max 1.5 @default 0.6

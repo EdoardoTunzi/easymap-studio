@@ -1,4 +1,4 @@
-// NAME: Morph Spiral Galaxy
+// NAME: Spiral Galaxy
 uniform float speed; // @min -10.0 @max 10.0 @default 1.5
 uniform float arms; // @min 1.0 @max 12.0 @default 3.0
 uniform float twist; // @min 0.0 @max 20.0 @default 6.0

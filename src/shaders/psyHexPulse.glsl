@@ -1,4 +1,4 @@
-// NAME: Psy Hex Pulse
+// NAME: Hex Pulse
 uniform float speed; // @min 0.0 @max 5.0 @default 1.2
 uniform float density; // @min 2.0 @max 24.0 @default 8.0
 uniform float edge; // @min 0.01 @max 0.4 @default 0.12

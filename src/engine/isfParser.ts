@@ -1,4 +1,4 @@
-import type { ShaderCategoryId } from '../lib/shaderCategories'
+import type { ShaderCategoryId, ShaderGroup } from '../lib/shaderCategories'
 
 export interface UniformControl {
   name: string
@@ -42,6 +42,14 @@ export interface ParsedShader {
   usesAudio: boolean
   /** Famiglia di appartenenza, per i filtri della libreria (vedi `shaderCategories.ts`). */
   category: ShaderCategoryId
+  /**
+   * Se l'effetto si modella sull'asset (`object`) o lo ignora riempiendo la sagoma (`background`).
+   *
+   * Si **misura dal codice** invece di dichiararla in una lista: uno shader che non campiona mai il
+   * sampler della sorgente non può, per costruzione, reagire all'immagine. Una lista a mano
+   * andrebbe fuori sincrono al primo shader modificato; questa no.
+   */
+  group: ShaderGroup
   vertexShader: string
   fragmentShader: string
   /**
@@ -476,6 +484,11 @@ export function parseShader(raw: string, category: ShaderCategoryId = 'other'): 
   const nameMatch = raw.match(NAME_RE)
   const name = nameMatch ? nameMatch[1].trim() : 'Untitled Shader'
 
+  // Prima dello split simulazione/disegno, che riscrive `raw`: un effetto potrebbe leggere la
+  // sorgente nel solo passo di simulazione, e cercarla dopo la riassegnazione lo mancherebbe.
+  // `tex` è il sampler della sorgente nella firma di processColor (identico in tutta la libreria).
+  const group: ShaderGroup = /texture2D\(\s*tex\s*,/.test(raw) ? 'object' : 'background'
+
   // Effetti con stato: il file e' diviso in tre parti — intestazione comune (uniform e helper),
   // passo di simulazione, disegno. L'intestazione finisce in ENTRAMBI i programmi, cosi' i
   // controlli dell'effetto sono leggibili sia da chi fa evolvere lo stato sia da chi lo disegna.
@@ -525,6 +538,7 @@ export function parseShader(raw: string, category: ShaderCategoryId = 'other'): 
     usesAudio,
     // gli effetti audio-reattivi hanno una famiglia propria, qualunque sia il file
     category: usesAudio ? 'audio' : category,
+    group,
     vertexShader: VERTEX_SHADER,
     fragmentShader: buildFragmentShader(raw),
     ...(simBody !== null

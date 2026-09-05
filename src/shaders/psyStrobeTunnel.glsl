@@ -1,4 +1,4 @@
-// NAME: Psy Strobe Tunnel
+// NAME: Strobe Tunnel
 uniform float speed; // @min 0.0 @max 8.0 @default 3.0
 uniform float slices; // @min 2.0 @max 40.0 @default 12.0
 uniform float strobe; // @min 0.0 @max 1.0 @default 0.7

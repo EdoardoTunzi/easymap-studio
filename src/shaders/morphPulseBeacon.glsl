@@ -1,4 +1,4 @@
-// NAME: Morph Pulse Beacon
+// NAME: Pulse Beacon
 uniform float posX; // @min 0.0 @max 1.0 @default 0.5
 uniform float posY; // @min 0.0 @max 1.0 @default 0.5
 uniform float zoomAmount; // @min 0.0 @max 1.0 @default 0.5

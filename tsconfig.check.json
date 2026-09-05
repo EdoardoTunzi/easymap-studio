@@ -1,0 +1,34 @@
+{
+  // I `*.check.ts` sono self-check che si eseguono con `node --experimental-strip-types`, non
+  // codice dell'app: `tsconfig.app.json` li esclude, ed erano quindi rimasti senza NESSUN progetto
+  // che li tipizzasse. Risultato: l'editor li segnava in rosso (import `.ts`, moduli `node:`) e
+  // soprattutto i loro errori di tipo veri non li vedeva nessuno — un test che non compila e' un
+  // test che non protegge. Questo progetto li adotta, con l'ambiente in cui girano davvero: Node.
+  "compilerOptions": {
+    "tsBuildInfoFile": "./node_modules/.tmp/tsconfig.check.tsbuildinfo",
+    "target": "es2023",
+    // DOM oltre a Node: i check girano in Node, ma i moduli dell'app che verificano
+    // dichiarano tipi del browser (Blob, BlobPart, import.meta.env)
+    "lib": ["ES2023", "DOM"],
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    "types": ["node", "vite/client"],
+    "paths": {
+      "@/*": ["./src/*"]
+    },
+    // i check importano i moduli con l'estensione esplicita, come vuole lo strip di Node
+    "allowImportingTsExtensions": true,
+    "verbatimModuleSyntax": true,
+    "moduleDetection": "force",
+    "noEmit": true,
+    "skipLibCheck": true,
+    // stessa regola dell'app: `node --experimental-strip-types` cancella i tipi, non li compila,
+    // quindi niente costrutti che richiederebbero una trasformazione (enum, namespace, parameter properties)
+    "erasableSyntaxOnly": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true
+  },
+  // il .d.ts globale serve anche qui: i check raggiungono, per import, moduli che usano le
+  // dichiarazioni della File System Access API che `lib.dom` non copre
+  "include": ["src/**/*.check.ts", "src/vite-env.d.ts"]
+}

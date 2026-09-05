@@ -1,4 +1,4 @@
-// NAME: SD Contour Map
+// NAME: Contour Map
 uniform float speed; // @min -6.0 @max 6.0 @default 1.0
 uniform float levels; // @min 2.0 @max 40.0 @default 14.0
 uniform float thickness; // @min 0.01 @max 0.6 @default 0.12

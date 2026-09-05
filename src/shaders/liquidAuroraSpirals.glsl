@@ -1,4 +1,4 @@
-// NAME: Liquid Aurora Spirals
+// NAME: Aurora Spirals
 uniform float speed; // @min -10.0 @max 10.0 @default 2.5
 uniform float bands; // @min 1.0 @max 20.0 @default 7.0
 uniform float curl; // @min 0.0 @max 20.0 @default 8.0

@@ -1,4 +1,4 @@
-// NAME: Psy Acid Melt
+// NAME: Acid Melt
 uniform float speed; // @min 0.0 @max 3.0 @default 0.8
 uniform float scale; // @min 1.0 @max 12.0 @default 4.0
 uniform float melt; // @min 0.0 @max 3.0 @default 1.4

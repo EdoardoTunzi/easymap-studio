@@ -1,4 +1,4 @@
-// NAME: Psy Sacred Geometry
+// NAME: Sacred Geometry
 uniform float speed; // @min 0.0 @max 2.0 @default 0.3
 uniform float rings; // @min 1.0 @max 8.0 @default 3.0
 uniform float radius; // @min 0.05 @max 0.5 @default 0.16

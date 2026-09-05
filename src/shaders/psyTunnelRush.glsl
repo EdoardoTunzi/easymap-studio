@@ -1,4 +1,4 @@
-// NAME: Psy Tunnel Rush
+// NAME: Tunnel Rush
 uniform float speed; // @min 0.0 @max 5.0 @default 1.5
 uniform float rings; // @min 2.0 @max 30.0 @default 10.0
 uniform float twist; // @min -4.0 @max 4.0 @default 1.0

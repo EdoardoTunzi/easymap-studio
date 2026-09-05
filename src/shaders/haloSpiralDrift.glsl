@@ -1,4 +1,4 @@
-// NAME: Halo Spiral Drift
+// NAME: Spiral Drift
 uniform float seed; // @min 0.0 @max 100.0 @default 0.0
 uniform float arms; // @min 1.0 @max 10.0 @default 4.0
 uniform float twist; // @min 0.0 @max 12.0 @default 5.0

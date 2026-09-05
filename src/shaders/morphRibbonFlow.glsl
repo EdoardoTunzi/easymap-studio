@@ -1,4 +1,4 @@
-// NAME: Morph Ribbon Flow
+// NAME: Ribbon Flow
 uniform float speed; // @min -10.0 @max 10.0 @default 2.0
 uniform float ribbons; // @min 1.0 @max 20.0 @default 6.0
 uniform float waviness; // @min 0.0 @max 4.0 @default 1.5

@@ -1,4 +1,4 @@
-// NAME: Psy Energy Web
+// NAME: Energy Web
 uniform float speed; // @min 0.0 @max 4.0 @default 1.2
 uniform float nodes; // @min 2.0 @max 8.0 @default 6.0
 uniform float thickness; // @min 0.002 @max 0.08 @default 0.03

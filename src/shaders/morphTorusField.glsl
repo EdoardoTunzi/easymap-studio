@@ -1,4 +1,4 @@
-// NAME: Morph Torus Field
+// NAME: Torus Field
 uniform float speed; // @min -10.0 @max 10.0 @default 2.0
 uniform float radius; // @min 0.05 @max 0.6 @default 0.25
 uniform float tube; // @min 2.0 @max 40.0 @default 14.0

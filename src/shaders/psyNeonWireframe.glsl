@@ -1,4 +1,4 @@
-// NAME: Psy Neon Wireframe
+// NAME: Neon Wireframe
 uniform float speed; // @min 0.0 @max 4.0 @default 1.0
 uniform float gridSize; // @min 2.0 @max 30.0 @default 12.0
 uniform float horizon; // @min 0.1 @max 0.9 @default 0.5

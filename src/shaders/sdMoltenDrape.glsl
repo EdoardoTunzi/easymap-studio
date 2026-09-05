@@ -1,4 +1,4 @@
-// NAME: SD Molten Drape
+// NAME: Molten Drape
 uniform float speed; // @min -6.0 @max 6.0 @default 1.2
 uniform float flowScale; // @min 1.0 @max 30.0 @default 8.0
 uniform float dripAmount; // @min 0.0 @max 4.0 @default 1.5

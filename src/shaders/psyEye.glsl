@@ -1,4 +1,4 @@
-// NAME: Psy Eye
+// NAME: Eye
 uniform float speed; // @min 0.0 @max 3.0 @default 0.6
 uniform float irisDetail; // @min 4.0 @max 60.0 @default 24.0
 uniform float pupilSize; // @min 0.02 @max 0.3 @default 0.1

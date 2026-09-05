@@ -1,4 +1,4 @@
-// NAME: Morph Lightning Web
+// NAME: Lightning Web
 uniform float speed; // @min -10.0 @max 10.0 @default 2.0
 uniform float branches; // @min 1.0 @max 12.0 @default 5.0
 uniform float sharpness; // @min 1.0 @max 12.0 @default 5.0

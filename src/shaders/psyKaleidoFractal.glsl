@@ -1,4 +1,4 @@
-// NAME: Psy Kaleido Fractal
+// NAME: Kaleido Fractal
 uniform float speed; // @min 0.0 @max 2.0 @default 0.5
 uniform float segments; // @min 3.0 @max 20.0 @default 6.0
 uniform float iterations; // @min 2.0 @max 12.0 @default 7.0
