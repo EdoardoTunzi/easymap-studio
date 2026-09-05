@@ -75,45 +75,30 @@ Il progetto si salva da solo in locale e funziona offline: a bordo palco la rete
 
 Le operazioni che si ripetono durante una performance non passano dal mouse.
 
-| Tasto | Azione |
-| --- | --- |
-| `⌥A` / `⌥S` | Effetto precedente / successivo |
-| `Spazio` | Manda all'Output le modifiche in sospeso (in modalità Live) |
-| `↑ ↓ ← →` | Sposta l'angolo selezionato o l'intera proiezione (`Shift` = ×5) |
-| `Spazio` + trascina | Pan dell'anteprima (o tasto centrale) |
-| Rotellina | Zoom dell'anteprima |
-| `⌘B` / `Ctrl+B` | Mostra/nasconde il pannello laterale |
-| `F` · `S` · `C` | Sulla finestra di proiezione: pieno schermo · diagnostica · cartello di prova |
-
----
-
-## Sotto il cofano
-
-Le scelte che spiegano perché l'app si comporta così. I ragionamenti completi stanno in `MEMORY.md`.
-
-- **Shader in stile ISF**: un file `.glsl` con uniform commentati (`// @min @max @default`) genera da solo slider e color picker. Aggiungere un effetto non richiede di toccare React.
-- **Maschera automatica**: il wrapper GLSL moltiplica sempre l'alpha finale per quello della sorgente, quindi ogni effetto resta dentro i bordi dell'immagine qualunque cosa faccia.
-- **Controlli globali nel wrapper**, applicati attorno a `processColor`: ogni nuovo shader li eredita senza prevederli. Con 123 effetti, aggiungerli uno per uno non sarebbe stato sostenibile.
-- **Due finestre sincronizzate** via `BroadcastChannel`: Control pubblica la scena, Output la specchia. Una sorgente live non è serializzabile, quindi viaggia solo l'id del device e l'Output apre la camera per conto suo — nessun frame inoltrato, nessuna latenza aggiunta.
-- **Compositore a due passaggi**: la scena passa da un buffer a mezza precisione float prima dello schermo. È ciò che rende possibili supersampling, dithering e sfondamento controllato delle alte luci.
-- **Supersampling fermo a 2×**, per misura e non per prudenza: a 2× il costo è nullo (126 fps contro 124), a 3× e 4× gli fps crollano senza guadagno visibile sul proiettore, dove il limite diventa l'ottica.
-- **Blend mode su due strade**: quattro li calcola il blending hardware a costo zero; gli altri nove devono leggere il colore sottostante, quindi la mesh copia lo schermo subito prima di disegnarsi — nessun costo per le scene che non li usano.
-- **Tutto in spazio gamma**: le texture non vengono linearizzate, perché la conversione inversa avverrebbe solo a metà pipeline e le mezze luci finirebbero schiacciate verso il nero.
+| Tasto               | Azione                                                                        |
+| ------------------- | ----------------------------------------------------------------------------- |
+| `⌥A` / `⌥S`         | Effetto precedente / successivo                                               |
+| `Spazio`            | Manda all'Output le modifiche in sospeso (in modalità Live)                   |
+| `↑ ↓ ← →`           | Sposta l'angolo selezionato o l'intera proiezione (`Shift` = ×5)              |
+| `Spazio` + trascina | Pan dell'anteprima (o tasto centrale)                                         |
+| Rotellina           | Zoom dell'anteprima                                                           |
+| `⌘B` / `Ctrl+B`     | Mostra/nasconde il pannello laterale                                          |
+| `F` · `S` · `C`     | Sulla finestra di proiezione: pieno schermo · diagnostica · cartello di prova |
 
 ---
 
 ## Stack
 
-| Ambito | Tecnologie |
-| --- | --- |
-| Framework | React 19, TypeScript, Vite 8 |
-| Rendering | Three.js, React Three Fiber, GLSL (parser ISF-like proprietario) |
-| Stato | Zustand |
-| Persistenza | IndexedDB (`idb`), autosave, export/import su file JSON |
-| UI | Tailwind CSS v4, shadcn/ui (Radix), lucide-react |
-| Sync finestre | `BroadcastChannel` |
-| Media | `VideoTexture`, `gifuct-js`, `getUserMedia` |
-| Offline | `vite-plugin-pwa` |
+| Ambito        | Tecnologie                                                       |
+| ------------- | ---------------------------------------------------------------- |
+| Framework     | React 19, TypeScript, Vite 8                                     |
+| Rendering     | Three.js, React Three Fiber, GLSL (parser ISF-like proprietario) |
+| Stato         | Zustand                                                          |
+| Persistenza   | IndexedDB (`idb`), autosave, export/import su file JSON          |
+| UI            | Tailwind CSS v4, shadcn/ui (Radix), lucide-react                 |
+| Sync finestre | `BroadcastChannel`                                               |
+| Media         | `VideoTexture`, `gifuct-js`, `getUserMedia`                      |
+| Offline       | `vite-plugin-pwa`                                                |
 
 ---
 
