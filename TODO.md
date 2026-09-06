@@ -13,6 +13,8 @@ Spuntare gli step completati; aggiungere nuovi step quando emergono. Tenere alli
 - [x] Fix Live: i cambi di clip della playlist effetti (e le colonne combo) vanno in onda anche in Live via `publishSceneTick`, come già palette e asset
 - [x] Fix Live: l'Output riceve il look d'arrivo senza `transition` congelata, e i frame di crossfade non accendono il badge "Esegui in output"
 - [x] Combo: durata regolabile trascinando il bordo destro della colonna (larghezza proporzionale alla durata, come i clip) e intestazione convertita a `Button` shadcn
+- [x] Dissolvenza su ogni cambio di scena in Output: fix del crossfade combo ucciso da `stopConflicts`, fade in/out dei layer che entrano ed escono dalla scena, mixing congelato nel passaggio uscente, invio unico con `layerFade` animato dall'Output
+- [ ] Playlist di asset: il cambio di clip resta un taglio secco (serve un crossfade fra due texture nel wrapper GLSL)
 - [ ] Combo: editor completo dei parametri nella cella (estrarre `EffectFields` da `ClipEditor`) — solo se la ricattura dal layer non basta
 - [ ] Combo: lazy-load delle miniature con `useInView` se aprire la tab con molte colonne scatta
 - [x] Canvas R3F con ShaderMaterial e primo shader GLSL (Symmetrical Halo Swirl)

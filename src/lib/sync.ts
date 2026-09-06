@@ -45,6 +45,14 @@ interface Payload {
    * istantanei, altrimenti ogni movimento di slider arriverebbe smorzato e in ritardo.
    */
   fadeDuration: number
+  /**
+   * La dissolvenza è per-layer (transizioni già dentro `layers`, che l'Output anima da sé) invece
+   * che di scena. La usano i motori automatici: cambiano SOLO l'effetto di alcuni layer, quindi
+   * duplicare l'intera scena costerebbe il doppio della GPU e, per un layer con video o GIF,
+   * farebbe ripartire da zero una seconda istanza del media proprio mentre è a piena opacità.
+   * Il crossfade di scena resta per gli invii manuali, dove può cambiare qualsiasi cosa.
+   */
+  layerFade?: boolean
 }
 
 /** Durata della dissolvenza scelta nella barra playlist (0 se la transizione è impostata su "secca"). */
@@ -80,22 +88,34 @@ let paletteTickInFlight = false
 /** Come `paletteTickInFlight`, per i cambi di clip della playlist di asset. */
 let mediaTickInFlight = false
 
-/** `publishNow` del publisher montato, esposto ai motori automatici (vedi `publishSceneTick`). */
-let publishNowRef: ((fadeDuration: number) => void) | null = null
+/** Come sopra, per i cambi di scena dei motori automatici: li pubblica `airScene`, una volta sola. */
+let sceneTickInFlight = false
+
+/** `publishNow` del publisher montato, esposto ai motori automatici (vedi `airScene`). */
+let publishNowRef: ((fadeDuration: number, layerFade?: boolean) => void) | null = null
 
 /**
- * Manda in onda un cambio di scena automatico (clip di playlist, colonna di combo).
+ * Manda in onda un cambio di scena automatico (clip di playlist, colonna di combo): applica il
+ * cambio nel Control e spedisce all'Output **la scena d'arrivo con la sua dissolvenza**, un
+ * messaggio solo.
  *
  * Stesso ragionamento di `applyPaletteTick`/`applyAssetTick`: non è una modifica in preparazione,
- * è la scena già in onda che avanza — quindi viaggia anche in Live, senza accendere il badge
- * delle modifiche non inviate. A differenza di quelli non ha un payload leggero: cambia
- * l'effetto di più layer insieme, e succede ogni N secondi, non trenta volte al secondo.
+ * è la scena già in onda che avanza, quindi viaggia anche in Live senza accendere il badge delle
+ * modifiche non inviate.
+ *
+ * Perché non lasciar fare al mirroring, fuori da Live: il publisher rispecchia ogni scrittura,
+ * quindi il crossfade arrivava al proiettore come ~60 invii dell'intera scena al secondo, e la
+ * sua fluidità dipendeva dal canale invece che dal suo frame loop. Ora l'Output riceve il punto
+ * d'arrivo e anima da sé, esattamente come già faceva in Live.
  */
-export function publishSceneTick(fadeDuration = 0) {
-  // fuori da Live il publisher specchia già ogni scrittura, crossfade per-layer compreso: un
-  // secondo invio con dissolvenza farebbe partire un fade di scena sopra quello già in corso
-  if (!useOutputStore.getState().live) return
-  publishNowRef?.(fadeDuration)
+export function airScene(apply: () => void, fadeDuration = 0) {
+  sceneTickInFlight = true
+  try {
+    apply()
+  } finally {
+    sceneTickInFlight = false
+  }
+  publishNowRef?.(fadeDuration, true)
 }
 
 /**
@@ -179,54 +199,69 @@ export function useBroadcastPublisher() {
     const channel = new BroadcastChannel(CHANNEL_NAME)
     controlChannel = channel
 
-    const buildPayload = (fadeDuration = 0): Payload => {
+    /** Stato d'arrivo di un layer: dissolvenze chiuse, e chi stava uscendo dalla scena spento. */
+    const settled = (l: Layer) =>
+      l.transition ? { ...l, transition: null, visible: l.transition.mode === 'out' ? false : l.visible } : l
+
+    const buildPayload = (fadeDuration = 0, layerFade = false): Payload => {
       const { layers, activeLayerId, testPattern } = useLayersStore.getState()
-      // In Live, e in ogni invio con dissolvenza, l'Output non riceve i frame del crossfade
-      // per-layer (`setTransitionProgress` non viaggia): un `transition` spedito resterebbe
-      // congelato lì a progress 0, cioè sull'effetto USCENTE. Si spedisce il look d'arrivo e la
-      // dissolvenza la fa l'Output con fadeDuration.
-      const strip = fadeDuration > 0 || useOutputStore.getState().live
+      // I frame di una dissolvenza non viaggiano (`setTransitionProgress` non si pubblica): un
+      // `transition` spedito e mai avanzato resterebbe congelato sull'effetto USCENTE. Quindi o
+      // si manda lo stato d'arrivo (e la dissolvenza la fa l'Output di scena), oppure — con
+      // `layerFade` — si mandano le transizioni appena nate e l'Output le anima lui.
+      const strip = !layerFade && (fadeDuration > 0 || useOutputStore.getState().live)
       const out = stripBlobs(layers)
       return {
         type: 'state',
-        layers: strip ? out.map((l) => (l.transition ? { ...l, transition: null } : l)) : out,
+        layers: strip ? out.map(settled) : out,
         activeLayerId,
         testPattern,
         fadeDuration,
+        layerFade,
       }
     }
 
     // ultimo stato effettivamente inviato: risponde agli "hello" delle finestre Output appena aperte
     let lastPayload = buildPayload()
 
-    const publishNow = (fadeDuration = 0) => {
-      const payload = buildPayload(fadeDuration)
+    const publishNow = (fadeDuration = 0, layerFade = false) => {
+      const payload = buildPayload(fadeDuration, layerFade)
       channel.postMessage(payload)
-      // memorizzato senza dissolvenza: una finestra Output aperta più tardi deve trovarsi
-      // subito la scena, non riprodurre la transizione di un invio già avvenuto
-      lastPayload = { ...payload, fadeDuration: 0 }
+      // memorizzato senza dissolvenza e a dissolvenza conclusa: una finestra Output aperta più
+      // tardi deve trovarsi subito la scena d'arrivo, non rigiocare una transizione già avvenuta
+      lastPayload = { ...payload, fadeDuration: 0, layerFade: false, layers: payload.layers.map(settled) }
       useOutputStore.getState().clearDirty()
     }
 
-    /** I due elenchi differiscono solo per `transition` (frame di un crossfade per-layer)? */
-    const onlyTransitionChanged = (a: Layer[], b: Layer[]) =>
+    /**
+     * I due elenchi differiscono solo per i frame di una dissolvenza per-layer? Oltre a
+     * `transition` si tollera lo spegnimento con cui si chiude una dissolvenza in uscita: è
+     * l'ultimo fotogramma dell'animazione, non una modifica della scena.
+     */
+    const onlyFadeFrame = (a: Layer[], b: Layer[]) =>
       a.length === b.length &&
       a.every((la, i) => {
         const lb = b[i]
         if (la === lb) return true
-        for (const k of Object.keys(la) as (keyof Layer)[]) if (k !== 'transition' && la[k] !== lb[k]) return false
+        const closingOut = la.transition?.mode === 'out' && !lb.visible
+        for (const k of Object.keys(la) as (keyof Layer)[]) {
+          if (k === 'transition') continue
+          if (k === 'visible' && closingOut) continue
+          if (la[k] !== lb[k]) return false
+        }
         return true
       })
 
     // ad ogni modifica dei layer: se Live, marca "in sospeso"; altrimenti invia subito
     const onLayersChange = (state: LayersSnapshot, prev: LayersSnapshot) => {
-      if (paletteTickInFlight || mediaTickInFlight) return // già in viaggio sul suo canale dedicato
-      if (useOutputStore.getState().live) {
-        // un frame di crossfade è la scena in onda che si anima, non una modifica da inviare:
-        // altrimenti ogni playlist in Live terrebbe acceso il badge "Esegui in output"
-        if (state.layers !== prev.layers && onlyTransitionChanged(prev.layers, state.layers)) return
-        useOutputStore.getState().markDirty()
-      } else publishNow()
+      // già in viaggio sul suo canale dedicato (o, per la scena, spedito da `airScene`)
+      if (paletteTickInFlight || mediaTickInFlight || sceneTickInFlight) return
+      // un frame di dissolvenza è la scena in onda che si anima, non una modifica: in Live
+      // terrebbe acceso il badge "Esegui in output", fuori da Live ripubblicherebbe l'intera
+      // scena a ogni frame, scavalcando la dissolvenza che l'Output sta già animando da sé
+      if (state.layers !== prev.layers && onlyFadeFrame(prev.layers, state.layers)) return
+      if (useOutputStore.getState().live) useOutputStore.getState().markDirty()
+      else publishNow()
     }
     const unsubLayers = useLayersStore.subscribe(onLayersChange)
 
@@ -299,6 +334,24 @@ export function useBroadcastSubscriber() {
     const channel = new BroadcastChannel(CHANNEL_NAME)
     let fadeRaf: number | null = null
 
+    /**
+     * Anima le dissolvenze per-layer arrivate dentro la scena (`layerFade`). Stesso motore del
+     * crossfade di scena, ma qui a sfumare è il solo effetto dei layer che sono cambiati: gli
+     * altri, i media e il mapping restano dove sono.
+     */
+    const runLayerFade = (durationSec: number) => {
+      if (fadeRaf != null) cancelAnimationFrame(fadeRaf)
+      const start = performance.now()
+      const durationMs = durationSec * 1000
+      const step = (now: number) => {
+        const progress = Math.min(1, (now - start) / durationMs)
+        // a 1 le transizioni si chiudono, e i layer usciti dalla scena si spengono
+        useLayersStore.getState().setTransitionProgress(progress)
+        fadeRaf = progress < 1 ? requestAnimationFrame(step) : null
+      }
+      fadeRaf = requestAnimationFrame(step)
+    }
+
     /** Anima il crossfade della scena; un nuovo invio durante la dissolvenza la fa ripartire. */
     const runFade = (durationSec: number) => {
       if (fadeRaf != null) cancelAnimationFrame(fadeRaf)
@@ -337,9 +390,15 @@ export function useBroadcastSubscriber() {
         return
       }
       if (event.data?.type !== 'state') return
-      const { layers, activeLayerId, testPattern, fadeDuration } = event.data
+      const { layers, activeLayerId, testPattern, fadeDuration, layerFade } = event.data
       if (layers) {
-        if (fadeDuration > 0) {
+        if (fadeDuration > 0 && layerFade) {
+          // setScene chiude un eventuale crossfade di scena: le transizioni appena arrivate
+          // (progress 0) diventano l'unica dissolvenza in corso
+          if (fadeRaf != null) cancelAnimationFrame(fadeRaf)
+          useLayersStore.getState().setScene(layers, activeLayerId)
+          runLayerFade(fadeDuration)
+        } else if (fadeDuration > 0) {
           useLayersStore.getState().beginSceneCrossfade(layers, activeLayerId)
           runFade(fadeDuration)
         } else {

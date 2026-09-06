@@ -3,7 +3,7 @@ import { comboCues, useComboStore } from '@/store/comboStore'
 import { useLayersStore } from '@/store/layersStore'
 import { usePlaylistStore } from '@/store/playlistStore'
 import { useUiStore } from '@/store/uiStore'
-import { publishSceneTick } from '@/lib/sync'
+import { airScene } from '@/lib/sync'
 
 /** rAF della dissolvenza in corso: una scena, un fade, tutti i layer insieme. */
 let fadeRaf = 0
@@ -41,10 +41,10 @@ export function launchCombo(comboId: string) {
   stopConflicts()
   const { transitionMode, transitionDuration } = usePlaylistStore.getState()
   const smooth = transitionMode === 'smooth'
-  useLayersStore.getState().applyScene(comboCues(combo), smooth)
+  // in onda anche in Live: una colonna lanciata è la scena che cambia, non una modifica in
+  // preparazione. L'Output riceve la scena d'arrivo e la dissolvenza la anima da sé
+  airScene(() => useLayersStore.getState().applyScene(comboCues(combo), smooth), smooth ? transitionDuration : 0)
   useComboStore.getState().setCurrentCombo(comboId)
-  // in onda anche in Live: una colonna lanciata è la scena che cambia, non una modifica in preparazione
-  publishSceneTick(smooth ? transitionDuration : 0)
   if (smooth) animateTransition(transitionDuration)
 }
 

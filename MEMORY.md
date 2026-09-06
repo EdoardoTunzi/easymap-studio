@@ -2,6 +2,37 @@
 
 Ogni modifica al progetto va registrata qui con data, descrizione e motivazione. Le voci più recenti in alto dentro ogni giornata.
 
+## 2026-09-06 — Ogni cambio di scena arriva all'Output in dissolvenza
+
+**Cosa.** Quattro interventi sulla stessa catena.
+
+1. `use-effect-playlist.ts`: il cleanup chiudeva i crossfade con `setTransitionProgress(1)` **senza
+   layerId**, cioè su tutti i layer. `launchCombo` ferma le playlist (`stopConflicts`) un attimo
+   prima di applicare la scena, quindi il cleanup di React arrivava *dopo* `applyScene` e uccideva
+   la dissolvenza appena nata: taglio secco. Ora chiude solo i propri layer.
+2. `layersStore.applyScene` + `ShaderPlane`: `LayerTransition` ha un `mode` (`cross`/`in`/`out`).
+   Un layer che esce dalla scena non si spegne più di colpo — sfuma e `setTransitionProgress` lo
+   spegne a dissolvenza finita; uno che entra sale da trasparente invece di comparire di scatto
+   (prima `smooth && l.visible` saltava del tutto la transizione).
+3. La transizione congela anche `opacity`, `blendMode` e `fx`: il passaggio uscente veniva
+   disegnato con il mixing della scena NUOVA, cioè con uno strappo al primo fotogramma.
+4. `sync.ts`: `publishSceneTick` diventa `airScene`, che applica il cambio e lo spedisce **una
+   volta sola** con la sua durata (`layerFade: true`), Live o no. Prima, fuori da Live, il
+   publisher rispecchiava ogni scrittura: il crossfade arrivava al proiettore come ~60 invii
+   dell'intera scena al secondo. L'Output ora riceve le transizioni appena nate e le anima da sé
+   con `runLayerFade`. Il crossfade di *scena* (`beginSceneCrossfade`) resta agli invii manuali,
+   dove può cambiare qualsiasi cosa: per un cambio di solo effetto duplicherebbe la scena, e con
+   un video a bordo ne creerebbe una seconda istanza che riparte da zero.
+   Anche il primo clip di una playlist ora entra in dissolvenza invece che secco.
+
+**Perché.** In Output il cambio di colonna era uno stacco netto con lampo scuro — inaccettabile
+durante un live. Verificato a video: un solo messaggio per cambio (`layerFade: true`), i due
+effetti sovrapposti a metà dissolvenza, `out`/`in` che arrivano al proiettore e si chiudono
+spegnendo il layer. Mirroring dell'editing, modalità Live e "Esegui in output" invariati.
+
+**Resta secco:** il cambio di clip della playlist di **asset** (il media si sostituisce, la
+transizione per-layer trasporta solo l'effetto).
+
 ## 2026-09-06 — Combo: durata trascinabile dal bordo destro + header shadcn
 
 **Cosa.** In `ComboBar.tsx` la colonna combo è larga quanto dura (`duration * PX_PER_SEC`, minimo

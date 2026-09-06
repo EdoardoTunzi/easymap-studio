@@ -98,6 +98,23 @@ export interface SceneCue {
 export interface LayerTransition extends EffectSnapshot {
   /** Avanzamento della dissolvenza 0..1 (0 = solo vecchio effetto, 1 = solo nuovo). */
   progress: number
+  /**
+   * Che tipo di dissolvenza è:
+   * - `cross` (default): un effetto lascia il posto a un altro sullo stesso layer;
+   * - `in`: il layer entra nella scena e sale da trasparente (il passaggio uscente non esiste);
+   * - `out`: il layer esce dalla scena, scende a trasparente e **solo allora** si spegne.
+   *
+   * `in`/`out` esistono perché spegnere e riaccendere `visible` di colpo non è solo brutto: la
+   * mesh si smonta, e al rientro Three ricompila il programma GLSL proprio durante il cambio.
+   */
+  mode?: 'cross' | 'in' | 'out'
+  /**
+   * Mixing di partenza, congelato all'istante del cambio. Senza, l'effetto uscente verrebbe
+   * disegnato con opacità, blend e controlli globali della scena NUOVA: uno strappo al frame 0.
+   */
+  opacity?: number
+  blendMode?: BlendMode
+  fx?: FxControls
 }
 
 /**
@@ -315,6 +332,22 @@ function applyMappingSnapshot(layers: Layer[], snap: MappingSnapshot) {
           }
         : l,
     ),
+  }
+}
+
+/** Il look attuale del layer congelato in una dissolvenza che parte adesso. */
+function transitionFrom(l: Layer, mode: LayerTransition['mode'] = 'cross'): LayerTransition {
+  return {
+    shaderName: l.shaderName,
+    params: { ...(l.params[l.shaderName] ?? {}) },
+    colors: { ...(l.colorParams[l.shaderName] ?? {}) },
+    size: l.size,
+    palette: clonePalette(l.palette),
+    progress: 0,
+    mode,
+    opacity: l.opacity,
+    blendMode: l.blendMode,
+    fx: { ...l.fx },
   }
 }
 
@@ -1104,16 +1137,7 @@ export const useLayersStore = create<LayersState>((set, get) => {
         return {
           layers: state.layers.map((l) => {
             if (!targets.has(l.id)) return l
-            const transition: LayerTransition | null = smooth
-              ? {
-                  shaderName: l.shaderName,
-                  params: { ...(l.params[l.shaderName] ?? {}) },
-                  colors: { ...(l.colorParams[l.shaderName] ?? {}) },
-                  size: l.size,
-                  palette: clonePalette(l.palette),
-                  progress: 0,
-                }
-              : null
+            const transition = smooth ? transitionFrom(l) : null
             return {
               ...l,
               shaderName: effect.shaderName,
@@ -1135,7 +1159,8 @@ export const useLayersStore = create<LayersState>((set, get) => {
           layers: state.layers.map((l) =>
             affected(l)
               ? progress >= 1
-                ? { ...l, transition: null }
+                // il layer che stava uscendo dalla scena si spegne solo ORA, a dissolvenza finita
+                ? { ...l, transition: null, visible: l.transition!.mode === 'out' ? false : l.visible }
                 : { ...l, transition: { ...l.transition!, progress } }
               : l,
           ),
@@ -1148,21 +1173,15 @@ export const useLayersStore = create<LayersState>((set, get) => {
         return {
           layers: state.layers.map((l) => {
             const cue = byId.get(l.id)
-            // cella vuota o inesistente: il layer non fa parte di questa scena
-            if (!cue) return l.visible ? { ...l, visible: false, transition: null } : l
-            // il crossfade ha senso solo se il layer era GIÀ a schermo: da spento, l'effetto
-            // uscente comparirebbe per un istante prima di dissolversi
-            const transition: LayerTransition | null =
-              smooth && l.visible
-                ? {
-                    shaderName: l.shaderName,
-                    params: { ...(l.params[l.shaderName] ?? {}) },
-                    colors: { ...(l.colorParams[l.shaderName] ?? {}) },
-                    size: l.size,
-                    palette: clonePalette(l.palette),
-                    progress: 0,
-                  }
-                : null
+            // cella vuota o inesistente: il layer non fa parte di questa scena. Non si spegne di
+            // colpo — sfuma in uscita e resta acceso finché la dissolvenza non finisce
+            if (!cue) {
+              if (!l.visible) return l
+              return smooth ? { ...l, transition: transitionFrom(l, 'out') } : { ...l, visible: false, transition: null }
+            }
+            // da spento il layer sale da trasparente: un crossfade mostrerebbe per un istante
+            // l'effetto che aveva prima di essere spento
+            const transition = smooth ? transitionFrom(l, l.visible ? 'cross' : 'in') : null
             return {
               ...l,
               visible: true,
