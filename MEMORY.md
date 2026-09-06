@@ -2,6 +2,29 @@
 
 Ogni modifica al progetto va registrata qui con data, descrizione e motivazione. Le voci più recenti in alto dentro ogni giornata.
 
+## 2026-09-06 — Dieci varianti di Radial Kaleido
+
+**Cosa.** `src/shaders/haloRadialKaleido2..11.glsl` (nomi "Radial Kaleido 2" … "Radial Kaleido 11"),
+registrati nella famiglia `halo` di `shaderCategories.ts`. Tutti campionano `tex`, quindi il parser
+li classifica da solo come **Sull'oggetto**: la piega segmentale resta modulata dalla sorgente
+(luminanza come rilievo, canali RGB come sfasamento) e continua a "vestire" la statua come
+l'originale.
+
+**Perché così.** Ognuna cambia *un solo meccanismo* dello scheletro originale (piega a N segmenti →
+pattern → palette → blend su `smoothstep(lum)`), così le varianti restano riconoscibili come
+famiglia invece di essere dieci effetti scollegati: 2 spirale logaritmica, 3 anelli pulsanti con
+rilievo, 4 dispersione prismatica per canale, 5 doppio rosone controrotante, 6 faccette a celle
+polari, 7 raggi a stella, 8 imbuto 1/r, 9 dominio deformato da value noise, 10 moiré fra due
+frequenze, 11 filigrana a linee sottili.
+
+**Controlli.** 11–12 per effetto contro i 6 dell'originale: oltre a `seed/segments/colorShift/
+intensity/speed`, ogni variante espone i suoi parametri specifici più `hue`/`sat` sulla palette.
+**Nessun `mirror`**, per scelta esplicita: nelle varianti la simmetria la fa già la piega radiale.
+
+**Verifica.** Compilazione dei fragment shader in un contesto WebGL della pagina: 11/11 OK
+(l'originale incluso come riferimento), tutti `group: object`. Reso a schermo controllato su
+"Radial Kaleido 6".
+
 ## 2026-09-06 — Combo: colonna dei controlli compattata
 
 **Cosa.** Nella tab Combo, il trasporto (Cattura scena, Play, Repeat, Importa, Esporta) era una

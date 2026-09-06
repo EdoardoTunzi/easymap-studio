@@ -368,3 +368,12 @@ Un effetto per volta: domande sul soggetto (nome, categoria, uniform da esporre)
 - [x] Piè di pagina ancorato in fondo alla colonna: il contenuto del viewport della ScrollArea e' ora una colonna flex alta almeno quanto il viewport (`min-h`, così un pannello più lungo continua a scorrere). Verificato che Effetti e Palette non ne risentano
 - [x] Le due voci del dettaglio su righe separate
 - [ ] Nessun avviso quando lo spazio si avvicina alla quota: oggi lo si legge, non lo si viene a sapere
+
+## Varianti Radial Kaleido (06/09)
+
+- [x] 10 nuovi shader `haloRadialKaleido2..11.glsl`, famiglia Halo, gruppo "Sull'oggetto"
+- [x] Registrati in `MEMBERS.halo` di `src/lib/shaderCategories.ts`
+- [x] Controlli estesi (11–12 per effetto) con `hue`/`sat` sulla palette; nessun `mirror`
+- [x] Compilazione verificata in WebGL (11/11) e reso controllato a schermo
+- [ ] Solo "Radial Kaleido 6" è stato guardato dal vivo: le altre nove meritano un giro sui parametri estremi (segments alti, zoom basso) per scovare aliasing
+
