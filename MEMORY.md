@@ -2,6 +2,24 @@
 
 Ogni modifica al progetto va registrata qui con data, descrizione e motivazione. Le voci più recenti in alto dentro ogni giornata.
 
+## 2026-09-06 — Combo: durata trascinabile dal bordo destro + header shadcn
+
+**Cosa.** In `ComboBar.tsx` la colonna combo è larga quanto dura (`duration * PX_PER_SEC`, minimo
+96px) e ha una maniglia di resize sul bordo destro, identica a quella dei clip: trascinando si
+cambia la durata 1:1 col puntatore. L'input numerico nel popover delle opzioni resta e i due
+percorsi scrivono sullo stesso `setComboDuration`, quindi sono sempre sincronizzati. La durata è
+ora scritta nell'intestazione e le azioni in hover (tre puntini) si nascondono durante il
+trascinamento, altrimenti coprirebbero proprio il numero che sta cambiando. L'intestazione-pulsante
+di lancio è diventata un `Button` shadcn (`variant="secondary"`, `size="sm"`, anello primario sulla
+colonna in onda) al posto del `<button>` con classi custom. `PX_PER_SEC` è stato spostato da
+`PlaylistBar.tsx` a `playlistStore.ts` perché ora lo usano entrambe le barre.
+
+**Perché.** La durata si regolava solo aprendo un popover e digitando un numero: due click e una
+tastiera per un valore che nel live si aggiusta a occhio. Il gesto diretto era già lì per i clip
+effetti, mancava solo alle combo — stessa timeline, stessa scala, stessa manipolazione. La
+larghezza proporzionale, poi, rende leggibile la sequenza a colpo d'occhio: una colonna lunga *è*
+una scena lunga.
+
 ## 2026-09-06 — Dieci varianti di Radial Kaleido
 
 **Cosa.** `src/shaders/haloRadialKaleido2..11.glsl` (nomi "Radial Kaleido 2" … "Radial Kaleido 11"),

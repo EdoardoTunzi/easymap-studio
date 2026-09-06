@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from "react";
+import { useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import { Camera, Copy, Download, Eraser, MoreHorizontal, Pause, Play, RefreshCw, Repeat, Send, Trash2, Upload } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -10,7 +10,7 @@ import { ConfirmDeleteDialog } from "@/components/ui/confirm-delete-dialog";
 import { cn } from "@/lib/utils";
 import { BLEND_MODES, useLayersStore, type BlendMode } from "@/store/layersStore";
 import { useComboStore, type Combo, type ComboCell } from "@/store/comboStore";
-import { MIN_CLIP_DURATION } from "@/store/playlistStore";
+import { MIN_CLIP_DURATION, PX_PER_SEC } from "@/store/playlistStore";
 import { launchCombo } from "@/hooks/use-combo";
 import { effectThumbnail } from "@/engine/effectThumbnail";
 import { detectFileKind, ProjectFileError } from "@/lib/projectFile";
@@ -18,6 +18,9 @@ import { exportCombosToFile, importFromJson } from "@/lib/persistence";
 import { downloadBlob } from "@/lib/download";
 
 const cellKey = (comboId: string, layerId: string) => `${comboId} ${layerId}`;
+
+/** Larghezza minima di una colonna: sotto questa soglia nome e miniature non si leggono più. */
+const MIN_COMBO_PX = 96;
 
 /** Bottone-icona delle azioni in hover, identico a quello dei clip. */
 const hoverAction =
@@ -179,6 +182,25 @@ function ComboColumn({
   const removeCombo = useComboStore((s) => s.removeCombo);
   const [menuOpen, setMenuOpen] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [resizing, setResizing] = useState(false);
+
+  // stessa gestualità dei clip: la colonna è larga quanto dura e il bordo destro la allunga
+  // seguendo il puntatore 1:1, senza attese e senza aprire il popover delle opzioni
+  const handleResizeStart = (e: ReactPointerEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const startX = e.clientX;
+    const startDuration = combo.duration;
+    setResizing(true);
+    const onMove = (ev: PointerEvent) => setComboDuration(combo.id, startDuration + (ev.clientX - startX) / PX_PER_SEC);
+    const onUp = () => {
+      setResizing(false);
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+    };
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+  };
 
   return (
     <div
@@ -190,35 +212,36 @@ function ComboColumn({
       }}
       onDrop={onDrop}
       onDragEnd={onDragEnd}
-      className={cn("group flex w-24 shrink-0 flex-col gap-1", isDragOver && "border-l-4 border-l-primary pl-1")}
+      style={{ width: Math.max(combo.duration * PX_PER_SEC, MIN_COMBO_PX) }}
+      className={cn("group relative flex mt-1 shrink-0 select-none flex-col gap-1", isDragOver && "border-l-4 border-l-primary pl-1 ")}
     >
       {/* intestazione = pulsante di lancio: click → la scena va in onda subito */}
       <div className="relative h-7 shrink-0">
-        <button
-          type="button"
+        <Button
+          variant="secondary"
+          size="sm"
           onClick={() => launchCombo(combo.id)}
           title={`Lancia "${combo.name}" (${combo.duration.toFixed(1)}s)`}
-          className={cn(
-            "press relative flex size-full items-center gap-1.5 overflow-hidden rounded-md border px-2 text-left",
-            "transition-colors duration-[--dur-fast] ease-[--ease-out]",
-            isCurrent ? "border-primary/70 bg-sidebar-accent/70" : "border-transparent bg-sidebar-accent/25 hover:bg-sidebar-accent/45"
-          )}
+          className={cn("relative w-full justify-start overflow-hidden px-2", isCurrent && "ring-1 ring-primary/70")}
         >
           {isCurrent && (playing || progress > 0) && (
             <span className="pointer-events-none absolute inset-y-0 left-0 bg-primary/10" style={{ width: `${progress * 100}%` }}>
               {progress > 0 && progress < 1 && <span className="absolute inset-y-0 right-0 w-px bg-primary/70" />}
             </span>
           )}
-          {isCurrent && playing && <span className="relative size-1.5 shrink-0 animate-pulse rounded-full bg-primary" />}
-          <span className="ui-label relative truncate font-medium text-foreground">{combo.name}</span>
-        </button>
+          {isCurrent && playing && <span className="relative size-1.5 shrink-0 animate-pulse rounded-full bg-green-400" />}
+          <span className="ui-label relative min-w-0 flex-1 truncate text-left font-medium">{combo.name}</span>
+          {/* la durata sta nell'intestazione perché è il numero che il trascinamento sta cambiando:
+              senza, il gesto sarebbe muto fino al rilascio */}
+          <span className="ui-value relative shrink-0 text-[10px] text-muted-foreground">{combo.duration.toFixed(1)}s</span>
+        </Button>
         <div
           draggable={false}
           onDragStart={(e) => e.stopPropagation()}
           className={cn(
             "absolute right-1 top-1 z-10 flex items-center rounded-md bg-card/90 p-0.5 opacity-0 shadow-sm backdrop-blur-sm",
             "transition-opacity duration-[--dur-fast] ease-[--ease-out]",
-            "group-hover:opacity-100 focus-within:opacity-100 [@media(hover:none)]:opacity-100",
+            !resizing && "group-hover:opacity-100 focus-within:opacity-100 [@media(hover:none)]:opacity-100",
             menuOpen && "opacity-100"
           )}
         >
@@ -265,6 +288,28 @@ function ComboColumn({
       {layers.map((l) => (
         <ComboCellView key={l.id} combo={combo} layerId={l.id} layerName={l.name} />
       ))}
+
+      {/* maniglia di resize della durata (bordo destro): area di presa larga, segno visivo
+          sottile finché non ci si passa sopra — identica a quella dei clip */}
+      <div
+        draggable={false}
+        onDragStart={(e) => e.stopPropagation()}
+        onPointerDown={handleResizeStart}
+        onClick={(e) => e.stopPropagation()}
+        title="Trascina per cambiare la durata"
+        className={cn(
+          "group/handle absolute inset-y-0 right-0 flex w-3 cursor-ew-resize items-center justify-end",
+          "transition-colors duration-[--dur-fast] ease-[--ease-out] hover:bg-primary/10",
+          resizing && "bg-primary/10"
+        )}
+      >
+        <span
+          className={cn(
+            "h-5 w-px transition-colors duration-[--dur-fast] ease-[--ease-out]",
+            resizing ? "bg-primary/70" : "bg-foreground/10 group-hover:bg-foreground/20 group-hover/handle:bg-primary/70"
+          )}
+        />
+      </div>
 
       <ConfirmDeleteDialog
         open={confirmDelete}
@@ -344,7 +389,7 @@ export function ComboBar({ scrollRef }: { scrollRef: React.RefObject<HTMLDivElem
     <>
       {/* colonna compatta: cattura in evidenza sopra, trasporto e file sotto — più stretta della
           riga orizzontale di prima, lascia più posto alla griglia scrollabile */}
-      <div className="flex w-fill shrink-0 flex-col my-auto gap-1.5">
+      <div className="my-auto flex shrink-0 flex-col gap-1.5">
         <Button variant="secondary" className="w-full gap-1.5" onClick={capture} title="Fotografa tutti i layer visibili in una nuova colonna">
           <Camera data-icon="inline-start" />
           Cattura scena
