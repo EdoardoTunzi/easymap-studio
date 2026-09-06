@@ -86,9 +86,35 @@ export interface EffectSnapshot {
  * Effetto uscente durante un crossfade: ShaderPlane lo renderizza in dissolvenza sotto quello
  * nuovo. Transiente: viaggia nel sync verso l'Output ma NON viene persistito.
  */
+/** Un layer dentro una scena lanciata in blocco (colonna di combo). Vedi `applyScene`. */
+export interface SceneCue {
+  layerId: string
+  effect: EffectSnapshot
+  fx: FxControls
+  blendMode: BlendMode
+  opacity: number
+}
+
 export interface LayerTransition extends EffectSnapshot {
   /** Avanzamento della dissolvenza 0..1 (0 = solo vecchio effetto, 1 = solo nuovo). */
   progress: number
+  /**
+   * Che tipo di dissolvenza è:
+   * - `cross` (default): un effetto lascia il posto a un altro sullo stesso layer;
+   * - `in`: il layer entra nella scena e sale da trasparente (il passaggio uscente non esiste);
+   * - `out`: il layer esce dalla scena, scende a trasparente e **solo allora** si spegne.
+   *
+   * `in`/`out` esistono perché spegnere e riaccendere `visible` di colpo non è solo brutto: la
+   * mesh si smonta, e al rientro Three ricompila il programma GLSL proprio durante il cambio.
+   */
+  mode?: 'cross' | 'in' | 'out'
+  /**
+   * Mixing di partenza, congelato all'istante del cambio. Senza, l'effetto uscente verrebbe
+   * disegnato con opacità, blend e controlli globali della scena NUOVA: uno strappo al frame 0.
+   */
+  opacity?: number
+  blendMode?: BlendMode
+  fx?: FxControls
 }
 
 /**
@@ -309,7 +335,23 @@ function applyMappingSnapshot(layers: Layer[], snap: MappingSnapshot) {
   }
 }
 
-function clonePalette(p: Palette): Palette {
+/** Il look attuale del layer congelato in una dissolvenza che parte adesso. */
+function transitionFrom(l: Layer, mode: LayerTransition['mode'] = 'cross'): LayerTransition {
+  return {
+    shaderName: l.shaderName,
+    params: { ...(l.params[l.shaderName] ?? {}) },
+    colors: { ...(l.colorParams[l.shaderName] ?? {}) },
+    size: l.size,
+    palette: clonePalette(l.palette),
+    progress: 0,
+    mode,
+    opacity: l.opacity,
+    blendMode: l.blendMode,
+    fx: { ...l.fx },
+  }
+}
+
+export function clonePalette(p: Palette): Palette {
   return { ...p, colors: p.colors.map((c) => [...c] as RGB) }
 }
 
@@ -567,6 +609,18 @@ interface LayersState {
    * playlist in riproduzione ogni layer ha la sua dissolvenza con i suoi tempi.
    */
   setTransitionProgress: (progress: number, layerId?: string) => void
+  /**
+   * Manda in onda un'intera scena in un solo set: i layer citati ricevono il look e diventano
+   * visibili, **tutti gli altri si spengono** (una colonna di combo definisce la scena completa).
+   * Un solo set perché ogni notifica è una ripubblicazione verso l'Output: sei layer a sei
+   * chiamate sarebbero sei invii della scena intera.
+   *
+   * NON consulta `syncTargetIds` di proposito: le spunte propagano l'effetto del layer ATTIVO
+   * agli altri, ma qui ogni layer ha già il suo look esplicito e la propagazione lo
+   * sovrascriverebbe con quello del layer attivo — una colonna appiattita su una cella sola.
+   * La dissolvenza si anima con `setTransitionProgress(p)` senza layerId: una scena, un fade.
+   */
+  applyScene: (cues: readonly SceneCue[], smooth: boolean) => void
 
   // sincronizzazione effetto (guidata dalle spunte)
   toggleSyncTarget: (layerId: string) => void
@@ -1083,16 +1137,7 @@ export const useLayersStore = create<LayersState>((set, get) => {
         return {
           layers: state.layers.map((l) => {
             if (!targets.has(l.id)) return l
-            const transition: LayerTransition | null = smooth
-              ? {
-                  shaderName: l.shaderName,
-                  params: { ...(l.params[l.shaderName] ?? {}) },
-                  colors: { ...(l.colorParams[l.shaderName] ?? {}) },
-                  size: l.size,
-                  palette: clonePalette(l.palette),
-                  progress: 0,
-                }
-              : null
+            const transition = smooth ? transitionFrom(l) : null
             return {
               ...l,
               shaderName: effect.shaderName,
@@ -1114,10 +1159,43 @@ export const useLayersStore = create<LayersState>((set, get) => {
           layers: state.layers.map((l) =>
             affected(l)
               ? progress >= 1
-                ? { ...l, transition: null }
+                // il layer che stava uscendo dalla scena si spegne solo ORA, a dissolvenza finita
+                ? { ...l, transition: null, visible: l.transition!.mode === 'out' ? false : l.visible }
                 : { ...l, transition: { ...l.transition!, progress } }
               : l,
           ),
+        }
+      }),
+
+    applyScene: (cues, smooth) =>
+      set((state) => {
+        const byId = new Map(cues.map((c) => [c.layerId, c]))
+        return {
+          layers: state.layers.map((l) => {
+            const cue = byId.get(l.id)
+            // cella vuota o inesistente: il layer non fa parte di questa scena. Non si spegne di
+            // colpo — sfuma in uscita e resta acceso finché la dissolvenza non finisce
+            if (!cue) {
+              if (!l.visible) return l
+              return smooth ? { ...l, transition: transitionFrom(l, 'out') } : { ...l, visible: false, transition: null }
+            }
+            // da spento il layer sale da trasparente: un crossfade mostrerebbe per un istante
+            // l'effetto che aveva prima di essere spento
+            const transition = smooth ? transitionFrom(l, l.visible ? 'cross' : 'in') : null
+            return {
+              ...l,
+              visible: true,
+              opacity: cue.opacity,
+              blendMode: cue.blendMode,
+              fx: { ...cue.fx },
+              shaderName: cue.effect.shaderName,
+              size: cue.effect.size,
+              params: { ...l.params, [cue.effect.shaderName]: { ...cue.effect.params } },
+              colorParams: { ...l.colorParams, [cue.effect.shaderName]: { ...cue.effect.colors } },
+              palette: clonePalette(cue.effect.palette),
+              transition,
+            }
+          }),
         }
       }),
 

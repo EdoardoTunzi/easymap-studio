@@ -76,8 +76,13 @@ export function EffectPresetsPanel() {
       const text = await file.text();
       // il tipo si controlla PRIMA di importare: qui un progetto non deve entrare di straforo fra
       // quelli salvati mentre il messaggio dice di usare l'altro pannello
-      if (detectFileKind(text) === "project") {
+      const kind = detectFileKind(text);
+      if (kind === "project") {
         setStatus({ kind: "error", text: "Questo è un progetto: importalo dal pannello Progetti." });
+        return;
+      }
+      if (kind === "combos") {
+        setStatus({ kind: "error", text: "Questo è un file di combo: importalo dalla barra Combo." });
         return;
       }
       const result = await importFromJson(text);

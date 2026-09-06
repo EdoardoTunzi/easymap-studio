@@ -23,6 +23,7 @@ import { useEffectHotkeys } from "@/hooks/use-effect-hotkeys";
 import { useOutputHotkeys } from "@/hooks/use-output-hotkeys";
 import { usePaletteLoop } from "@/hooks/use-palette-loop";
 import { useAssetPlaylist } from "@/hooks/use-asset-playlist";
+import { useCombo } from "@/hooks/use-combo";
 import { useEffectPlaylist } from "@/hooks/use-effect-playlist";
 import { useUiStore } from "@/store/uiStore";
 import { useScrollShadow } from "@/hooks/use-scroll-shadow";
@@ -85,6 +86,7 @@ export function ControlPage() {
   // il componente si smonterebbe fermando la sequenza a metà set
   useEffectPlaylist();
   useAssetPlaylist();
+  useCombo();
   const activePanel = useUiStore((s) => s.activePanel);
   const overlaysVisible = useUiStore((s) => s.overlaysVisible);
   const gridVisible = useUiStore((s) => s.gridVisible);

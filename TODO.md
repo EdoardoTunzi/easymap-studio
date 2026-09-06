@@ -8,6 +8,15 @@ Spuntare gli step completati; aggiungere nuovi step quando emergono. Tenere alli
 - [x] Route `/control` (editor) e `/output` (finestra proiettore pulita)
 - [x] Sync Control ↔ Output via BroadcastChannel (con handshake `hello`)
 - [x] Upload immagine PNG con alpha (MediaUploader)
+- [x] Rimozione del media dal layer: cestino accanto al pulsante di caricamento, visibile solo a media presente (azzera anche il luma key)
+- [x] Combo: tab "Combo" nella barra playlist con griglia layer × scene (cattura scena, lancio a click, sequenza automatica con durata e loop, editor cella leggero, export/import file `easymap-studio/combos`, persistenza nel progetto con potatura celle orfane)
+- [x] Fix Live: i cambi di clip della playlist effetti (e le colonne combo) vanno in onda anche in Live via `publishSceneTick`, come già palette e asset
+- [x] Fix Live: l'Output riceve il look d'arrivo senza `transition` congelata, e i frame di crossfade non accendono il badge "Esegui in output"
+- [x] Combo: durata regolabile trascinando il bordo destro della colonna (larghezza proporzionale alla durata, come i clip) e intestazione convertita a `Button` shadcn
+- [x] Dissolvenza su ogni cambio di scena in Output: fix del crossfade combo ucciso da `stopConflicts`, fade in/out dei layer che entrano ed escono dalla scena, mixing congelato nel passaggio uscente, invio unico con `layerFade` animato dall'Output
+- [ ] Playlist di asset: il cambio di clip resta un taglio secco (serve un crossfade fra due texture nel wrapper GLSL)
+- [ ] Combo: editor completo dei parametri nella cella (estrarre `EffectFields` da `ClipEditor`) — solo se la ricattura dal layer non basta
+- [ ] Combo: lazy-load delle miniature con `useInView` se aprire la tab con molte colonne scatta
 - [x] Canvas R3F con ShaderMaterial e primo shader GLSL (Symmetrical Halo Swirl)
 - [x] Parser ISF-like (`@min @max @default`) → slider auto-generati
 - [x] Maschera alpha automatica: effetti ritagliati dentro i bordi dell'immagine
@@ -362,3 +371,12 @@ Un effetto per volta: domande sul soggetto (nome, categoria, uniform da esporre)
 - [x] Piè di pagina ancorato in fondo alla colonna: il contenuto del viewport della ScrollArea e' ora una colonna flex alta almeno quanto il viewport (`min-h`, così un pannello più lungo continua a scorrere). Verificato che Effetti e Palette non ne risentano
 - [x] Le due voci del dettaglio su righe separate
 - [ ] Nessun avviso quando lo spazio si avvicina alla quota: oggi lo si legge, non lo si viene a sapere
+
+## Varianti Radial Kaleido (06/09)
+
+- [x] 10 nuovi shader `haloRadialKaleido2..11.glsl`, famiglia Halo, gruppo "Sull'oggetto"
+- [x] Registrati in `MEMBERS.halo` di `src/lib/shaderCategories.ts`
+- [x] Controlli estesi (11–12 per effetto) con `hue`/`sat` sulla palette; nessun `mirror`
+- [x] Compilazione verificata in WebGL (11/11) e reso controllato a schermo
+- [ ] Solo "Radial Kaleido 6" è stato guardato dal vivo: le altre nove meritano un giro sui parametri estremi (segments alti, zoom basso) per scovare aliasing
+

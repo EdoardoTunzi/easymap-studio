@@ -13,11 +13,14 @@ import {
   assetPlaylistsSnapshot,
   type AssetPlaylists,
 } from '../store/assetPlaylistStore'
+import { useComboStore, combosSnapshot, type CombosData } from '../store/comboStore'
 import { loadDefaultStageIfFirstVisit } from './defaultAsset'
 import {
   detectFileKind,
   isValidCorners,
+  parseCombosFile,
   parsePresetsFile,
+  serializeCombosFile,
   parseProjectFile,
   serializePresetsFile,
   serializeProjectFile,
@@ -76,6 +79,8 @@ export interface StoredProject {
    * cartelle di video.
    */
   assetPlaylists?: AssetPlaylists
+  /** Griglia delle scene multi-layer (combo). Assente nei progetti salvati prima della feature. */
+  combos?: CombosData
 }
 
 /** Preset di un effetto: cattura il "look" (shader + parametri + size + palette), riusabile su qualsiasi layer. */
@@ -192,6 +197,7 @@ function snapshot(id: string, name: string): StoredProject {
   const onlyAlive = <T,>(byLayer: Record<string, T>) =>
     Object.fromEntries(Object.entries(byLayer).filter(([layerId]) => alive.has(layerId)))
   const playlists = playlistsSnapshot()
+  const combos = combosSnapshot()
   return {
     id,
     name,
@@ -200,6 +206,8 @@ function snapshot(id: string, name: string): StoredProject {
     activeLayerId,
     playlists: { ...playlists, byLayer: onlyAlive(playlists.byLayer) },
     assetPlaylists: onlyAlive(assetPlaylistsSnapshot()),
+    // stessa potatura per le celle dei layer eliminati
+    combos: { ...combos, combos: combos.combos.map((c) => ({ ...c, cells: onlyAlive(c.cells) })) },
   }
 }
 
@@ -258,10 +266,23 @@ function migrateProjectShaderNames(project: StoredProject): StoredProject {
       ]),
     ),
   }
+  const combos = project.combos && {
+    ...project.combos,
+    combos: project.combos.combos.map((c) => ({
+      ...c,
+      cells: Object.fromEntries(
+        Object.entries(c.cells).map(([layerId, cell]) => [
+          layerId,
+          { ...cell, shaderName: migrateShaderName(cell.shaderName, shaderExists) },
+        ]),
+      ),
+    })),
+  }
   return {
     ...project,
     layers: project.layers.map((l) => migrateLayerShaderNames(l, shaderExists)),
     ...(playlists ? { playlists } : {}),
+    ...(combos ? { combos } : {}),
   }
 }
 
@@ -278,6 +299,7 @@ function applyProject(stored: StoredProject) {
         (project.playlist ? migrateLegacyPlaylist(project.playlist, project.activeLayerId) : undefined),
     )
   useAssetPlaylistStore.getState().setAssetPlaylists(project.assetPlaylists)
+  useComboStore.getState().setCombosData(project.combos)
 }
 
 /** La scena è "vuota" se ha un solo layer senza contenuto: allora l'autosave può ripristinare. */
@@ -292,6 +314,7 @@ export function newProject(): void {
   useLayersStore.getState().setScene([layer], layer.id)
   usePlaylistStore.getState().setPlaylistsData(undefined)
   useAssetPlaylistStore.getState().setAssetPlaylists(undefined)
+  useComboStore.getState().setCombosData(undefined)
 }
 
 export async function saveProject(name: string): Promise<string> {
@@ -356,10 +379,19 @@ export async function exportPresetsToFile(): Promise<{ blob: Blob; count: number
   return presets.length > 0 ? { blob: serializePresetsFile(presets), count: presets.length } : null
 }
 
+/** Le combo della scena corrente come file, con lo stack che serve a riagganciarle altrove. */
+export function exportCombosToFile(): { blob: Blob; count: number } | null {
+  const { combos } = combosSnapshot()
+  if (combos.length === 0) return null
+  const layers = useLayersStore.getState().layers.map((l) => ({ id: l.id, name: l.name }))
+  return { blob: serializeCombosFile(combos, layers), count: combos.length }
+}
+
 /** Esito di un'importazione, discriminato dal tipo di file che è arrivato. */
 export type ImportResult =
   | { kind: 'project'; id: string; name: string }
   | { kind: 'presets'; imported: number; skipped: number }
+  | { kind: 'combos'; imported: number; dropped: number }
 
 /**
  * Importa un file esportato, progetto o libreria di preset che sia.
@@ -391,6 +423,13 @@ export async function importFromJson(text: string): Promise<ImportResult> {
       imported++
     }
     return { kind: 'presets', imported, skipped: incoming.length - imported }
+  }
+  if (detectFileKind(text) === 'combos') {
+    // le combo entrano nella scena corrente, aggiunte in coda alla griglia
+    const layerIds = useLayersStore.getState().layers.map((l) => l.id)
+    const { combos, dropped } = parseCombosFile(text, layerIds)
+    useComboStore.getState().addCombos(combos)
+    return { kind: 'combos', imported: combos.length, dropped }
   }
   const project = parseProjectFile(text)
   await putProject(db, project)
@@ -581,6 +620,15 @@ export function useAutosave() {
       persist()
     })
 
+    // e per le combo: il playhead della sequenza avanza a ogni frame
+    let lastCombosJson = JSON.stringify(combosSnapshot())
+    const unsubCombos = useComboStore.subscribe(() => {
+      const json = JSON.stringify(combosSnapshot())
+      if (json === lastCombosJson) return
+      lastCombosJson = json
+      persist()
+    })
+
     ;(async () => {
       try {
         if (!isSceneEmpty()) return
@@ -605,6 +653,7 @@ export function useAutosave() {
       unsub()
       unsubPlaylist()
       unsubAssets()
+      unsubCombos()
     }
   }, [])
 }

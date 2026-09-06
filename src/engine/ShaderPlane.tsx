@@ -138,25 +138,35 @@ export function buildUniforms(shader: ParsedShader | undefined): Record<string, 
 type PassVariant = 'main' | 'ghost'
 
 function passEffect(l: Layer, variant: PassVariant) {
+  const t = l.transition
+  const mode = t?.mode ?? 'cross'
   if (variant === 'main') {
+    // 'out': il layer non cambia look, cala e basta. 'cross'/'in': il nuovo entra in dissolvenza
+    const fade = t ? (mode === 'out' ? 1 - t.progress : t.progress) : 1
     return {
       shaderName: l.shaderName,
       params: l.params[l.shaderName] ?? {},
       colors: l.colorParams[l.shaderName] ?? {},
       size: l.size,
       palette: l.palette,
-      // durante il crossfade il nuovo effetto entra in dissolvenza
-      opacity: l.opacity * (l.transition ? l.transition.progress : 1),
+      opacity: l.opacity * fade,
+      blendMode: l.blendMode,
+      fx: l.fx,
     }
   }
-  if (!l.transition) return null
+  // il passaggio uscente esiste solo quando un effetto ne sostituisce un altro: entrando o
+  // uscendo dalla scena c'è una sola immagine, che sale o scende
+  if (!t || mode !== 'cross') return null
   return {
-    shaderName: l.transition.shaderName,
-    params: l.transition.params,
-    colors: l.transition.colors,
-    size: l.transition.size,
-    palette: l.transition.palette,
-    opacity: l.opacity * (1 - l.transition.progress),
+    shaderName: t.shaderName,
+    params: t.params,
+    colors: t.colors,
+    size: t.size,
+    palette: t.palette,
+    // mixing congelato al cambio: il vecchio effetto esce esattamente com'era
+    opacity: (t.opacity ?? l.opacity) * (1 - t.progress),
+    blendMode: t.blendMode ?? l.blendMode,
+    fx: t.fx ?? l.fx,
   }
 }
 
@@ -234,8 +244,8 @@ function EffectPass({ layerId, variant, source, renderOrder, geometry, controlle
     u.uEdgeFeather.value = l.edgeFeather ?? 0
     // il peso della scena scala l'opacità: è così che le due scene si dissolvono l'una nell'altra
     u.uOpacity.value = fx.opacity * sceneWeight(storeState, source)
-    // controlli globali: proprietà del layer, valgono per qualunque shader
-    const g = l.fx
+    // controlli globali: quelli del passaggio (congelati nell'uscente), validi per ogni shader
+    const g = fx.fx
     u.uFxSpeed.value = g.speed
     u.uFxRotation.value = g.rotation
     ;(u.uFxOffset.value as THREE.Vector2).set(g.offsetX, g.offsetY)
@@ -310,10 +320,13 @@ function EffectPass({ layerId, variant, source, renderOrder, geometry, controlle
   })
 
   if (!layer || !shader || !layer.visible) return null
+  // null = questo passaggio non va disegnato (il ghost quando il layer entra o esce dalla scena)
+  const pass = passEffect(layer, variant)
+  if (!pass) return null
 
-  const shaderBlend = SHADER_BLEND[layer.blendMode] ?? 0
+  const shaderBlend = SHADER_BLEND[pass.blendMode] ?? 0
   // i blend calcolati nello shader scrivono il colore già composto: qui il materiale sostituisce
-  const blend = shaderBlend > 0 ? REPLACE_BLEND : (BLEND_FACTORS[layer.blendMode] ?? BLEND_FACTORS.normal!)
+  const blend = shaderBlend > 0 ? REPLACE_BLEND : (BLEND_FACTORS[pass.blendMode] ?? BLEND_FACTORS.normal!)
 
   return (
     <>
@@ -335,7 +348,7 @@ function EffectPass({ layerId, variant, source, renderOrder, geometry, controlle
       <shaderMaterial
         // shader.id (non il nome): un visual generativo rigenerato mantiene il nome ma cambia
         // sorgente, e senza ricreare il materiale Three riuserebbe il programma GLSL già compilato
-        key={`${shader.id}|${layer.blendMode}`}
+        key={`${shader.id}|${pass.blendMode}`}
         ref={materialRef}
         vertexShader={shader.vertexShader}
         fragmentShader={shader.fragmentShader}

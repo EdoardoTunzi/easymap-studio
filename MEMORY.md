@@ -2,6 +2,168 @@
 
 Ogni modifica al progetto va registrata qui con data, descrizione e motivazione. Le voci più recenti in alto dentro ogni giornata.
 
+## 2026-09-06 — Ogni cambio di scena arriva all'Output in dissolvenza
+
+**Cosa.** Quattro interventi sulla stessa catena.
+
+1. `use-effect-playlist.ts`: il cleanup chiudeva i crossfade con `setTransitionProgress(1)` **senza
+   layerId**, cioè su tutti i layer. `launchCombo` ferma le playlist (`stopConflicts`) un attimo
+   prima di applicare la scena, quindi il cleanup di React arrivava *dopo* `applyScene` e uccideva
+   la dissolvenza appena nata: taglio secco. Ora chiude solo i propri layer.
+2. `layersStore.applyScene` + `ShaderPlane`: `LayerTransition` ha un `mode` (`cross`/`in`/`out`).
+   Un layer che esce dalla scena non si spegne più di colpo — sfuma e `setTransitionProgress` lo
+   spegne a dissolvenza finita; uno che entra sale da trasparente invece di comparire di scatto
+   (prima `smooth && l.visible` saltava del tutto la transizione).
+3. La transizione congela anche `opacity`, `blendMode` e `fx`: il passaggio uscente veniva
+   disegnato con il mixing della scena NUOVA, cioè con uno strappo al primo fotogramma.
+4. `sync.ts`: `publishSceneTick` diventa `airScene`, che applica il cambio e lo spedisce **una
+   volta sola** con la sua durata (`layerFade: true`), Live o no. Prima, fuori da Live, il
+   publisher rispecchiava ogni scrittura: il crossfade arrivava al proiettore come ~60 invii
+   dell'intera scena al secondo. L'Output ora riceve le transizioni appena nate e le anima da sé
+   con `runLayerFade`. Il crossfade di *scena* (`beginSceneCrossfade`) resta agli invii manuali,
+   dove può cambiare qualsiasi cosa: per un cambio di solo effetto duplicherebbe la scena, e con
+   un video a bordo ne creerebbe una seconda istanza che riparte da zero.
+   Anche il primo clip di una playlist ora entra in dissolvenza invece che secco.
+
+**Perché.** In Output il cambio di colonna era uno stacco netto con lampo scuro — inaccettabile
+durante un live. Verificato a video: un solo messaggio per cambio (`layerFade: true`), i due
+effetti sovrapposti a metà dissolvenza, `out`/`in` che arrivano al proiettore e si chiudono
+spegnendo il layer. Mirroring dell'editing, modalità Live e "Esegui in output" invariati.
+
+**Resta secco:** il cambio di clip della playlist di **asset** (il media si sostituisce, la
+transizione per-layer trasporta solo l'effetto).
+
+## 2026-09-06 — Combo: durata trascinabile dal bordo destro + header shadcn
+
+**Cosa.** In `ComboBar.tsx` la colonna combo è larga quanto dura (`duration * PX_PER_SEC`, minimo
+96px) e ha una maniglia di resize sul bordo destro, identica a quella dei clip: trascinando si
+cambia la durata 1:1 col puntatore. L'input numerico nel popover delle opzioni resta e i due
+percorsi scrivono sullo stesso `setComboDuration`, quindi sono sempre sincronizzati. La durata è
+ora scritta nell'intestazione e le azioni in hover (tre puntini) si nascondono durante il
+trascinamento, altrimenti coprirebbero proprio il numero che sta cambiando. L'intestazione-pulsante
+di lancio è diventata un `Button` shadcn (`variant="secondary"`, `size="sm"`, anello primario sulla
+colonna in onda) al posto del `<button>` con classi custom. `PX_PER_SEC` è stato spostato da
+`PlaylistBar.tsx` a `playlistStore.ts` perché ora lo usano entrambe le barre.
+
+**Perché.** La durata si regolava solo aprendo un popover e digitando un numero: due click e una
+tastiera per un valore che nel live si aggiusta a occhio. Il gesto diretto era già lì per i clip
+effetti, mancava solo alle combo — stessa timeline, stessa scala, stessa manipolazione. La
+larghezza proporzionale, poi, rende leggibile la sequenza a colpo d'occhio: una colonna lunga *è*
+una scena lunga.
+
+## 2026-09-06 — Dieci varianti di Radial Kaleido
+
+**Cosa.** `src/shaders/haloRadialKaleido2..11.glsl` (nomi "Radial Kaleido 2" … "Radial Kaleido 11"),
+registrati nella famiglia `halo` di `shaderCategories.ts`. Tutti campionano `tex`, quindi il parser
+li classifica da solo come **Sull'oggetto**: la piega segmentale resta modulata dalla sorgente
+(luminanza come rilievo, canali RGB come sfasamento) e continua a "vestire" la statua come
+l'originale.
+
+**Perché così.** Ognuna cambia *un solo meccanismo* dello scheletro originale (piega a N segmenti →
+pattern → palette → blend su `smoothstep(lum)`), così le varianti restano riconoscibili come
+famiglia invece di essere dieci effetti scollegati: 2 spirale logaritmica, 3 anelli pulsanti con
+rilievo, 4 dispersione prismatica per canale, 5 doppio rosone controrotante, 6 faccette a celle
+polari, 7 raggi a stella, 8 imbuto 1/r, 9 dominio deformato da value noise, 10 moiré fra due
+frequenze, 11 filigrana a linee sottili.
+
+**Controlli.** 11–12 per effetto contro i 6 dell'originale: oltre a `seed/segments/colorShift/
+intensity/speed`, ogni variante espone i suoi parametri specifici più `hue`/`sat` sulla palette.
+**Nessun `mirror`**, per scelta esplicita: nelle varianti la simmetria la fa già la piega radiale.
+
+**Verifica.** Compilazione dei fragment shader in un contesto WebGL della pagina: 11/11 OK
+(l'originale incluso come riferimento), tutti `group: object`. Reso a schermo controllato su
+"Radial Kaleido 6".
+
+## 2026-09-06 — Combo: colonna dei controlli compattata
+
+**Cosa.** Nella tab Combo, il trasporto (Cattura scena, Play, Repeat, Importa, Esporta) era una
+riga orizzontale che consumava spazio sottraendolo alla griglia scrollabile. Ora è una colonna
+stretta (`w-24`, come le intestazioni dei layer): "Cattura scena" a larghezza piena in alto, sotto
+Play e Repeat affiancati, sotto Importa ed Esporta affiancati. Stessa larghezza a prescindere dal
+numero di colonne combo, e più spazio orizzontale per vederne più insieme.
+
+## 2026-09-06 — Live: Output disallineato dalla playlist e badge "Esegui in output" sempre acceso
+
+**Sintomo.** In Live, con playlist effetti o combo in riproduzione, l'Output mostrava l'effetto
+*uscente* invece di quello in onda, e il tasto "Esegui in output" restava acceso come se ci fosse
+qualcosa da inviare.
+
+**Causa, una sola per entrambi.** In Live l'Output non riceve i frame del crossfade per-layer
+(`setTransitionProgress` non viaggia). `publishSceneTick` spediva i layer **con `transition` a
+progress 0** — cioè "solo effetto vecchio" — e l'Output lo teneva congelato lì dentro il suo
+crossfade di scena. E ogni frame di quello stesso crossfade passava da `onLayersChange` →
+`markDirty()`, riaccendendo il badge subito dopo che il tick l'aveva spento. Fuori da Live,
+in più, il secondo invio con dissolvenza faceva partire un fade di scena sopra il crossfade
+per-layer già specchiato frame per frame.
+
+**Fix in `sync.ts`.** `buildPayload` azzera `transition` quando `fadeDuration > 0` o si è in
+Live: si spedisce il look d'arrivo e la dissolvenza la fa l'Output. `publishSceneTick` esce subito
+fuori da Live (il publisher specchia già tutto). `onLayersChange` in Live ignora le notifiche in
+cui i layer differiscono **solo** per `transition` (`onlyTransitionChanged`, confronto chiave per
+chiave su `prev`/`next` della subscribe). Verificato con Control e Output affiancati nel headless:
+tutti gli invii Live senza `transition`, fade 0.3 sui cambi clip, `dirty` mai acceso in 2,5 s di
+riproduzione, shader dell'Output identici a quelli del Control dopo un lancio combo.
+
+## 2026-09-06 — Combo: griglia di scene multi-layer nella barra playlist
+
+**Cosa.** Terza tab "Combo" nella `PlaylistBar`, stile Ableton Session: righe = layer nell'ordine
+dello stack, colonne = scene. "Cattura scena" fotografa tutti i layer visibili in una colonna;
+click sull'intestazione = tutti i layer cambiano insieme; Play = le colonne scorrono con la loro
+durata e loop. Prima non c'era modo di salvare "layer 1 così, layer 2 così, layer 3 spento" e
+rimandarlo in onda con un gesto: andava rifatto a mano ogni volta.
+
+**Cella** (`src/store/comboStore.ts`): `EffectSnapshot` + `fx` + `blendMode` + `opacity`. Mai
+mapping, media, maschere, `lumaKey` (è del contenuto, non del look: una playlist di asset che ruota
+le clip romperebbe). Chiave assente in `cells` = layer **spento** in quella scena: una colonna
+definisce la scena completa. Trappola dei params: nel layer sono per-shader, nella cella piatti
+(`layer.params[layer.shaderName]`); `{}` per uno shader mai toccato è normale, come nei preset.
+
+**`applyScene(cues, smooth)`** in `layersStore`: un solo `set()` per l'intera colonna (una sola
+ripubblicazione verso l'Output), accende i layer citati e spegne gli altri, fade solo sui layer
+già visibili. **Non legge `syncTargetIds` di proposito**: propagherebbe il layer attivo sugli altri,
+appiattendo la colonna. La dissolvenza è una sola `setTransitionProgress(p)` senza layerId.
+
+**Motore** `src/hooks/use-combo.ts` (montato in `ControlPage`, non nella barra): `launchCombo`
+ferma tutte le playlist di effetti e il loop palette (`stopConflicts`), applica, pubblica, anima il
+fade. La sequenza è un rAF su `playing`. Reciproco: una sottoscrizione a `usePlaylistStore` ferma
+la combo se qualcuno preme Play su un layer (chiave vuota = era `stopConflicts`).
+
+**Fix Live sulla playlist esistente.** In Live ogni scrittura sui layer restava "in sospeso"; solo
+palette e asset scavalcavano il blocco coi loro canali. Ora `publishSceneTick(fade)` in `sync.ts`
+espone il `publishNow` del publisher: un cambio di clip o di colonna è la scena in onda che
+avanza, quindi viaggia anche in Live senza accendere il badge. Chiamato solo dal **motore** della
+playlist (`airClip`), non da `applyClip`, che l'editor usa come anteprima. Effetto collaterale
+accettato: è una pubblicazione dello stato intero, quindi porta con sé anche eventuali modifiche
+manuali in sospeso.
+
+**Persistenza**: `StoredProject.combos` (opzionale), potatura celle orfane in `snapshot()` con
+`onlyAlive`, migrazione nomi shader nelle celle, quarta guardia anti-rumore nell'autosave (il
+playhead cambia a ogni frame). File `easymap-studio/combos` con lo stack d'origine: all'import prima
+corrispondenza di id, poi ripiego sulla **posizione** nello stack, mai per nome; celle senza
+destinazione contate in `dropped`. Assert in `projectFile.check.ts`.
+
+**UI**: `MAX_COMBO_BAR_H = 460` e altezza memorizzata a parte (`easyvj-combo-height`), così tornando
+su Effetti la barra ritrova la sua. Cella = miniatura come sfondo + nome in overlay (degrada da
+sola a barra bassa), vuota = tratteggiata. Editor cella leggero: applica/ricattura/opacità/blend/
+svuota; il look si costruisce sul layer e si ricattura.
+
+**Verifica.** Pane del desktop: il documento risulta `hidden` e il rAF non gira affatto — lì si
+sono verificati cattura, lancio, spegnimento, esclusività nei due versi, Live (un solo `state`
+con fade, `dirty` false), autosave/reload, potatura. Sequenza e fade verificati nel Chrome headless
+di chrome-devtools (rAF a 120 Hz): A→B→A→B, loop off si ferma a fine lista. Nota: nel headless i
+primi frame dopo un lancio durano ~120 ms (rendering software + compilazione shader di più layer
+insieme): il fade *sembra* fermo a un campionamento breve, ma chiude regolarmente.
+
+## 2026-09-06 — Cestino per rimuovere il media dal layer
+
+**Pulsante di rimozione in `MediaUploader`.** Il layer poteva ricevere un media ma non liberarsene:
+si poteva solo sostituirlo con un altro file. Il pulsante di caricamento e' ora affiancato da un
+cestino, visibile solo quando c'e' un media caricato (le sorgenti live restano escluse: hanno gia'
+il loro "stacca" nel `CameraPicker`). Fa `setActiveMedia(null)` e riazzera il luma key, che era
+stato dedotto dall'immagine appena rimossa e sarebbe rimasto addosso al media successivo.
+L'object URL non viene revocato di proposito: lo stesso URL puo' essere condiviso da layer FX
+duplicati, revocarlo li spegnerebbe.
+
 ## 2026-09-05 — Lo spazio occupato ora segue la scena, e il piè di pagina sta in fondo
 
 **Il numero non si aggiornava cambiando progetto.** Due cause: `refresh()` non veniva chiamato dopo

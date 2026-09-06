@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react'
 import { usePlaylistStore, type PlaylistClip } from '@/store/playlistStore'
 import { useLayersStore, type EffectSnapshot } from '@/store/layersStore'
+import { airScene } from '@/lib/sync'
 
 /** Stato di una sequenza in corso: una per layer, indipendente dalle altre. */
 interface PlayState {
@@ -25,6 +26,16 @@ export function clipToEffect(clip: PlaylistClip): EffectSnapshot {
 /** Applica il look del clip a un layer preciso, secco o in crossfade. */
 export function applyClip(layerId: string, clip: PlaylistClip, smooth: boolean) {
   useLayersStore.getState().applyEffectSnapshot(clipToEffect(clip), smooth, layerId)
+}
+
+/**
+ * Il motore manda in onda il clip anche in Live: un cambio di clip è la scena già in onda che
+ * avanza, non una modifica in preparazione. Solo qui e non in `applyClip`, che l'editor usa
+ * come anteprima — quella in Live deve restare in sospeso.
+ */
+function airClip(layerId: string, clip: PlaylistClip, smooth: boolean) {
+  const fade = smooth ? usePlaylistStore.getState().transitionDuration : 0
+  airScene(() => applyClip(layerId, clip, smooth), fade)
 }
 
 /**
@@ -79,10 +90,13 @@ export function useEffectPlaylist() {
 
         let index = Math.min(store.currentIndex[layerId] ?? 0, clips.length - 1)
 
-        // avvio: il clip corrente va a schermo subito, secco
+        // avvio: il clip corrente va a schermo subito, ma in dissolvenza come tutti gli altri
+        // cambi — premere Play durante un set non deve produrre uno stacco sul proiettore
         if (!state.started) {
           state.started = true
-          applyClip(layerId, clips[index], false)
+          const smooth = store.transitionMode === 'smooth'
+          airClip(layerId, clips[index], smooth)
+          if (smooth) state.transitionStart = now
         }
 
         if (state.transitionStart != null) {
@@ -105,7 +119,7 @@ export function useEffectPlaylist() {
           clip = clips[index]
           state.clipElapsed = 0
           const smooth = store.transitionMode === 'smooth'
-          applyClip(layerId, clip, smooth)
+          airClip(layerId, clip, smooth)
           if (smooth) state.transitionStart = now
           store.setCurrentIndex(layerId, index)
         }
@@ -119,8 +133,10 @@ export function useEffectPlaylist() {
     raf = requestAnimationFrame(tick)
     return () => {
       cancelAnimationFrame(raf)
-      // chiude di colpo i crossfade rimasti a metà
-      useLayersStore.getState().setTransitionProgress(1)
+      // chiude di colpo i crossfade rimasti a metà, ma SOLO quelli dei propri layer: senza
+      // layerId spegnerebbe anche la dissolvenza appena avviata da una combo, che ferma le
+      // playlist (stopConflicts) un attimo prima di applicare la scena
+      for (const id of states.keys()) useLayersStore.getState().setTransitionProgress(1, id)
     }
   }, [playingKey])
 }

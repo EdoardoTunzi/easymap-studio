@@ -118,7 +118,9 @@ export function ProjectsPanel() {
         text:
           result.kind === "project"
             ? `“${result.name}” importato: aprilo dalla lista qui sotto.`
-            : `${result.imported} preset importati${result.skipped > 0 ? `, ${result.skipped} già in libreria` : ""}.`
+            : result.kind === "combos"
+              ? `${result.imported} combo aggiunte alla scena corrente${result.dropped > 0 ? `, ${result.dropped} celle scartate (il progetto ha meno layer)` : ""}.`
+              : `${result.imported} preset importati${result.skipped > 0 ? `, ${result.skipped} già in libreria` : ""}.`
       });
     } catch (err) {
       setFileStatus({

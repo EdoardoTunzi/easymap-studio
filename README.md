@@ -14,7 +14,8 @@ Niente installazione, niente licenze: si apre e si usa. L'obiettivo è rendere i
 
 ## Novità di questa versione
 
-- **16 shader nuovi**, per un totale di 123 effetti in libreria.
+- **Combo**: griglia di scene multi-layer nella barra Playlist. "Cattura scena" congela il look di tutti i layer in una colonna; la lanci con un click o la lasci scorrere in automatico con durata e loop, come una session view. Si esporta/importa su file e va in onda anche in modalità Live.
+- **26 shader nuovi**, per un totale di 133 effetti in libreria.
 - **Filtro-leggenda O/S**: ogni effetto è marcato in blu (**O**, si modella sull'oggetto) o arancione (**S**, riempie la sagoma ignorandone il contenuto). La lettera compare accanto a ogni nome, e i due pulsanti filtrano famiglie ed elenco.
 - **Esportazione in `.easymap.json` con gli asset dentro**: un progetto si riapre su un altro computer.
 - **Importazione con riconoscimento automatico** del tipo di file: aggiunge senza mai sostituire il lavoro in corso.
@@ -26,7 +27,7 @@ Niente installazione, niente licenze: si apre e si usa. L'obiettivo è rendere i
 
 1. **Carichi** una foto del soggetto su cui proietterai (PNG scontornato, oppure con sfondo nero: viene rilevato da solo).
 2. **Allinei** i quattro angoli alla superficie reale, direttamente dall'editor.
-3. **Scegli un effetto** fra 123, regolabile con slider generati automaticamente dallo shader.
+3. **Scegli un effetto** fra 133, regolabile con slider generati automaticamente dallo shader.
 4. **Componi più layer** se serve — ognuno col suo media, effetto, maschera e blend mode.
 5. **Apri la finestra Output** sul proiettore e vai in scena.
 
@@ -38,7 +39,7 @@ Il progetto si salva da solo in locale e funziona offline: a bordo palco la rete
 
 ### Effetti
 
-- **123 shader GLSL** divisi in 12 famiglie (Rilievo, Contorni, Fluidi, Aloni, Morphogen, Frattali, Strobo, Tunnel, Plasma, Audio, Altri), con ricerca e filtri.
+- **133 shader GLSL** divisi in 12 famiglie (Rilievo, Contorni, Fluidi, Aloni, Morphogen, Frattali, Strobo, Tunnel, Plasma, Audio, Altri), con ricerca e filtri.
 - Ogni effetto è marcato **O** o **S**: i 69 marcati O leggono l'immagine e ci si modellano sopra — seguono rilievi e bordi del soggetto — i 54 marcati S riempiono la sagoma con un pattern proprio. È la differenza che conta scegliendo un effetto, e non si legge dal nome.
 - **Controlli globali validi su qualsiasi shader**: velocità, rotazione, pan, kaleidoscopio, mirror, pixelate, luminosità, contrasto, saturazione, posterize, negativo.
 - **Palette colori** con preset fluorescenti, editor a 5 colori e generatore casuale con schemi di armonia. Il **Loop** le rigenera da sole a intervallo regolabile, con dissolvenza.

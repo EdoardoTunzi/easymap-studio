@@ -7,19 +7,19 @@ import { Separator } from "@/components/ui/separator";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { AssetPlaylistBar } from "@/components/Playlist/AssetPlaylistBar";
+import { ComboBar } from "@/components/Playlist/ComboBar";
 import { ShaderPicker } from "@/components/EffectsLibrary/ShaderPicker";
 import { cn } from "@/lib/utils";
 import { useEffectsStore, defaultParamsFor, defaultColorsFor } from "@/store/effectsStore";
 import { useLayersStore } from "@/store/layersStore";
 import { rgbToHex, hexToRgb, type Palette, type RGB } from "@/store/paletteStore";
-import { usePlaylistStore, DEFAULT_CLIP_DURATION, MIN_CLIP_DURATION, type PlaylistClip } from "@/store/playlistStore";
+import { usePlaylistStore, DEFAULT_CLIP_DURATION, MIN_CLIP_DURATION, PX_PER_SEC, type PlaylistClip } from "@/store/playlistStore";
 import { applyClip, clipToEffect } from "@/hooks/use-effect-playlist";
 import { useUiStore } from "@/store/uiStore";
 import { listEffectPresets, type EffectPreset } from "@/lib/persistence";
 import { effectThumbnail } from "@/engine/effectThumbnail";
 
-/** Pixel per secondo nella timeline: la larghezza di un clip è proporzionale alla durata. */
-const PX_PER_SEC = 18;
+/** Larghezza minima di un clip: sotto questa soglia il nome non si legge più. */
 const MIN_CLIP_PX = 72;
 
 /**
@@ -29,10 +29,16 @@ const MIN_CLIP_PX = 72;
  */
 const MIN_BAR_H = 132;
 const MAX_BAR_H = 228;
+/** La griglia delle combo ha una riga per layer: con 6 layer a 228px una cella è una striscia di 14px. */
+const MAX_COMBO_BAR_H = 460;
 const BAR_HEIGHT_KEY = "easyvj-playlist-height";
+const COMBO_HEIGHT_KEY = "easyvj-combo-height";
 const BAR_TAB_KEY = "easyvj-playlist-tab";
 
-const clampBarHeight = (h: number) => Math.min(MAX_BAR_H, Math.max(MIN_BAR_H, h));
+type BarTab = "fx" | "assets" | "combo";
+const BAR_TABS: readonly BarTab[] = ["fx", "assets", "combo"];
+
+const clampBarHeight = (h: number, max = MAX_BAR_H) => Math.min(max, Math.max(MIN_BAR_H, h));
 
 /** Riferimento stabile per i layer senza playlist: un `[]` nuovo a ogni render rirenderizza sempre. */
 const EMPTY_CLIPS: PlaylistClip[] = [];
@@ -492,7 +498,11 @@ export function PlaylistBar() {
   // due sequenze indipendenti condividono la barra, entrambe per layer: gli EFFETTI (che shader
   // gira) e gli ASSET (che contenuto scorre, da una cartella). Possono girare insieme sullo
   // stesso layer. I motori stanno nella pagina, non qui: cambiando tab questo ramo si smonta.
-  const [tab, setTab] = useState<"fx" | "assets">(() => (localStorage.getItem(BAR_TAB_KEY) === "assets" ? "assets" : "fx"));
+  const [tab, setTab] = useState<BarTab>(() => {
+    const saved = localStorage.getItem(BAR_TAB_KEY) as BarTab | null;
+    return saved && BAR_TABS.includes(saved) ? saved : "fx";
+  });
+  const isCombo = tab === "combo";
 
   const dragIndex = useRef<number | null>(null);
   const [dragOver, setDragOver] = useState<number | null>(null);
@@ -503,19 +513,26 @@ export function PlaylistBar() {
     setDragOver(null);
   };
 
-  // altezza della barra, ridimensionabile dal bordo superiore e persistita
-  const [barHeight, setBarHeight] = useState(() => clampBarHeight(Number(localStorage.getItem(BAR_HEIGHT_KEY)) || MIN_BAR_H));
+  // altezza della barra, ridimensionabile dal bordo superiore e persistita. Due valori separati:
+  // la griglia delle combo può salire più in alto, e tornando su Effetti la barra deve ritrovare
+  // la sua altezza invece di restare al valore clampato
+  const [heights, setHeights] = useState(() => ({
+    bar: clampBarHeight(Number(localStorage.getItem(BAR_HEIGHT_KEY)) || MIN_BAR_H),
+    combo: clampBarHeight(Number(localStorage.getItem(COMBO_HEIGHT_KEY)) || MIN_BAR_H, MAX_COMBO_BAR_H)
+  }));
+  const barHeight = isCombo ? heights.combo : heights.bar;
   const handleBarResize = (e: ReactPointerEvent) => {
     e.preventDefault();
     const startY = e.clientY;
     const startH = barHeight;
+    const max = isCombo ? MAX_COMBO_BAR_H : MAX_BAR_H;
     let latest = startH;
     const onMove = (ev: PointerEvent) => {
-      latest = clampBarHeight(startH - (ev.clientY - startY));
-      setBarHeight(latest);
+      latest = clampBarHeight(startH - (ev.clientY - startY), max);
+      setHeights((h) => (isCombo ? { ...h, combo: latest } : { ...h, bar: latest }));
     };
     const onUp = () => {
-      localStorage.setItem(BAR_HEIGHT_KEY, String(latest));
+      localStorage.setItem(isCombo ? COMBO_HEIGHT_KEY : BAR_HEIGHT_KEY, String(latest));
       window.removeEventListener("pointermove", onMove);
       window.removeEventListener("pointerup", onUp);
     };
@@ -572,11 +589,11 @@ export function PlaylistBar() {
         value={tab}
         onValueChange={(v) => {
           if (!v) return; // click sulla voce già attiva: non si resta senza tab
-          setTab(v as "fx" | "assets");
+          setTab(v as BarTab);
           localStorage.setItem(BAR_TAB_KEY, v);
         }}
         size="sm"
-        className="shrink-0 self-start"
+        className="shrink-0 self-center border my-2"
       >
         {/* lo stato attivo del variant (`bg-muted`) su `bg-sidebar` è a un passo di luminanza dal
             fondo: dal vivo non si legge quale sequenza si sta guardando. Si usa lo stesso segnale
@@ -584,14 +601,15 @@ export function PlaylistBar() {
         {(
           [
             ["fx", "Effetti", "Playlist effetti"],
-            ["assets", "Assets", "Playlist asset del layer"]
+            ["assets", "Assets", "Playlist asset del layer"],
+            ["combo", "Combo", "Griglia di scene multi-layer"]
           ] as const
         ).map(([value, label, aria]) => (
           <ToggleGroupItem
             key={value}
             value={value}
             aria-label={aria}
-            className="text-muted-foreground data-[state=on]:bg-primary data-[state=on]:text-primary-foreground"
+            className="text-muted-foreground data-[state=on]:bg-primary data-[state=on]:text-primary-foreground cursor-pointer"
           >
             {label}
           </ToggleGroupItem>
@@ -600,93 +618,95 @@ export function PlaylistBar() {
 
       {/* riga dei controlli: trasporto + timeline della sequenza scelta sopra */}
       <div className="flex min-h-0 flex-1 items-stretch gap-3">
-      {tab === "assets" ? (
-        <AssetPlaylistBar scrollRef={scrollRef} />
-      ) : (
-        <>
-      {/* trasporto */}
-      <div className="flex shrink-0 items-center gap-1.5">
-        <Button
-          size="icon"
-          variant={playing ? "default" : "secondary"}
-          onClick={() => setPlaying(layerId, !playing)}
-          disabled={clips.length === 0}
-          aria-label={playing ? "Pausa" : "Play"}
-        >
-          {playing ? <Pause className="size-4" /> : <Play className="size-4" />}
-        </Button>
-        <Button
-          size="icon"
-          variant="ghost"
-          onClick={() => setLoop(layerId, !loop)}
-          aria-label="Loop"
-          title={loop ? "Loop attivo: la sequenza si ripete" : "Loop spento: si ferma sull’ultimo clip"}
-          className={cn(loop ? "text-primary" : "text-muted-foreground")}
-        >
-          <Repeat className="size-4" />
-        </Button>
-        <Button
-          size="sm"
-          variant={smooth ? "secondary" : "outline"}
-          onClick={() => setTransitionMode(smooth ? "cut" : "smooth")}
-          title={smooth ? "Transizione smooth (crossfade): clicca per passare a secca" : "Transizione secca: clicca per passare a smooth"}
-          className={cn("gap-1.5", !smooth && "text-muted-foreground")}
-        >
-          {smooth ? <Blend data-icon="inline-start" /> : <Zap data-icon="inline-start" />}
-          {smooth ? "Smooth" : "Secca"}
-        </Button>
-        {smooth && (
-          <div className="flex items-center gap-1">
-            <Input
-              type="number"
-              min={0.1}
-              max={10}
-              step={0.1}
-              value={Number(transitionDuration.toFixed(1))}
-              onChange={(e) => {
-                const v = Number(e.target.value);
-                if (Number.isFinite(v)) setTransitionDuration(v);
-              }}
-              className="h-8 w-16"
-              aria-label="Durata transizione (secondi)"
-            />
-            <span className="text-xs text-muted-foreground">s</span>
-          </div>
-        )}
-      </div>
-
-      <Separator orientation="vertical" className="h-auto" />
-
-      {/* timeline: scrollabile in orizzontale (rotellina + scrollbar visibile) */}
-      <div ref={scrollRef} className="timeline-scroll flex min-w-0 flex-1 items-stretch gap-1.5 overflow-x-auto pb-1">
-        {clips.length === 0 ? (
-          <p className="ui-sublabel self-center leading-relaxed text-muted-foreground/80">
-            La sequenza di effetti di <strong className="font-medium text-foreground">{layerName}</strong> è vuota: aggiungi clip col pulsante +. Trascina il
-            bordo destro di un clip per cambiarne la durata, passaci sopra e usa i tre puntini per modificarlo. Ogni layer ha la sua sequenza.
-          </p>
+        {tab === "combo" ? (
+          <ComboBar scrollRef={scrollRef} />
+        ) : tab === "assets" ? (
+          <AssetPlaylistBar scrollRef={scrollRef} />
         ) : (
-          clips.map((clip, i) => (
-            <ClipBlock
-              key={clip.id}
-              clip={clip}
-              layerId={layerId}
-              index={i}
-              isDragOver={dragOver === i}
-              onDragStart={() => (dragIndex.current = i)}
-              onDragOverIndex={() => setDragOver(i)}
-              onDrop={() => handleDrop(i)}
-              onDragEnd={() => {
-                dragIndex.current = null;
-                setDragOver(null);
-              }}
-            />
-          ))
-        )}
-      </div>
+          <>
+            {/* trasporto */}
+            <div className="flex shrink-0 items-center gap-1.5">
+              <Button
+                size="icon"
+                variant={playing ? "default" : "secondary"}
+                onClick={() => setPlaying(layerId, !playing)}
+                disabled={clips.length === 0}
+                aria-label={playing ? "Pausa" : "Play"}
+              >
+                {playing ? <Pause className="size-4" /> : <Play className="size-4" />}
+              </Button>
+              <Button
+                size="icon"
+                variant="ghost"
+                onClick={() => setLoop(layerId, !loop)}
+                aria-label="Loop"
+                title={loop ? "Loop attivo: la sequenza si ripete" : "Loop spento: si ferma sull’ultimo clip"}
+                className={cn(loop ? "text-primary" : "text-muted-foreground")}
+              >
+                <Repeat className="size-4" />
+              </Button>
+              <Button
+                size="sm"
+                variant={smooth ? "secondary" : "outline"}
+                onClick={() => setTransitionMode(smooth ? "cut" : "smooth")}
+                title={smooth ? "Transizione smooth (crossfade): clicca per passare a secca" : "Transizione secca: clicca per passare a smooth"}
+                className={cn("gap-1.5", !smooth && "text-muted-foreground")}
+              >
+                {smooth ? <Blend data-icon="inline-start" /> : <Zap data-icon="inline-start" />}
+                {smooth ? "Smooth" : "Secca"}
+              </Button>
+              {smooth && (
+                <div className="flex items-center gap-1">
+                  <Input
+                    type="number"
+                    min={0.1}
+                    max={10}
+                    step={0.1}
+                    value={Number(transitionDuration.toFixed(1))}
+                    onChange={(e) => {
+                      const v = Number(e.target.value);
+                      if (Number.isFinite(v)) setTransitionDuration(v);
+                    }}
+                    className="h-8 w-16"
+                    aria-label="Durata transizione (secondi)"
+                  />
+                  <span className="text-xs text-muted-foreground">s</span>
+                </div>
+              )}
+            </div>
 
-      <AddClipButton onAdded={scrollToEnd} layerId={layerId} />
-        </>
-      )}
+            <Separator orientation="vertical" className="h-auto" />
+
+            {/* timeline: scrollabile in orizzontale (rotellina + scrollbar visibile) */}
+            <div ref={scrollRef} className="timeline-scroll flex min-w-0 flex-1 items-stretch gap-1.5 overflow-x-auto pb-1">
+              {clips.length === 0 ? (
+                <p className="ui-sublabel self-center leading-relaxed text-muted-foreground/80">
+                  La sequenza di effetti di <strong className="font-medium text-foreground">{layerName}</strong> è vuota: aggiungi clip col pulsante +. Trascina
+                  il bordo destro di un clip per cambiarne la durata, passaci sopra e usa i tre puntini per modificarlo. Ogni layer ha la sua sequenza.
+                </p>
+              ) : (
+                clips.map((clip, i) => (
+                  <ClipBlock
+                    key={clip.id}
+                    clip={clip}
+                    layerId={layerId}
+                    index={i}
+                    isDragOver={dragOver === i}
+                    onDragStart={() => (dragIndex.current = i)}
+                    onDragOverIndex={() => setDragOver(i)}
+                    onDrop={() => handleDrop(i)}
+                    onDragEnd={() => {
+                      dragIndex.current = null;
+                      setDragOver(null);
+                    }}
+                  />
+                ))
+              )}
+            </div>
+
+            <AddClipButton onAdded={scrollToEnd} layerId={layerId} />
+          </>
+        )}
       </div>
     </div>
   );

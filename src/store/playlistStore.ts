@@ -27,6 +27,12 @@ export const MAX_CLIP_DURATION = 600
 export const DEFAULT_CLIP_DURATION = 5
 
 /**
+ * Scala della timeline: pixel per secondo. Vive qui e non nella barra perché la usano sia i clip
+ * sia le colonne combo — trascinare il bordo destro deve "pesare" uguale nelle due tab.
+ */
+export const PX_PER_SEC = 18
+
+/**
  * La sequenza di un singolo layer. **Per layer** e non globale: prima la playlist scriveva sul
  * layer *attivo*, letto a ogni tick, quindi cambiando selezione la sequenza seguiva e riscriveva
  * l'effetto di un layer che non doveva averla — e non era possibile dare sequenze diverse a due
